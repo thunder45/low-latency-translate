@@ -57,22 +57,22 @@
   - Test max retry limit behavior
   - _Requirements: 3_
 
-- [ ] 4. Implement Lambda Authorizer
-- [ ] 4.1 Create JWT validation logic
+- [x] 4. Implement Lambda Authorizer
+- [x] 4.1 Create JWT validation logic
   - Fetch Cognito public keys from JWKS endpoint with caching
   - Decode JWT header to extract key ID (kid)
   - Verify JWT signature using public key
   - Validate token expiration, audience, and issuer claims
   - _Requirements: 7, 19_
 
-- [ ] 4.2 Generate IAM policy
+- [x] 4.2 Generate IAM policy
   - Create Allow policy for valid tokens with speaker permissions
   - Include userId and email in policy context
   - Return Deny policy for invalid tokens
   - Add comprehensive error logging for authentication failures
   - _Requirements: 7, 17_
 
-- [ ]* 4.3 Write unit tests for Lambda Authorizer
+- [x] 4.3 Write unit tests for Lambda Authorizer
   - Test valid JWT token acceptance
   - Test expired token rejection
   - Test invalid signature rejection
