@@ -239,9 +239,6 @@ def test_join_session_at_capacity(
     monkeypatch
 ):
     """Test listener joining session at capacity."""
-    # Set low capacity limit
-    monkeypatch.setenv('MAX_LISTENERS_PER_SESSION', '2')
-    
     # Create session with 2 listeners (at capacity)
     sessions_repo = SessionsRepository('Sessions')
     sessions_repo.create_session(
@@ -252,7 +249,7 @@ def test_join_session_at_capacity(
         quality_tier='standard'
     )
     
-    # Manually set listener count to capacity
+    # Manually set listener count to capacity (2)
     sessions_repo.client.update_item(
         table_name='Sessions',
         key={'sessionId': 'golden-eagle-427'},
@@ -260,53 +257,51 @@ def test_join_session_at_capacity(
         expression_attribute_values={':count': 2}
     )
     
-    # Mock boto3 clients for language validation
-    with patch('boto3.client') as mock_boto_client:
-        # Mock Translate client
-        mock_translate = MagicMock()
-        mock_translate.list_languages.return_value = {
-            'Languages': [
-                {'LanguageCode': 'en'},
-                {'LanguageCode': 'es'}
-            ]
-        }
-        
-        # Mock Polly client
-        mock_polly = MagicMock()
-        mock_polly.describe_voices.return_value = {
-            'Voices': [
-                {'LanguageCode': 'en-US'},
-                {'LanguageCode': 'es-ES'}
-            ]
-        }
-        
-        def client_factory(service_name, **kwargs):
-            if service_name == 'translate':
-                return mock_translate
-            elif service_name == 'polly':
-                return mock_polly
-            else:
-                return MagicMock()
-        
-        mock_boto_client.side_effect = client_factory
-        
-        # Reload module to pick up new MAX_LISTENERS_PER_SESSION value
-        import importlib
-        importlib.reload(connection_handler)
-        
-        event = create_connect_event(
-            action='joinSession',
-            query_params={
-                'sessionId': 'golden-eagle-427',
-                'targetLanguage': 'es'
+    # Patch MAX_LISTENERS_PER_SESSION in the handler module
+    with patch.object(connection_handler, 'MAX_LISTENERS_PER_SESSION', 2):
+        # Mock boto3 clients for language validation
+        with patch('boto3.client') as mock_boto_client:
+            # Mock Translate client
+            mock_translate = MagicMock()
+            mock_translate.list_languages.return_value = {
+                'Languages': [
+                    {'LanguageCode': 'en'},
+                    {'LanguageCode': 'es'}
+                ]
             }
-        )
-        
-        response = connection_handler.lambda_handler(event, None)
-        
-        assert response['statusCode'] == 503
-        body = json.loads(response['body'])
-        assert body['code'] == 'SESSION_FULL'
+            
+            # Mock Polly client
+            mock_polly = MagicMock()
+            mock_polly.describe_voices.return_value = {
+                'Voices': [
+                    {'LanguageCode': 'en-US'},
+                    {'LanguageCode': 'es-ES'}
+                ]
+            }
+            
+            def client_factory(service_name, **kwargs):
+                if service_name == 'translate':
+                    return mock_translate
+                elif service_name == 'polly':
+                    return mock_polly
+                else:
+                    return MagicMock()
+            
+            mock_boto_client.side_effect = client_factory
+            
+            event = create_connect_event(
+                action='joinSession',
+                query_params={
+                    'sessionId': 'golden-eagle-427',
+                    'targetLanguage': 'es'
+                }
+            )
+            
+            response = connection_handler.lambda_handler(event, None)
+            
+            assert response['statusCode'] == 503
+            body = json.loads(response['body'])
+            assert body['code'] == 'SESSION_FULL'
 
 
 @patch('handler.language_validator')
