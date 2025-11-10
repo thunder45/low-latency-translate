@@ -105,8 +105,8 @@
   - Test TTL-based cleanup
   - _Requirements: 13_
 
-- [ ] 6. Implement Connection Handler Lambda
-- [ ] 6.1 Create speaker session creation flow
+- [x] 6. Implement Connection Handler Lambda
+- [x] 6.1 Create speaker session creation flow
   - Extract and validate query parameters (action, sourceLanguage, qualityTier)
   - Validate JWT token context from authorizer
   - Check rate limit for session creation
@@ -115,7 +115,7 @@
   - Return sessionCreated message with session details
   - _Requirements: 1, 7, 15_
 
-- [ ] 6.2 Create listener join flow
+- [x] 6.2 Create listener join flow
   - Extract and validate query parameters (sessionId, targetLanguage)
   - Validate session exists and isActive=true in DynamoDB
   - Validate language support using AWS Translate and Polly APIs
@@ -125,21 +125,21 @@
   - Return sessionJoined message with connection details
   - _Requirements: 2, 8, 14, 15_
 
-- [ ] 6.2.1 Implement language support validation
+- [x] 6.2.1 Implement language support validation
   - Query AWS Polly DescribeVoices API for neural voice availability
   - Query AWS Translate ListLanguages API for translation support
   - Cache supported languages for performance (Lambda container reuse)
   - Return UNSUPPORTED_LANGUAGE error if target language not available
   - _Requirements: 2_
 
-- [ ] 6.3 Implement input validation
+- [x] 6.3 Implement input validation
   - Validate ISO 639-1 language codes (2 lowercase letters)
   - Validate session ID format (adjective-noun-number pattern)
   - Validate qualityTier enum (standard or premium)
   - Return 400 Bad Request with specific error messages for invalid inputs
   - _Requirements: 15_
 
-- [ ] 6.4 Add error handling
+- [x] 6.4 Add error handling
   - Handle SESSION_NOT_FOUND for invalid session IDs
   - Handle SESSION_FULL when capacity reached
   - Handle RATE_LIMIT_EXCEEDED with retry information
@@ -147,7 +147,7 @@
   - Log all errors with correlation IDs
   - _Requirements: 7, 8, 17_
 
-- [ ]* 6.5 Write integration tests for Connection Handler
+- [x] 6.5 Write integration tests for Connection Handler
   - Test complete speaker session creation flow
   - Test complete listener join flow
   - Test session not found error handling
