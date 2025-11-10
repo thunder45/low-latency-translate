@@ -259,7 +259,7 @@ def test_join_session_at_capacity(
     
     # Patch MAX_LISTENERS_PER_SESSION in the handler module
     with patch.object(connection_handler, 'MAX_LISTENERS_PER_SESSION', 2):
-        # Mock boto3 clients for language validation
+        # Mock boto3 clients for language validation and metrics
         with patch('boto3.client') as mock_boto_client:
             # Mock Translate client
             mock_translate = MagicMock()
@@ -279,11 +279,16 @@ def test_join_session_at_capacity(
                 ]
             }
             
+            # Mock CloudWatch client for metrics
+            mock_cloudwatch = MagicMock()
+            
             def client_factory(service_name, **kwargs):
                 if service_name == 'translate':
                     return mock_translate
                 elif service_name == 'polly':
                     return mock_polly
+                elif service_name == 'cloudwatch':
+                    return mock_cloudwatch
                 else:
                     return MagicMock()
             

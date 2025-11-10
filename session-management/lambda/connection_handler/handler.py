@@ -28,9 +28,13 @@ from shared.utils.response_builder import (
     error_response,
     rate_limit_error_response,
 )
+from shared.utils.structured_logger import get_structured_logger
+from shared.utils.metrics import get_metrics_publisher
 
-logger = logging.getLogger()
-logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+# Initialize structured logger
+base_logger = logging.getLogger()
+base_logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+logger = get_structured_logger('ConnectionHandler')
 
 # Initialize repositories and services (reused across Lambda invocations)
 sessions_repo = SessionsRepository(os.environ.get('SESSIONS_TABLE', 'Sessions'))
@@ -38,6 +42,7 @@ connections_repo = ConnectionsRepository(os.environ.get('CONNECTIONS_TABLE', 'Co
 rate_limit_service = RateLimitService()
 language_validator = LanguageValidator(region=os.environ.get('AWS_REGION', 'us-east-1'))
 session_id_service = SessionIDService(sessions_repo)
+metrics_publisher = get_metrics_publisher()
 
 # Configuration
 MAX_LISTENERS_PER_SESSION = int(os.environ.get('MAX_LISTENERS_PER_SESSION', '500'))
@@ -63,12 +68,11 @@ def lambda_handler(event, context):
     ip_address = event['requestContext'].get('identity', {}).get('sourceIp', 'unknown')
     
     logger.info(
-        f"Connection handler invoked",
-        extra={
-            'connectionId': connection_id,
-            'action': action,
-            'ipAddress': ip_address
-        }
+        message="Connection handler invoked",
+        correlation_id=connection_id,
+        operation='lambda_handler',
+        ip_address=ip_address,
+        action=action
     )
     
     try:
@@ -91,7 +95,15 @@ def lambda_handler(event, context):
             )
     
     except ValidationError as e:
-        logger.warning(f"Validation error: {e.message}", extra={'field': e.field})
+        logger.warning(
+            message=f"Validation error: {e.message}",
+            correlation_id=connection_id,
+            operation='lambda_handler',
+            error_code='INVALID_PARAMETERS',
+            ip_address=ip_address,
+            field=e.field
+        )
+        metrics_publisher.emit_connection_error('INVALID_PARAMETERS')
         return error_response(
             status_code=400,
             error_code='INVALID_PARAMETERS',
@@ -100,11 +112,26 @@ def lambda_handler(event, context):
         )
     
     except RateLimitExceededError as e:
-        logger.warning(f"Rate limit exceeded: {str(e)}")
+        logger.warning(
+            message=f"Rate limit exceeded: {str(e)}",
+            correlation_id=connection_id,
+            operation='lambda_handler',
+            error_code='RATE_LIMIT_EXCEEDED',
+            ip_address=ip_address
+        )
+        metrics_publisher.emit_rate_limit_exceeded(action)
         return rate_limit_error_response(e.retry_after)
     
     except UnsupportedLanguageError as e:
-        logger.warning(f"Unsupported language: {e.message}")
+        logger.warning(
+            message=f"Unsupported language: {e.message}",
+            correlation_id=connection_id,
+            operation='lambda_handler',
+            error_code='UNSUPPORTED_LANGUAGE',
+            ip_address=ip_address,
+            languageCode=e.language_code
+        )
+        metrics_publisher.emit_connection_error('UNSUPPORTED_LANGUAGE')
         return error_response(
             status_code=400,
             error_code='UNSUPPORTED_LANGUAGE',
@@ -114,10 +141,14 @@ def lambda_handler(event, context):
     
     except Exception as e:
         logger.error(
-            f"Unexpected error in connection handler: {str(e)}",
-            exc_info=True,
-            extra={'connectionId': connection_id}
+            message=f"Unexpected error in connection handler: {str(e)}",
+            correlation_id=connection_id,
+            operation='lambda_handler',
+            error_code='INTERNAL_ERROR',
+            ip_address=ip_address,
+            exc_info=True
         )
+        metrics_publisher.emit_connection_error('INTERNAL_ERROR')
         return error_response(
             status_code=500,
             error_code='INTERNAL_ERROR',
@@ -152,7 +183,13 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     user_id = authorizer_context.get('userId')
     
     if not user_id:
-        logger.error("Missing userId in authorizer context")
+        logger.error(
+            message="Missing userId in authorizer context",
+            correlation_id=connection_id,
+            operation='handle_create_session',
+            error_code='UNAUTHORIZED'
+        )
+        metrics_publisher.emit_connection_error('UNAUTHORIZED')
         return error_response(
             status_code=401,
             error_code='UNAUTHORIZED',
@@ -160,12 +197,12 @@ def handle_create_session(event, connection_id, query_params, ip_address):
         )
     
     logger.info(
-        f"Creating session for user {user_id}",
-        extra={
-            'userId': user_id,
-            'sourceLanguage': source_language,
-            'qualityTier': quality_tier
-        }
+        message=f"Creating session for user {user_id}",
+        correlation_id=connection_id,
+        operation='handle_create_session',
+        user_id=user_id,
+        sourceLanguage=source_language,
+        qualityTier=quality_tier
     )
     
     # Check rate limit for session creation
@@ -196,13 +233,15 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     duration_ms = int((time.time() - start_time) * 1000)
     
     logger.info(
-        f"Session created successfully",
-        extra={
-            'sessionId': session_id,
-            'userId': user_id,
-            'durationMs': duration_ms
-        }
+        message="Session created successfully",
+        correlation_id=session_id,
+        operation='handle_create_session',
+        duration_ms=duration_ms,
+        user_id=user_id
     )
+    
+    # Emit metrics
+    metrics_publisher.emit_session_creation_latency(duration_ms, user_id)
     
     # Return success response
     return success_response(
@@ -241,11 +280,11 @@ def handle_join_session(event, connection_id, query_params, ip_address):
     validate_language_code(target_language, 'targetLanguage')
     
     logger.info(
-        f"Listener joining session",
-        extra={
-            'sessionId': session_id,
-            'targetLanguage': target_language
-        }
+        message="Listener joining session",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_join_session',
+        sessionId=session_id,
+        targetLanguage=target_language
     )
     
     # Check rate limit for listener joins
@@ -255,7 +294,14 @@ def handle_join_session(event, connection_id, query_params, ip_address):
     session = sessions_repo.get_session(session_id)
     
     if not session:
-        logger.warning(f"Session not found: {session_id}")
+        logger.warning(
+            message=f"Session not found: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
         return error_response(
             status_code=404,
             error_code='SESSION_NOT_FOUND',
@@ -264,7 +310,14 @@ def handle_join_session(event, connection_id, query_params, ip_address):
         )
     
     if not session.get('isActive', False):
-        logger.warning(f"Session is inactive: {session_id}")
+        logger.warning(
+            message=f"Session is inactive: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
         return error_response(
             status_code=404,
             error_code='SESSION_NOT_FOUND',
@@ -280,8 +333,14 @@ def handle_join_session(event, connection_id, query_params, ip_address):
     current_listener_count = session.get('listenerCount', 0)
     if current_listener_count >= MAX_LISTENERS_PER_SESSION:
         logger.warning(
-            f"Session at capacity: {session_id} ({current_listener_count} listeners)"
+            message=f"Session at capacity: {session_id} ({current_listener_count} listeners)",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session',
+            error_code='SESSION_FULL',
+            sessionId=session_id,
+            listenerCount=current_listener_count
         )
+        metrics_publisher.emit_connection_error('SESSION_FULL')
         return error_response(
             status_code=503,
             error_code='SESSION_FULL',
@@ -307,9 +366,16 @@ def handle_join_session(event, connection_id, query_params, ip_address):
         new_listener_count = sessions_repo.increment_listener_count(session_id)
     except ConditionalCheckFailedError:
         # Session became inactive or was deleted
-        logger.warning(f"Session became inactive during join: {session_id}")
+        logger.warning(
+            message=f"Session became inactive during join: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
         # Clean up connection record
         connections_repo.delete_connection(connection_id)
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
         return error_response(
             status_code=404,
             error_code='SESSION_NOT_FOUND',
@@ -320,14 +386,17 @@ def handle_join_session(event, connection_id, query_params, ip_address):
     duration_ms = int((time.time() - start_time) * 1000)
     
     logger.info(
-        f"Listener joined successfully",
-        extra={
-            'sessionId': session_id,
-            'targetLanguage': target_language,
-            'listenerCount': new_listener_count,
-            'durationMs': duration_ms
-        }
+        message="Listener joined successfully",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_join_session',
+        duration_ms=duration_ms,
+        sessionId=session_id,
+        targetLanguage=target_language,
+        listenerCount=new_listener_count
     )
+    
+    # Emit metrics
+    metrics_publisher.emit_listener_join_latency(duration_ms, session_id)
     
     # Return success response
     return success_response(

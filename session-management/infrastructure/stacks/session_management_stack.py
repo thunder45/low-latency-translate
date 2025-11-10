@@ -11,6 +11,9 @@ from aws_cdk import (
     aws_apigatewayv2 as apigwv2,
     aws_logs as logs,
     aws_iam as iam,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cw_actions,
+    aws_sns as sns,
 )
 from constructs import Construct
 
@@ -47,6 +50,12 @@ class SessionManagementStack(Stack):
 
         # Create WebSocket API
         self.websocket_api = self._create_websocket_api()
+
+        # Create SNS topic for alarms
+        self.alarm_topic = self._create_alarm_topic()
+
+        # Create CloudWatch alarms
+        self._create_cloudwatch_alarms()
 
         # Outputs
         self._create_outputs()
@@ -116,6 +125,10 @@ class SessionManagementStack(Stack):
 
     def _create_authorizer_function(self) -> lambda_.Function:
         """Create Lambda Authorizer function."""
+        # Get log retention from config or default to 12 hours
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        
         function = lambda_.Function(
             self,
             "AuthorizerFunction",
@@ -130,12 +143,16 @@ class SessionManagementStack(Stack):
                 "USER_POOL_ID": self.config.get("cognitoUserPoolId", ""),
                 "CLIENT_ID": self.config.get("cognitoClientId", ""),
             },
-            log_retention=logs.RetentionDays.ONE_DAY if self.env_name == "dev" else logs.RetentionDays.ONE_WEEK,
+            log_retention=log_retention,
         )
         return function
 
     def _create_connection_handler(self) -> lambda_.Function:
         """Create Connection Handler function."""
+        # Get log retention from config or default to 12 hours
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        
         function = lambda_.Function(
             self,
             "ConnectionHandler",
@@ -152,7 +169,7 @@ class SessionManagementStack(Stack):
                 "SESSION_MAX_DURATION_HOURS": str(self.config.get("sessionMaxDurationHours", 2)),
                 "MAX_LISTENERS_PER_SESSION": str(self.config.get("maxListenersPerSession", 500)),
             },
-            log_retention=logs.RetentionDays.ONE_DAY if self.env_name == "dev" else logs.RetentionDays.ONE_WEEK,
+            log_retention=log_retention,
         )
 
         # Grant DynamoDB permissions
@@ -160,10 +177,22 @@ class SessionManagementStack(Stack):
         self.connections_table.grant_read_write_data(function)
         self.rate_limits_table.grant_read_write_data(function)
 
+        # Grant CloudWatch Metrics permissions
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=['cloudwatch:PutMetricData'],
+                resources=['*']
+            )
+        )
+
         return function
 
     def _create_heartbeat_handler(self) -> lambda_.Function:
         """Create Heartbeat Handler function."""
+        # Get log retention from config or default to 12 hours
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        
         function = lambda_.Function(
             self,
             "HeartbeatHandler",
@@ -178,7 +207,7 @@ class SessionManagementStack(Stack):
                 "CONNECTION_REFRESH_MINUTES": str(self.config.get("connectionRefreshMinutes", 100)),
                 "CONNECTION_WARNING_MINUTES": str(self.config.get("connectionWarningMinutes", 105)),
             },
-            log_retention=logs.RetentionDays.ONE_DAY if self.env_name == "dev" else logs.RetentionDays.ONE_WEEK,
+            log_retention=log_retention,
         )
 
         # Grant DynamoDB permissions
@@ -188,6 +217,10 @@ class SessionManagementStack(Stack):
 
     def _create_disconnect_handler(self) -> lambda_.Function:
         """Create Disconnect Handler function."""
+        # Get log retention from config or default to 12 hours
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        
         function = lambda_.Function(
             self,
             "DisconnectHandler",
@@ -201,7 +234,7 @@ class SessionManagementStack(Stack):
                 "SESSIONS_TABLE": self.sessions_table.table_name,
                 "CONNECTIONS_TABLE": self.connections_table.table_name,
             },
-            log_retention=logs.RetentionDays.ONE_DAY if self.env_name == "dev" else logs.RetentionDays.ONE_WEEK,
+            log_retention=log_retention,
         )
 
         # Grant DynamoDB permissions
@@ -212,6 +245,10 @@ class SessionManagementStack(Stack):
 
     def _create_refresh_handler(self) -> lambda_.Function:
         """Create Connection Refresh Handler function."""
+        # Get log retention from config or default to 12 hours
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        
         function = lambda_.Function(
             self,
             "RefreshHandler",
@@ -225,7 +262,7 @@ class SessionManagementStack(Stack):
                 "SESSIONS_TABLE": self.sessions_table.table_name,
                 "CONNECTIONS_TABLE": self.connections_table.table_name,
             },
-            log_retention=logs.RetentionDays.ONE_DAY if self.env_name == "dev" else logs.RetentionDays.ONE_WEEK,
+            log_retention=log_retention,
         )
 
         # Grant DynamoDB permissions
@@ -390,6 +427,116 @@ class SessionManagementStack(Stack):
 
         return integration
 
+    def _create_alarm_topic(self) -> sns.Topic:
+        """Create SNS topic for CloudWatch alarms."""
+        topic = sns.Topic(
+            self,
+            "AlarmTopic",
+            topic_name=f"session-management-alarms-{self.env_name}",
+            display_name="Session Management CloudWatch Alarms"
+        )
+        
+        # Add email subscription if configured
+        alarm_email = self.config.get("alarmEmail")
+        if alarm_email:
+            topic.add_subscription(
+                sns.Subscription(
+                    self,
+                    "AlarmEmailSubscription",
+                    protocol=sns.SubscriptionProtocol.EMAIL,
+                    endpoint=alarm_email
+                )
+            )
+        
+        return topic
+
+    def _create_cloudwatch_alarms(self):
+        """Create CloudWatch alarms for monitoring."""
+        # Alarm action
+        alarm_action = cw_actions.SnsAction(self.alarm_topic)
+        
+        # 1. Session Creation Latency Alarm (p95 > 2000ms)
+        session_creation_latency_alarm = cloudwatch.Alarm(
+            self,
+            "SessionCreationLatencyAlarm",
+            alarm_name=f"session-creation-latency-{self.env_name}",
+            alarm_description="Alert when session creation p95 latency exceeds 2000ms",
+            metric=cloudwatch.Metric(
+                namespace="SessionManagement",
+                metric_name="SessionCreationLatency",
+                statistic="p95",
+                period=Duration.minutes(5)
+            ),
+            threshold=2000,
+            evaluation_periods=2,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        session_creation_latency_alarm.add_alarm_action(alarm_action)
+        
+        # 2. Connection Errors Alarm (> 100 per 5 minutes)
+        connection_errors_alarm = cloudwatch.Alarm(
+            self,
+            "ConnectionErrorsAlarm",
+            alarm_name=f"connection-errors-{self.env_name}",
+            alarm_description="Alert when connection errors exceed 100 per 5 minutes",
+            metric=cloudwatch.Metric(
+                namespace="SessionManagement",
+                metric_name="ConnectionErrors",
+                statistic="Sum",
+                period=Duration.minutes(5)
+            ),
+            threshold=100,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        connection_errors_alarm.add_alarm_action(alarm_action)
+        
+        # 3. Active Sessions Approaching Limit Alarm
+        # Assuming a limit of 100 active sessions, alert at 90
+        max_sessions = int(self.config.get("maxActiveSessions", 100))
+        active_sessions_alarm = cloudwatch.Alarm(
+            self,
+            "ActiveSessionsAlarm",
+            alarm_name=f"active-sessions-limit-{self.env_name}",
+            alarm_description=f"Alert when active sessions approach limit ({max_sessions})",
+            metric=cloudwatch.Metric(
+                namespace="SessionManagement",
+                metric_name="ActiveSessions",
+                statistic="Average",
+                period=Duration.minutes(5)
+            ),
+            threshold=max_sessions * 0.9,  # Alert at 90% of limit
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        active_sessions_alarm.add_alarm_action(alarm_action)
+        
+        # 4. Lambda Error Rate Alarms for each function
+        for function_name, function in [
+            ("connection-handler", self.connection_handler),
+            ("heartbeat-handler", self.heartbeat_handler),
+            ("disconnect-handler", self.disconnect_handler),
+            ("refresh-handler", self.refresh_handler),
+        ]:
+            error_alarm = cloudwatch.Alarm(
+                self,
+                f"{function_name.title().replace('-', '')}ErrorAlarm",
+                alarm_name=f"{function_name}-errors-{self.env_name}",
+                alarm_description=f"Alert when {function_name} error rate is high",
+                metric=function.metric_errors(
+                    statistic="Sum",
+                    period=Duration.minutes(5)
+                ),
+                threshold=10,
+                evaluation_periods=1,
+                comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+            )
+            error_alarm.add_alarm_action(alarm_action)
+
     def _create_outputs(self):
         """Create CloudFormation outputs."""
         CfnOutput(
@@ -418,4 +565,11 @@ class SessionManagementStack(Stack):
             "WebSocketAPIEndpoint",
             value=f"wss://{self.websocket_api.ref}.execute-api.{self.region}.amazonaws.com/prod",
             description="WebSocket API endpoint URL"
+        )
+        
+        CfnOutput(
+            self,
+            "AlarmTopicArn",
+            value=self.alarm_topic.topic_arn,
+            description="SNS topic ARN for CloudWatch alarms"
         )

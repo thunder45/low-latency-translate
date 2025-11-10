@@ -261,8 +261,8 @@
   - Test speaker disconnect notifying all listeners
   - _Requirements: 1, 2, 4, 5, 10, 11_
 
-- [ ] 11. Implement monitoring and logging
-- [ ] 11.1 Add structured logging
+- [x] 11. Implement monitoring and logging
+- [x] 11.1 Add structured logging
   - Implement JSON-formatted log entries with timestamp, level, correlationId
   - Log all operations with appropriate severity levels
   - Include sanitized user context (userId or hashed IP)
@@ -270,7 +270,7 @@
   - Configure CloudWatch Logs with 12-hour retention
   - _Requirements: 17_
 
-- [ ] 11.2 Add CloudWatch metrics
+- [x] 11.2 Add CloudWatch metrics
   - Emit SessionCreationLatency metric (p50, p95, p99)
   - Emit ListenerJoinLatency metric (p50, p95, p99)
   - Emit ActiveSessions gauge metric
@@ -279,14 +279,14 @@
   - Emit RateLimitExceeded count metric
   - _Requirements: 18_
 
-- [ ] 11.3 Configure CloudWatch alarms
+- [x] 11.3 Configure CloudWatch alarms
   - Create alarm for SessionCreationLatency p95 > 2000ms
   - Create alarm for ConnectionErrors > 100 per 5 minutes
   - Create alarm for ActiveSessions approaching limit
   - Configure SNS notifications for alarm triggers
   - _Requirements: 18_
 
-- [ ]* 11.4 Write monitoring validation tests
+- [x] 11.4 Write monitoring validation tests
   - Verify metrics are emitted correctly
   - Verify log entries contain required fields
   - Verify alarm thresholds trigger appropriately
@@ -315,7 +315,7 @@
   - Log degraded mode operations
   - _Requirements: 21_
 
-- [ ]* 12.4 Write resilience tests
+- [ ] 12.4 Write resilience tests
   - Test retry logic with transient DynamoDB errors
   - Test circuit breaker state transitions
   - Test graceful degradation with service unavailability
@@ -359,7 +359,7 @@
   - Document monitoring and alerting setup
   - _Requirements: All_
 
-- [ ]* 14.1 Create client implementation examples
+- [ ] 14.1 Create client implementation examples
   - Create JavaScript/TypeScript client example with connection refresh
   - Create Python client example for testing
   - Document error handling patterns

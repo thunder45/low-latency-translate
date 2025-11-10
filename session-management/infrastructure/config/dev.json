@@ -11,5 +11,7 @@
   "rateLimitListenerJoinsPerMin": 10,
   "rateLimitConnectionAttemptsPerMin": 20,
   "rateLimitHeartbeatsPerMin": 2,
-  "dataRetentionHours": 12
+  "dataRetentionHours": 12,
+  "maxActiveSessions": 100,
+  "alarmEmail": "your-email@example.com"
 }

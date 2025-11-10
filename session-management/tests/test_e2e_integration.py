@@ -25,6 +25,42 @@ def mock_api_gateway_client():
 
 
 @pytest.fixture
+def mock_boto3_clients(mock_api_gateway_client):
+    """Mock all boto3 clients used in handlers. Returns tuple of (client_factory, api_gateway_mock)."""
+    def client_factory(service_name, **kwargs):
+        if service_name == 'apigatewaymanagementapi':
+            return mock_api_gateway_client
+        elif service_name == 'cloudwatch':
+            mock_cw = Mock()
+            mock_cw.put_metric_data = Mock(return_value={})
+            return mock_cw
+        elif service_name == 'translate':
+            mock_translate = Mock()
+            mock_translate.list_languages = Mock(return_value={
+                'Languages': [
+                    {'LanguageCode': 'en'},
+                    {'LanguageCode': 'es'},
+                    {'LanguageCode': 'fr'}
+                ]
+            })
+            return mock_translate
+        elif service_name == 'polly':
+            mock_polly = Mock()
+            mock_polly.describe_voices = Mock(return_value={
+                'Voices': [
+                    {'LanguageCode': 'en-US'},
+                    {'LanguageCode': 'es-ES'},
+                    {'LanguageCode': 'fr-FR'}
+                ]
+            })
+            return mock_polly
+        else:
+            return Mock()
+    
+    return client_factory, mock_api_gateway_client
+
+
+@pytest.fixture
 def setup_handlers(env_vars, aws_credentials):
     """Set up handler modules with proper environment."""
     import sys
@@ -112,7 +148,7 @@ class TestSpeakerSessionLifecycle:
     def test_complete_speaker_flow_create_heartbeat_disconnect(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -124,6 +160,7 @@ class TestSpeakerSessionLifecycle:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         connection_id = 'speaker-conn-123'
         user_id = 'user-123'
@@ -145,7 +182,7 @@ class TestSpeakerSessionLifecycle:
             }
         }
         
-        with patch.object(handlers['connection'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             connect_response = handlers['connection'].lambda_handler(connect_event, {})
         
         assert connect_response['statusCode'] == 200
@@ -167,7 +204,7 @@ class TestSpeakerSessionLifecycle:
             }
         }
         
-        with patch.object(handlers['heartbeat'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             heartbeat_response = handlers['heartbeat'].lambda_handler(heartbeat_event, {})
         
         assert heartbeat_response['statusCode'] == 200
@@ -187,7 +224,7 @@ class TestSpeakerSessionLifecycle:
             }
         }
         
-        with patch.object(handlers['disconnect'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             disconnect_response = handlers['disconnect'].lambda_handler(disconnect_event, {})
         
         assert disconnect_response['statusCode'] == 200
@@ -208,7 +245,7 @@ class TestListenerLifecycle:
     def test_complete_listener_flow_join_receive_disconnect(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -220,6 +257,7 @@ class TestListenerLifecycle:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
         # Create active session first
@@ -251,9 +289,8 @@ class TestListenerLifecycle:
             }
         }
         
-        with patch.object(handlers['connection'], 'api_gateway_client', mock_api_gateway_client):
-            with patch.object(handlers['connection'], 'validate_language_support', return_value=True):
-                join_response = handlers['connection'].lambda_handler(join_event, {})
+        with patch('boto3.client', side_effect=mock_boto3_clients):
+            join_response = handlers['connection'].lambda_handler(join_event, {})
         
         assert join_response['statusCode'] == 200
         body = json.loads(join_response['body'])
@@ -278,7 +315,7 @@ class TestListenerLifecycle:
             }
         }
         
-        with patch.object(handlers['heartbeat'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             heartbeat_response = handlers['heartbeat'].lambda_handler(heartbeat_event, {})
         
         assert heartbeat_response['statusCode'] == 200
@@ -291,7 +328,7 @@ class TestListenerLifecycle:
             }
         }
         
-        with patch.object(handlers['disconnect'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             disconnect_response = handlers['disconnect'].lambda_handler(disconnect_event, {})
         
         assert disconnect_response['statusCode'] == 200
@@ -311,7 +348,7 @@ class TestMultiListenerScenario:
     def test_100_concurrent_listeners(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -324,6 +361,7 @@ class TestMultiListenerScenario:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
         # Create active session
@@ -368,9 +406,8 @@ class TestMultiListenerScenario:
                 }
             }
             
-            with patch.object(handlers['connection'], 'api_gateway_client', mock_api_gateway_client):
-                with patch.object(handlers['connection'], 'validate_language_support', return_value=True):
-                    join_response = handlers['connection'].lambda_handler(join_event, {})
+            with patch('boto3.client', side_effect=mock_boto3_clients):
+                join_response = handlers['connection'].lambda_handler(join_event, {})
             
             assert join_response['statusCode'] == 200
         
@@ -391,7 +428,7 @@ class TestMultiListenerScenario:
             }
         }
         
-        with patch.object(handlers['disconnect'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             disconnect_response = handlers['disconnect'].lambda_handler(disconnect_event, {})
         
         assert disconnect_response['statusCode'] == 200
@@ -416,7 +453,7 @@ class TestConnectionRefreshLongSessions:
     def test_speaker_connection_refresh_at_100_minutes(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -429,6 +466,7 @@ class TestConnectionRefreshLongSessions:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
         # Create session
@@ -466,7 +504,7 @@ class TestConnectionRefreshLongSessions:
             }
         }
         
-        with patch.object(handlers['heartbeat'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             heartbeat_response = handlers['heartbeat'].lambda_handler(heartbeat_event, {})
         
         assert heartbeat_response['statusCode'] == 200
@@ -501,7 +539,7 @@ class TestConnectionRefreshLongSessions:
             }
         }
         
-        with patch.object(handlers['refresh'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             refresh_response = handlers['refresh'].lambda_handler(refresh_event, {})
         
         assert refresh_response['statusCode'] == 200
@@ -526,7 +564,7 @@ class TestConnectionRefreshLongSessions:
     def test_listener_connection_refresh_at_100_minutes(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -539,6 +577,7 @@ class TestConnectionRefreshLongSessions:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
         # Create active session
@@ -575,7 +614,7 @@ class TestConnectionRefreshLongSessions:
             }
         }
         
-        with patch.object(handlers['heartbeat'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             heartbeat_response = handlers['heartbeat'].lambda_handler(heartbeat_event, {})
         
         assert heartbeat_response['statusCode'] == 200
@@ -595,7 +634,7 @@ class TestConnectionRefreshLongSessions:
             }
         }
         
-        with patch.object(handlers['refresh'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             refresh_response = handlers['refresh'].lambda_handler(refresh_event, {})
         
         assert refresh_response['statusCode'] == 200
@@ -617,7 +656,7 @@ class TestConnectionRefreshLongSessions:
             }
         }
         
-        with patch.object(handlers['disconnect'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             disconnect_response = handlers['disconnect'].lambda_handler(disconnect_event, {})
         
         assert disconnect_response['statusCode'] == 200
@@ -633,7 +672,7 @@ class TestSpeakerDisconnectNotifications:
     def test_speaker_disconnect_notifies_all_listeners(
         self,
         dynamodb_tables,
-        mock_api_gateway_client,
+        mock_boto3_clients,
         setup_handlers
     ):
         """
@@ -645,6 +684,7 @@ class TestSpeakerDisconnectNotifications:
         """
         # Setup
         sessions_table, connections_table, rate_limits_table = dynamodb_tables
+        mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
         # Create session
@@ -693,7 +733,7 @@ class TestSpeakerDisconnectNotifications:
             }
         }
         
-        with patch.object(handlers['disconnect'], 'api_gateway_client', mock_api_gateway_client):
+        with patch('boto3.client', side_effect=mock_boto3_clients):
             disconnect_response = handlers['disconnect'].lambda_handler(disconnect_event, {})
         
         assert disconnect_response['statusCode'] == 200
