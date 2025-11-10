@@ -206,15 +206,15 @@
   - Test rate limiting for heartbeat messages
   - _Requirements: 10, 11, 12_
 
-- [ ] 9. Implement Disconnect Handler Lambda
-- [ ] 9.1 Create connection cleanup logic
+- [x] 9. Implement Disconnect Handler Lambda
+- [x] 9.1 Create connection cleanup logic
   - Query connection record from DynamoDB by connectionId
   - Determine role (speaker or listener) from connection record
   - Delete connection record from DynamoDB
   - Handle idempotent operations (safe to retry)
   - _Requirements: 4, 5, 16_
 
-- [ ] 9.2 Implement speaker disconnect handling
+- [x] 9.2 Implement speaker disconnect handling
   - Mark session as inactive (isActive=false) in DynamoDB
   - Query all listener connections for the session using GSI
   - Send sessionEnded message to all listeners via API Gateway Management API
@@ -222,13 +222,13 @@
   - Log session termination with session ID and duration
   - _Requirements: 4_
 
-- [ ] 9.3 Implement listener disconnect handling
+- [x] 9.3 Implement listener disconnect handling
   - Atomically decrement listenerCount in Sessions table
   - Handle negative count edge case (set to 0 if negative)
   - Log listener disconnection with session ID and connection ID
   - _Requirements: 5_
 
-- [ ]* 9.4 Write integration tests for disconnect handler
+- [x] 9.4 Write integration tests for disconnect handler
   - Test speaker disconnect with session termination
   - Test listener disconnect with count decrement
   - Test idempotent disconnect operations
