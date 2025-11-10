@@ -6,15 +6,15 @@
   - Configure environment-specific parameter files (dev, staging, prod)
   - _Requirements: All requirements depend on proper project structure_
 
-- [ ] 2. Implement DynamoDB tables and data access layer
-- [ ] 2.1 Create DynamoDB table definitions
+- [x] 2. Implement DynamoDB tables and data access layer
+- [x] 2.1 Create DynamoDB table definitions
   - Define Sessions table with sessionId primary key and TTL configuration
   - Define Connections table with connectionId primary key and GSI for sessionId-targetLanguage
   - Define RateLimits table with identifier primary key and TTL configuration
   - Configure on-demand capacity mode for all tables
   - _Requirements: 9, 20_
 
-- [ ] 2.2 Implement data access layer
+- [x] 2.2 Implement data access layer
   - Create Python module for DynamoDB operations with boto3
   - Implement atomic counter operations for listenerCount (ADD operation)
   - Implement conditional updates for race condition prevention
@@ -22,35 +22,35 @@
   - Add error handling with retry logic for transient failures
   - _Requirements: 9, 16_
 
-- [ ]* 2.3 Write unit tests for data access layer
+- [x] 2.3 Write unit tests for data access layer
   - Test atomic counter operations with concurrent updates
   - Test conditional update race condition handling
   - Test batch operation error handling
   - Test TTL attribute setting
   - _Requirements: 9, 16_
 
-- [ ] 3. Implement Session ID generation
-- [ ] 3.1 Create word list files
+- [x] 3. Implement Session ID generation
+- [x] 3.1 Create word list files
   - Create adjectives.txt with 100+ Christian/Bible-themed adjectives
   - Create nouns.txt with 100+ Christian/Bible-themed nouns
   - Create blacklist.txt with profanity filter words
   - Store word lists in shared configuration directory
   - _Requirements: 3_
 
-- [ ] 3.2 Create session ID generator
+- [x] 3.2 Create session ID generator
   - Load word lists from files at Lambda initialization
   - Implement profanity blacklist filtering
   - Implement random selection algorithm with uniqueness check
   - Add configuration for max retry attempts (default 10)
   - _Requirements: 3_
 
-- [ ] 3.3 Implement uniqueness validation
+- [x] 3.3 Implement uniqueness validation
   - Query DynamoDB Sessions table to check for existing session ID
   - Implement retry logic with exponential backoff if collision occurs
   - Add logging for generation attempts and collisions
   - _Requirements: 3_
 
-- [ ]* 3.4 Write unit tests for session ID generation
+- [x] 3.4 Write unit tests for session ID generation
   - Test format validation (adjective-noun-number pattern)
   - Test blacklist filtering
   - Test uniqueness collision handling
