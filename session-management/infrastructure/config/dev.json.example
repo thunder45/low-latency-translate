@@ -1,0 +1,15 @@
+{
+  "account": "123456789012",
+  "region": "us-east-1",
+  "cognitoUserPoolId": "us-east-1_XXXXXXXXX",
+  "cognitoClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "sessionMaxDurationHours": 2,
+  "connectionRefreshMinutes": 100,
+  "connectionWarningMinutes": 105,
+  "maxListenersPerSession": 500,
+  "rateLimitSessionsPerHour": 50,
+  "rateLimitListenerJoinsPerMin": 10,
+  "rateLimitConnectionAttemptsPerMin": 20,
+  "rateLimitHeartbeatsPerMin": 2,
+  "dataRetentionHours": 12
+}

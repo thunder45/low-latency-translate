@@ -1,0 +1,20 @@
+# AWS CDK
+aws-cdk-lib==2.100.0
+constructs>=10.0.0,<11.0.0
+
+# AWS SDK
+boto3==1.28.85
+botocore==1.31.85
+
+# Lambda dependencies
+PyJWT==2.8.0
+cryptography==41.0.7
+requests==2.31.0
+
+# Development
+pytest==7.4.3
+pytest-cov==4.1.0
+moto==4.2.9
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
