@@ -1,1 +1,1 @@
-# Connection refresh handler for long sessions
+"""Connection refresh handler Lambda function."""

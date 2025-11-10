@@ -156,8 +156,8 @@
   - Test language validation
   - _Requirements: 1, 2, 7, 8, 13, 14, 15_
 
-- [ ] 7. Implement Connection Refresh Handler Lambda
-- [ ] 7.1 Create connection refresh logic for speakers
+- [x] 7. Implement Connection Refresh Handler Lambda
+- [x] 7.1 Create connection refresh logic for speakers
   - Extract sessionId and validate session exists and isActive
   - Validate speaker userId matches session speakerUserId
   - Atomically update speakerConnectionId in Sessions table
@@ -165,7 +165,7 @@
   - Log connection refresh with old and new connection IDs
   - _Requirements: 11_
 
-- [ ] 7.2 Create connection refresh logic for listeners
+- [x] 7.2 Create connection refresh logic for listeners
   - Extract sessionId and targetLanguage parameters
   - Validate session exists and isActive
   - Create new connection record in Connections table
@@ -173,13 +173,13 @@
   - Send connectionRefreshComplete message
   - _Requirements: 11_
 
-- [ ] 7.3 Add connection refresh route to API Gateway
+- [x] 7.3 Add connection refresh route to API Gateway
   - Configure refreshConnection custom route
   - Integrate with Connection Refresh Handler Lambda
   - Configure Lambda Authorizer for speaker refresh requests
   - _Requirements: 11_
 
-- [ ]* 7.4 Write integration tests for connection refresh
+- [x] 7.4 Write integration tests for connection refresh
   - Test speaker connection refresh with identity validation
   - Test listener connection refresh with count management
   - Test refresh with invalid session ID
