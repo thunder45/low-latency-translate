@@ -80,15 +80,15 @@
   - Test missing token handling
   - _Requirements: 7, 19_
 
-- [ ] 5. Implement rate limiting
-- [ ] 5.1 Create rate limiter module
+- [x] 5. Implement rate limiting
+- [x] 5.1 Create rate limiter module
   - Implement token bucket algorithm using DynamoDB
   - Support configurable limits per operation type
   - Handle window expiration and counter reset
   - Add TTL-based automatic cleanup
   - _Requirements: 13_
 
-- [ ] 5.2 Integrate rate limiting checks
+- [x] 5.2 Integrate rate limiting checks
   - Add rate limit check for session creation (RATE_LIMIT_SESSIONS_PER_HOUR per userId)
   - Add rate limit check for listener joins (RATE_LIMIT_LISTENER_JOINS_PER_MIN per IP)
   - Add rate limit check for connection attempts (RATE_LIMIT_CONNECTION_ATTEMPTS_PER_MIN per IP)
@@ -97,7 +97,7 @@
   - Log rate limit violations for monitoring
   - _Requirements: 12, 13, 17_
 
-- [ ]* 5.3 Write unit tests for rate limiting
+- [x] 5.3 Write unit tests for rate limiting
   - Test within-limit request acceptance
   - Test limit-exceeded rejection with 429 status
   - Test window reset behavior

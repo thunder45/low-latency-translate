@@ -1,19 +1,32 @@
 """
-Repository for RateLimits table operations.
+Repository for RateLimits table operations using token bucket algorithm.
 """
 import time
 import logging
-from typing import Dict, Optional, Any
+from typing import Optional
+from enum import Enum
 
 from .dynamodb_client import DynamoDBClient
-from .exceptions import ConditionalCheckFailedError
+from .exceptions import DynamoDBError, RateLimitExceededError
 
 logger = logging.getLogger(__name__)
 
 
+class RateLimitOperation(Enum):
+    """Rate limit operation types."""
+    SESSION_CREATE = 'session_create'
+    LISTENER_JOIN = 'listener_join'
+    CONNECTION_ATTEMPT = 'connection_attempt'
+    HEARTBEAT = 'heartbeat'
+
+
 class RateLimitsRepository:
     """
-    Repository for managing rate limit records in DynamoDB.
+    Repository for managing rate limits using token bucket algorithm.
+    
+    The token bucket algorithm allows a certain number of requests within
+    a time window. Each request consumes a token, and tokens are replenished
+    when the window resets.
     """
 
     def __init__(self, table_name: str, dynamodb_client: Optional[DynamoDBClient] = None):
@@ -27,97 +40,159 @@ class RateLimitsRepository:
         self.table_name = table_name
         self.client = dynamodb_client or DynamoDBClient()
 
-    def check_rate_limit(
+    def _get_identifier(
         self,
-        operation: str,
+        operation: RateLimitOperation,
         identifier_type: str,
-        identifier_value: str,
-        limit: int,
-        window_seconds: int
-    ) -> tuple[bool, Optional[int]]:
+        identifier_value: str
+    ) -> str:
         """
-        Check if rate limit is exceeded and increment counter.
+        Generate rate limit identifier.
 
         Args:
-            operation: Operation type (e.g., 'session_create', 'listener_join')
-            identifier_type: Type of identifier (e.g., 'user', 'ip')
-            identifier_value: Identifier value (e.g., user ID, IP address)
-            limit: Maximum requests allowed in window
-            window_seconds: Time window in seconds
+            operation: Rate limit operation type
+            identifier_type: Type of identifier (user, ip, connection)
+            identifier_value: Value of the identifier
 
         Returns:
-            Tuple of (is_allowed, retry_after_seconds)
-            - is_allowed: True if request is allowed, False if rate limit exceeded
-            - retry_after_seconds: Seconds to wait before retry (None if allowed)
+            Formatted identifier string
         """
-        identifier = f"{operation}:{identifier_type}:{identifier_value}"
-        current_time = int(time.time() * 1000)
+        return f"{operation.value}:{identifier_type}:{identifier_value}"
 
-        # Get existing rate limit record
-        rate_limit = self.client.get_item(
-            table_name=self.table_name,
-            key={'identifier': identifier}
-        )
-
-        if rate_limit:
-            window_start = rate_limit.get('windowStart', 0)
-            count = rate_limit.get('count', 0)
-            window_age_ms = current_time - window_start
-
-            # Check if window has expired
-            if window_age_ms > (window_seconds * 1000):
-                # Window expired, reset counter
-                self._reset_rate_limit(identifier, current_time, window_seconds)
-                return True, None
-
-            # Window still active, check limit
-            if count >= limit:
-                # Rate limit exceeded
-                remaining_ms = (window_seconds * 1000) - window_age_ms
-                retry_after = int(remaining_ms / 1000) + 1
-                logger.warning(
-                    f"Rate limit exceeded for {identifier}: "
-                    f"{count}/{limit} in window"
-                )
-                return False, retry_after
-
-            # Increment counter
-            self._increment_rate_limit(identifier)
-            return True, None
-        else:
-            # No existing record, create new one
-            self._reset_rate_limit(identifier, current_time, window_seconds)
-            return True, None
-
-    def _reset_rate_limit(
-        self,
-        identifier: str,
-        window_start: int,
-        window_seconds: int
-    ) -> None:
+    def _get_window_duration(self, operation: RateLimitOperation) -> int:
         """
-        Reset rate limit counter for a new window.
+        Get window duration in seconds for operation type.
 
         Args:
-            identifier: Rate limit identifier
-            window_start: Window start timestamp in milliseconds
-            window_seconds: Window duration in seconds
+            operation: Rate limit operation type
+
+        Returns:
+            Window duration in seconds
         """
-        expires_at = int(time.time()) + window_seconds + 3600  # +1 hour buffer
-
-        rate_limit_item = {
-            'identifier': identifier,
-            'count': 1,
-            'windowStart': window_start,
-            'expiresAt': expires_at
-        }
-
-        self.client.put_item(
-            table_name=self.table_name,
-            item=rate_limit_item
+        # Import here to avoid circular dependency
+        from shared.config.constants import (
+            RATE_LIMIT_SESSIONS_PER_HOUR,
+            RATE_LIMIT_LISTENER_JOINS_PER_MIN,
+            RATE_LIMIT_CONNECTION_ATTEMPTS_PER_MIN,
+            RATE_LIMIT_HEARTBEATS_PER_MIN
         )
 
-    def _increment_rate_limit(self, identifier: str) -> None:
+        if operation == RateLimitOperation.SESSION_CREATE:
+            return 3600  # 1 hour
+        elif operation in [
+            RateLimitOperation.LISTENER_JOIN,
+            RateLimitOperation.CONNECTION_ATTEMPT,
+            RateLimitOperation.HEARTBEAT
+        ]:
+            return 60  # 1 minute
+        else:
+            return 60  # Default to 1 minute
+
+    def _get_limit(self, operation: RateLimitOperation) -> int:
+        """
+        Get rate limit for operation type.
+
+        Args:
+            operation: Rate limit operation type
+
+        Returns:
+            Maximum number of requests allowed in window
+        """
+        # Import here to avoid circular dependency
+        from shared.config.constants import (
+            RATE_LIMIT_SESSIONS_PER_HOUR,
+            RATE_LIMIT_LISTENER_JOINS_PER_MIN,
+            RATE_LIMIT_CONNECTION_ATTEMPTS_PER_MIN,
+            RATE_LIMIT_HEARTBEATS_PER_MIN
+        )
+
+        limits = {
+            RateLimitOperation.SESSION_CREATE: RATE_LIMIT_SESSIONS_PER_HOUR,
+            RateLimitOperation.LISTENER_JOIN: RATE_LIMIT_LISTENER_JOINS_PER_MIN,
+            RateLimitOperation.CONNECTION_ATTEMPT: RATE_LIMIT_CONNECTION_ATTEMPTS_PER_MIN,
+            RateLimitOperation.HEARTBEAT: RATE_LIMIT_HEARTBEATS_PER_MIN
+        }
+        return limits.get(operation, 10)  # Default to 10 if not found
+
+    def check_rate_limit(
+        self,
+        operation: RateLimitOperation,
+        identifier_type: str,
+        identifier_value: str
+    ) -> bool:
+        """
+        Check if request is within rate limit using token bucket algorithm.
+
+        Args:
+            operation: Rate limit operation type
+            identifier_type: Type of identifier (user, ip, connection)
+            identifier_value: Value of the identifier
+
+        Returns:
+            True if within limit, False otherwise
+
+        Raises:
+            RateLimitExceededError: If rate limit is exceeded
+            DynamoDBError: On DynamoDB errors
+        """
+        identifier = self._get_identifier(operation, identifier_type, identifier_value)
+        current_time = int(time.time() * 1000)  # milliseconds
+        window_duration = self._get_window_duration(operation)
+        limit = self._get_limit(operation)
+
+        try:
+            # Try to get existing rate limit record
+            rate_limit = self.client.get_item(
+                table_name=self.table_name,
+                key={'identifier': identifier}
+            )
+
+            if rate_limit:
+                window_start = rate_limit.get('windowStart', 0)
+                count = rate_limit.get('count', 0)
+                
+                # Check if we're still in the same window
+                window_elapsed = (current_time - window_start) / 1000  # seconds
+                
+                if window_elapsed < window_duration:
+                    # Still in same window
+                    if count >= limit:
+                        # Rate limit exceeded
+                        retry_after = int(window_duration - window_elapsed)
+                        logger.warning(
+                            f"Rate limit exceeded for {identifier}: "
+                            f"{count}/{limit} in window, retry after {retry_after}s"
+                        )
+                        raise RateLimitExceededError(
+                            f"Rate limit exceeded. Retry after {retry_after} seconds.",
+                            retry_after=retry_after
+                        )
+                    
+                    # Increment counter
+                    self._increment_counter(identifier)
+                    logger.debug(f"Rate limit check passed for {identifier}: {count + 1}/{limit}")
+                    return True
+                else:
+                    # Window expired, reset counter
+                    self._reset_counter(identifier, current_time, window_duration)
+                    logger.debug(f"Rate limit window reset for {identifier}")
+                    return True
+            else:
+                # No existing record, create new one
+                self._reset_counter(identifier, current_time, window_duration)
+                logger.debug(f"Rate limit initialized for {identifier}")
+                return True
+
+        except RateLimitExceededError:
+            # Re-raise rate limit errors
+            raise
+        except Exception as e:
+            logger.error(f"Error checking rate limit for {identifier}: {e}")
+            # On error, allow the request (fail open for availability)
+            logger.warning(f"Rate limiting disabled due to error, allowing request")
+            return True
+
+    def _increment_counter(self, identifier: str) -> None:
         """
         Increment rate limit counter.
 
@@ -131,30 +206,80 @@ class RateLimitsRepository:
             increment_value=1
         )
 
-    def get_rate_limit(self, identifier: str) -> Optional[Dict[str, Any]]:
+    def _reset_counter(
+        self,
+        identifier: str,
+        window_start: int,
+        window_duration: int
+    ) -> None:
         """
-        Get rate limit record.
+        Reset rate limit counter for new window.
 
         Args:
             identifier: Rate limit identifier
+            window_start: Window start timestamp in milliseconds
+            window_duration: Window duration in seconds
+        """
+        # Calculate TTL (window start + duration + 1 hour buffer)
+        expires_at = int(window_start / 1000) + window_duration + 3600
+
+        item = {
+            'identifier': identifier,
+            'count': 1,
+            'windowStart': window_start,
+            'expiresAt': expires_at
+        }
+
+        self.client.put_item(
+            table_name=self.table_name,
+            item=item
+        )
+
+    def get_rate_limit_status(
+        self,
+        operation: RateLimitOperation,
+        identifier_type: str,
+        identifier_value: str
+    ) -> dict:
+        """
+        Get current rate limit status for debugging/monitoring.
+
+        Args:
+            operation: Rate limit operation type
+            identifier_type: Type of identifier (user, ip, connection)
+            identifier_value: Value of the identifier
 
         Returns:
-            Rate limit item or None if not found
+            Dict with current count, limit, and time until reset
         """
-        return self.client.get_item(
+        identifier = self._get_identifier(operation, identifier_type, identifier_value)
+        current_time = int(time.time() * 1000)
+        window_duration = self._get_window_duration(operation)
+        limit = self._get_limit(operation)
+
+        rate_limit = self.client.get_item(
             table_name=self.table_name,
             key={'identifier': identifier}
         )
 
-    def delete_rate_limit(self, identifier: str) -> None:
-        """
-        Delete rate limit record.
+        if not rate_limit:
+            return {
+                'count': 0,
+                'limit': limit,
+                'reset_in_seconds': 0,
+                'window_duration': window_duration
+            }
 
-        Args:
-            identifier: Rate limit identifier
-        """
-        self.client.delete_item(
-            table_name=self.table_name,
-            key={'identifier': identifier}
-        )
-        logger.info(f"Deleted rate limit {identifier}")
+        window_start = rate_limit.get('windowStart', 0)
+        count = rate_limit.get('count', 0)
+        window_elapsed = (current_time - window_start) / 1000
+
+        reset_in = max(0, int(window_duration - window_elapsed))
+
+        return {
+            'count': count,
+            'limit': limit,
+            'reset_in_seconds': reset_in,
+            'window_duration': window_duration
+        }
+
