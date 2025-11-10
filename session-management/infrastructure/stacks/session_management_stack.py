@@ -338,7 +338,10 @@ class SessionManagementStack(Stack):
         deployment.add_dependency(heartbeat_route)
         deployment.add_dependency(refresh_route)
 
-        # Create stage
+        # Create stage with connection timeout settings
+        # API Gateway WebSocket hard limits:
+        # - Idle timeout: 10 minutes (600 seconds)
+        # - Maximum connection duration: 2 hours (7200 seconds)
         stage = apigwv2.CfnStage(
             self,
             "WebSocketStage",

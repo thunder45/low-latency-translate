@@ -236,8 +236,8 @@
   - Test negative count prevention
   - _Requirements: 4, 5, 16_
 
-- [ ] 10. Implement API Gateway WebSocket API
-- [ ] 10.1 Create API Gateway configuration
+- [x] 10. Implement API Gateway WebSocket API
+- [x] 10.1 Create API Gateway configuration
   - Define WebSocket API with route selection expression
   - Configure $connect route with Lambda Authorizer for speakers
   - Configure $disconnect route
@@ -245,7 +245,7 @@
   - Set connection timeout to 10 minutes idle, 2 hours maximum (API Gateway hard limit)
   - _Requirements: 10_
 
-- [ ] 10.2 Configure Lambda integrations
+- [x] 10.2 Configure Lambda integrations
   - Integrate Connection Handler with $connect route
   - Integrate Disconnect Handler with $disconnect route
   - Integrate Heartbeat Handler with heartbeat route
@@ -253,7 +253,7 @@
   - Configure Lambda permissions for API Gateway invocation
   - _Requirements: All connection-related requirements_
 
-- [ ]* 10.3 Write end-to-end integration tests
+- [x] 10.3 Write end-to-end integration tests
   - Test complete speaker session lifecycle (create, heartbeat, disconnect)
   - Test complete listener lifecycle (join, receive messages, disconnect)
   - Test multi-listener scenario with 100 concurrent listeners
