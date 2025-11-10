@@ -13,13 +13,28 @@ import os
 import pytest
 from moto import mock_dynamodb
 
-# Add handler to path but don't import yet
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler'))
+# Add refresh handler to path with unique name to avoid conflicts
+refresh_handler_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler')
+if refresh_handler_path not in sys.path:
+    sys.path.insert(0, refresh_handler_path)
 
 
 @pytest.fixture
-def lambda_handler(env_vars):
+def mock_api_gateway():
+    """Mock API Gateway Management API client."""
+    with patch('boto3.client') as mock_client:
+        mock_api_gw = Mock()
+        mock_client.return_value = mock_api_gw
+        yield mock_api_gw
+
+
+@pytest.fixture
+def lambda_handler(env_vars, mock_api_gateway):
     """Import lambda_handler after environment is set up."""
+    # Clear any previously imported handler module
+    if 'handler' in sys.modules:
+        del sys.modules['handler']
+    
     from handler import lambda_handler as handler
     return handler
 
@@ -103,7 +118,6 @@ def active_session(dynamodb_tables):
 class TestSpeakerConnectionRefresh:
     """Test speaker connection refresh with identity validation."""
     
-    @patch('handler.api_gateway')
     def test_speaker_refresh_with_valid_identity_succeeds(
         self,
         mock_api_gateway,
@@ -111,6 +125,7 @@ class TestSpeakerConnectionRefresh:
         dynamodb_tables,
         active_session
     ):
+        """Test speaker connection refresh with matching identity."""
         """Test speaker connection refresh with matching identity."""
         # Arrange
         new_connection_id = 'new-conn-456'
@@ -149,7 +164,6 @@ class TestSpeakerConnectionRefresh:
         assert message['sessionId'] == active_session['sessionId']
         assert message['role'] == 'speaker'
     
-    @patch('handler.api_gateway')
     def test_speaker_refresh_with_mismatched_identity_fails(
         self,
         mock_api_gateway,
@@ -187,7 +201,6 @@ class TestSpeakerConnectionRefresh:
         )['Item']
         assert session['speakerConnectionId'] == 'old-conn-123'
     
-    @patch('handler.api_gateway')
     def test_speaker_refresh_without_authentication_fails(
         self,
         mock_api_gateway,
@@ -220,7 +233,6 @@ class TestSpeakerConnectionRefresh:
 class TestListenerConnectionRefresh:
     """Test listener connection refresh with count management."""
     
-    @patch('handler.api_gateway')
     def test_listener_refresh_creates_new_connection_and_increments_count(
         self,
         mock_api_gateway,
@@ -279,7 +291,6 @@ class TestListenerConnectionRefresh:
         assert message['role'] == 'listener'
         assert message['targetLanguage'] == target_language
     
-    @patch('handler.api_gateway')
     def test_listener_refresh_without_target_language_fails(
         self,
         mock_api_gateway,
@@ -314,7 +325,6 @@ class TestListenerConnectionRefresh:
 class TestConnectionRefreshErrorScenarios:
     """Test error scenarios for connection refresh."""
     
-    @patch('handler.api_gateway')
     def test_refresh_with_invalid_session_id_fails(
         self,
         mock_api_gateway,
@@ -342,7 +352,6 @@ class TestConnectionRefreshErrorScenarios:
         body = json.loads(response['body'])
         assert body['code'] == 'SESSION_NOT_FOUND'
     
-    @patch('handler.api_gateway')
     def test_refresh_with_inactive_session_fails(
         self,
         mock_api_gateway,
@@ -384,7 +393,6 @@ class TestConnectionRefreshErrorScenarios:
         body = json.loads(response['body'])
         assert body['code'] == 'SESSION_NOT_FOUND'
     
-    @patch('handler.api_gateway')
     def test_refresh_without_session_id_fails(
         self,
         mock_api_gateway,
@@ -413,7 +421,6 @@ class TestConnectionRefreshErrorScenarios:
         assert body['code'] == 'MISSING_PARAMETER'
         assert 'sessionId' in body['message']
     
-    @patch('handler.api_gateway')
     def test_refresh_with_invalid_role_fails(
         self,
         mock_api_gateway,
@@ -446,7 +453,6 @@ class TestConnectionRefreshErrorScenarios:
 class TestListenerCountTolerance:
     """Test temporary listenerCount spike tolerance during refresh."""
     
-    @patch('handler.api_gateway')
     def test_listener_refresh_allows_temporary_count_spike(
         self,
         mock_api_gateway,
