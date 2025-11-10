@@ -76,3 +76,20 @@ pytest tests/
 ## Environment Variables
 
 See `infrastructure/config/` for environment-specific configurations.
+
+## Task Implementation Summaries
+
+Detailed summaries of completed implementation tasks:
+
+- [Task 1: Set up project structure and core infrastructure](TASK_1_SUMMARY.md)
+- [Task 2: Implement DynamoDB tables and data access layer](TASK_2_SUMMARY.md)
+- [Task 3: Implement Session ID generation](TASK_3_SUMMARY.md)
+- [Task 4: Implement Lambda Authorizer](TASK_4_SUMMARY.md)
+- [Task 5: Implement rate limiting](TASK_5_SUMMARY.md)
+- [Task 6: Implement Connection Handler Lambda](TASK_6_SUMMARY.md)
+- [Task 7: Implement Connection Refresh Handler Lambda](TASK_7_SUMMARY.md)
+- [Task 8: Implement Heartbeat Handler Lambda](TASK_8_SUMMARY.md)
+- [Task 9: Implement Disconnect Handler Lambda](TASK_9_SUMMARY.md)
+- [Task 10: Implement API Gateway WebSocket API](TASK_10_SUMMARY.md)
+- [Task 11: Implement monitoring and logging](TASK_11_SUMMARY.md)
+- [Task 12: Implement error handling and resilience](TASK_12_SUMMARY.md)
