@@ -187,8 +187,8 @@
   - Test temporary listenerCount spike tolerance
   - _Requirements: 11_
 
-- [ ] 8. Implement Heartbeat Handler Lambda
-- [ ] 8.1 Create heartbeat response logic with refresh detection
+- [x] 8. Implement Heartbeat Handler Lambda
+- [x] 8.1 Create heartbeat response logic with refresh detection
   - Extract connectionId from request context
   - Query connection record to check duration
   - Send connectionRefreshRequired at CONNECTION_REFRESH_MINUTES (100 min)
@@ -198,7 +198,7 @@
   - Log heartbeat activity for monitoring
   - _Requirements: 10, 11, 12_
 
-- [ ]* 8.2 Write unit tests for heartbeat handler
+- [x] 8.2 Write unit tests for heartbeat handler
   - Test heartbeatAck response within 100ms
   - Test connectionRefreshRequired at 100-minute threshold
   - Test connectionWarning at 105-minute threshold

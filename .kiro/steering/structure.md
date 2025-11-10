@@ -1,3 +1,7 @@
+---
+inclusion: always
+---
+
 # Project Structure & Conventions
 
 ## High-Level Organization
