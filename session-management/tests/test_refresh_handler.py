@@ -131,7 +131,11 @@ class TestSpeakerConnectionRefresh:
         new_connection_id = 'new-conn-456'
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': new_connection_id,
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'authorizer': {
                     'userId': active_session['speakerUserId']
                 }
@@ -175,6 +179,8 @@ class TestSpeakerConnectionRefresh:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {
                     'userId': 'wrong-user-999'
@@ -212,6 +218,8 @@ class TestSpeakerConnectionRefresh:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {}  # No userId
             },
@@ -247,6 +255,8 @@ class TestListenerConnectionRefresh:
         
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': new_connection_id,
                 'identity': {
                     'sourceIp': '192.168.1.1'
@@ -302,6 +312,8 @@ class TestListenerConnectionRefresh:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'listener-conn-789',
                 'identity': {'sourceIp': '192.168.1.1'}
             },
@@ -335,6 +347,8 @@ class TestConnectionRefreshErrorScenarios:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {'userId': 'user-123'}
             },
@@ -376,6 +390,8 @@ class TestConnectionRefreshErrorScenarios:
         
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {'userId': 'user-123'}
             },
@@ -403,6 +419,8 @@ class TestConnectionRefreshErrorScenarios:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {'userId': 'user-123'}
             },
@@ -432,6 +450,8 @@ class TestConnectionRefreshErrorScenarios:
         # Arrange
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'new-conn-456',
                 'authorizer': {'userId': 'user-123'}
             },
@@ -476,6 +496,8 @@ class TestListenerCountTolerance:
         
         event = {
             'requestContext': {
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'connectionId': 'refresh-conn-999',
                 'identity': {'sourceIp': '192.168.1.1'}
             },
