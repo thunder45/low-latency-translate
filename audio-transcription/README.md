@@ -220,6 +220,7 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 7: Partial Result Handler](docs/TASK_7_SUMMARY.md) - 17 tests, 96% coverage
 - ✅ [Task 8: Final Result Handler](docs/TASK_8_SUMMARY.md) - 15 tests, 98% coverage
 - ✅ [Task 9: Transcription Event Handler](docs/TASK_9_SUMMARY.md) - 20 tests, 97% coverage
+- ✅ [Task 10: Main Partial Result Processor](docs/TASK_10_SUMMARY.md) - 7 integration tests, 90% coverage
 
 ### In Progress
 
@@ -227,7 +228,7 @@ Internal use only - Low Latency Translate Platform
 
 ### Planned
 
-- 📋 Tasks 10-17: See [tasks.md](.kiro/specs/realtime-audio-transcription/tasks.md)
+- 📋 Tasks 11-17: See [tasks.md](.kiro/specs/realtime-audio-transcription/tasks.md)
 
 ## References
 

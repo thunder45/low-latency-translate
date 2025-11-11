@@ -13,9 +13,13 @@ audio-transcription/
 │   ├── services/                    # Business logic
 │   │   ├── __init__.py             # Service exports
 │   │   ├── deduplication_cache.py  # DeduplicationCache class
+│   │   ├── final_result_handler.py # FinalResultHandler class
+│   │   ├── partial_result_handler.py # PartialResultHandler class
+│   │   ├── partial_result_processor.py # PartialResultProcessor class
 │   │   ├── rate_limiter.py         # RateLimiter class
 │   │   ├── result_buffer.py        # ResultBuffer class
 │   │   ├── sentence_boundary_detector.py # SentenceBoundaryDetector class
+│   │   ├── transcription_event_handler.py # TranscriptionEventHandler class
 │   │   └── translation_forwarder.py # TranslationForwarder class
 │   └── utils/                       # Utilities
 │       ├── __init__.py             # Utility exports
@@ -27,10 +31,15 @@ audio-transcription/
 │   │   ├── __init__.py
 │   │   ├── test_data_models.py     # 30 tests for models
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
+│   │   ├── test_final_result_handler.py # 15 tests for final handler
+│   │   ├── test_partial_result_handler.py # 17 tests for partial handler
 │   │   ├── test_rate_limiter.py    # 15 tests for rate limiter
 │   │   ├── test_result_buffer.py   # 23 tests for buffer
 │   │   ├── test_sentence_boundary_detector.py # 29 tests for sentence detector
-│   │   └── test_text_normalization.py # 21 tests for normalization
+│   │   ├── test_text_normalization.py # 21 tests for normalization
+│   │   └── test_transcription_event_handler.py # 20 tests for event handler
+│   ├── integration/                # Integration tests
+│   │   └── test_partial_result_processor.py # 7 integration tests
 │   ├── __init__.py
 │   └── conftest.py                 # Shared pytest fixtures
 │
@@ -39,7 +48,12 @@ audio-transcription/
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
 │   ├── TASK_3_SUMMARY.md          # Task 3 implementation summary
 │   ├── TASK_4_SUMMARY.md          # Task 4 implementation summary
-│   └── TASK_5_SUMMARY.md          # Task 5 implementation summary
+│   ├── TASK_5_SUMMARY.md          # Task 5 implementation summary
+│   ├── TASK_6_SUMMARY.md          # Task 6 implementation summary
+│   ├── TASK_7_SUMMARY.md          # Task 7 implementation summary
+│   ├── TASK_8_SUMMARY.md          # Task 8 implementation summary
+│   ├── TASK_9_SUMMARY.md          # Task 9 implementation summary
+│   └── TASK_10_SUMMARY.md         # Task 10 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -61,19 +75,20 @@ audio-transcription/
 
 ### Production Code
 - **Models**: 4 files, ~125 statements
-- **Services**: 8 files, ~344 statements
+- **Services**: 10 files, ~404 statements
 - **Utils**: 3 files, ~49 statements
-- **Total**: 15 files, ~518 statements
+- **Total**: 17 files, ~578 statements
 
 ### Test Code
-- **Unit Tests**: 10 files, 170 tests
+- **Unit Tests**: 10 files, 190 tests
+- **Integration Tests**: 1 file, 7 tests
 - **Fixtures**: 1 file
-- **Total**: 11 files, ~2,550 lines
+- **Total**: 12 files, ~3,000 lines
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
-- **Task Summaries**: 8 files
-- **Total**: 14 files, ~2,700 lines
+- **Task Summaries**: 10 files
+- **Total**: 16 files, ~3,200 lines
 
 ## File Descriptions
 
@@ -159,6 +174,15 @@ Business logic services for processing.
   - `_handle_final_result()`: Route final results to FinalResultHandler
   - Implements defensive parsing and graceful error handling
 
+- **`partial_result_processor.py`** (60 statements)
+  - `PartialResultProcessor`: Main coordinator for partial results processing
+  - `__init__()`: Initialize all sub-components in dependency order
+  - `_load_config_from_environment()`: Load configuration from environment variables
+  - `process_partial()`: Async processing of partial results
+  - `process_final()`: Async processing of final results
+  - `_cleanup_orphans_if_needed()`: Opportunistic orphan cleanup every 5 seconds
+  - Integrates all components into cohesive pipeline
+
 #### `shared/utils/`
 Utility functions for text processing and metrics.
 
@@ -243,6 +267,18 @@ Comprehensive unit tests with 97% coverage.
   - Null safety for Items array (4 tests)
   - Metadata extraction and timestamps (2 tests)
 
+#### `tests/integration/`
+End-to-end integration tests.
+
+- **`test_partial_result_processor.py`** (7 tests)
+  - End-to-end partial to translation latency (<200ms)
+  - Rate limiting with 20 partials in 1 second
+  - Orphan cleanup after 15-second timeout
+  - Fallback when stability scores unavailable
+  - Out-of-order result handling with timestamp sorting
+  - Deduplication prevents double synthesis
+  - Complete workflow: partial followed by final
+
 - **`test_result_buffer.py`** (23 tests)
   - Buffer operations (9 tests)
   - Capacity management (3 tests)
@@ -318,6 +354,26 @@ Comprehensive unit tests with 97% coverage.
   - Sentence boundary detector with multiple detection methods
   - 29 tests, 97% coverage
 
+- **`docs/TASK_6_SUMMARY.md`** (~300 lines)
+  - Translation forwarder with deduplication
+  - Integration tests
+
+- **`docs/TASK_7_SUMMARY.md`** (~300 lines)
+  - Partial result handler with stability filtering
+  - 17 tests, 96% coverage
+
+- **`docs/TASK_8_SUMMARY.md`** (~300 lines)
+  - Final result handler with discrepancy tracking
+  - 15 tests, 98% coverage
+
+- **`docs/TASK_9_SUMMARY.md`** (~350 lines)
+  - Transcription event handler with defensive parsing
+  - 20 tests, 97% coverage
+
+- **`docs/TASK_10_SUMMARY.md`** (~400 lines)
+  - Main partial result processor coordinator
+  - 7 integration tests, 90% coverage
+
 ## Dependencies
 
 ### Production (`requirements.txt`)
@@ -348,22 +404,22 @@ mypy>=1.4.0                # Type checking
 ## Statistics
 
 ### Code Metrics
-- **Production Code**: ~815 lines
-- **Test Code**: ~2,100 lines
-- **Documentation**: ~2,400 lines
-- **Test/Code Ratio**: 2.6:1
-- **Coverage**: 86%
+- **Production Code**: ~975 lines
+- **Test Code**: ~3,000 lines
+- **Documentation**: ~3,200 lines
+- **Test/Code Ratio**: 3.1:1
+- **Coverage**: 90%
 
 ### File Counts
-- **Python Files**: 21 (13 production, 8 test)
-- **Documentation Files**: 13
+- **Python Files**: 24 (14 production, 10 test)
+- **Documentation Files**: 16
 - **Configuration Files**: 5
-- **Total Files**: 40
+- **Total Files**: 45
 
 ### Test Metrics
-- **Total Tests**: 170
-- **Test Execution Time**: ~11 seconds
-- **Tests per File**: ~17 average
+- **Total Tests**: 197 (190 unit + 7 integration)
+- **Test Execution Time**: ~12 seconds
+- **Tests per File**: ~18 average
 - **Coverage**: 90% (exceeds 80% requirement)
 
 ## Future Structure
