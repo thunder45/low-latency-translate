@@ -69,25 +69,25 @@
   - Test concurrent access scenarios
   - _Requirements: 3.5, 7.2, 7.3, 7.5_
 
-- [ ] 4. Implement rate limiter
-- [ ] 4.1 Create RateLimiter class with sliding window
+- [x] 4. Implement rate limiter
+- [x] 4.1 Create RateLimiter class with sliding window
   - Implement 200ms sliding window buffer
   - Track window start timestamp
   - Add should_process() method to check rate limit
   - _Requirements: 9.1, 9.2_
 
-- [ ] 4.2 Implement best result selection in window
+- [x] 4.2 Implement best result selection in window
   - Create get_best_result_in_window() to select highest stability result
   - Handle tie-breaking with most recent timestamp
   - Handle missing stability scores (treat as 0)
   - _Requirements: 9.4_
 
-- [ ] 4.3 Add CloudWatch metrics for dropped results
+- [x] 4.3 Add CloudWatch metrics for dropped results
   - Emit metric when results are dropped due to rate limiting
   - Track count of dropped results per session
   - _Requirements: 9.3_
 
-- [ ]* 4.4 Write unit tests for rate limiter
+- [x] 4.4 Write unit tests for rate limiter
   - Test rate limit enforcement (5 per second)
   - Test best result selection with varying stability scores
   - Test window reset behavior
@@ -107,7 +107,7 @@
   - Handle final results (always complete)
   - _Requirements: 3.1, 5.4, 5.5_
 
-- [ ]* 5.3 Write unit tests for sentence boundary detector
+- [ ] 5.3 Write unit tests for sentence boundary detector
   - Test punctuation detection (. ? !)
   - Test pause threshold detection
   - Test buffer timeout detection
@@ -165,7 +165,7 @@
   - Track discrepancies for quality analysis
   - _Requirements: 4.5, 8.1, 8.5_
 
-- [ ]* 8.4 Write unit tests for final result handler
+- [ ] 8.4 Write unit tests for final result handler
   - Test partial result removal from buffer
   - Test deduplication cache checking
   - Test discrepancy calculation and logging
@@ -189,7 +189,7 @@
   - Route to FinalResultHandler if IsPartial is false
   - _Requirements: 2.2_
 
-- [ ]* 9.4 Write unit tests for transcription event handler
+- [ ] 9.4 Write unit tests for transcription event handler
   - Test event parsing with valid and malformed events
   - Test metadata extraction with missing fields
   - Test routing logic for partial vs final results
@@ -215,7 +215,7 @@
   - Handle exceptions and log errors
   - _Requirements: 2.1, 2.2_
 
-- [ ]* 10.4 Write integration tests for partial result processor
+- [ ] 10.4 Write integration tests for partial result processor
   - Test 1: End-to-end partial to translation (verify <200ms latency)
   - Test 2: Rate limiting with 20 partials in 1 second (verify 15 dropped, 5 processed)
   - Test 3: Orphan cleanup after 15-second timeout

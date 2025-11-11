@@ -1,0 +1,286 @@
+# Audio Transcription - Project Structure
+
+## Directory Tree
+
+```
+audio-transcription/
+├── shared/                          # Shared code within component
+│   ├── models/                      # Data models & types
+│   │   ├── __init__.py             # Model exports
+│   │   ├── cache.py                # CacheEntry dataclass
+│   │   ├── configuration.py        # PartialResultConfig
+│   │   └── transcription_results.py # PartialResult, FinalResult, BufferedResult
+│   ├── services/                    # Business logic
+│   │   ├── __init__.py             # Service exports
+│   │   ├── deduplication_cache.py  # DeduplicationCache class
+│   │   └── result_buffer.py        # ResultBuffer class
+│   └── utils/                       # Utilities
+│       ├── __init__.py             # Utility exports
+│       └── text_normalization.py   # normalize_text(), hash_text()
+│
+├── tests/                           # All tests for component
+│   ├── unit/                       # Unit tests
+│   │   ├── __init__.py
+│   │   ├── test_data_models.py     # 30 tests for models
+│   │   ├── test_deduplication_cache.py # 20 tests for cache
+│   │   ├── test_result_buffer.py   # 23 tests for buffer
+│   │   └── test_text_normalization.py # 21 tests for normalization
+│   ├── __init__.py
+│   └── conftest.py                 # Shared pytest fixtures
+│
+├── docs/                            # Component documentation
+│   ├── TASK_1_SUMMARY.md          # Task 1 implementation summary
+│   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
+│   └── TASK_3_SUMMARY.md          # Task 3 implementation summary
+│
+├── .gitignore                       # Git ignore patterns
+├── .pytest_cache/                   # Pytest cache (gitignored)
+├── htmlcov/                         # Coverage HTML report (gitignored)
+├── Makefile                         # Common commands
+├── pytest.ini                       # Pytest configuration
+├── README.md                        # Technical documentation
+├── OVERVIEW.md                      # High-level overview
+├── PROJECT_STRUCTURE.md             # This file
+├── QUICKSTART.md                    # Quick start tutorial
+├── DEPLOYMENT.md                    # Deployment guide
+├── requirements.txt                 # Production dependencies
+├── requirements-dev.txt             # Development dependencies
+└── setup.py                         # Package configuration
+```
+
+## File Counts
+
+### Production Code
+- **Models**: 4 files, ~125 statements
+- **Services**: 3 files, ~122 statements
+- **Utils**: 2 files, ~14 statements
+- **Total**: 9 files, ~261 statements
+
+### Test Code
+- **Unit Tests**: 5 files, 94 tests
+- **Fixtures**: 1 file
+- **Total**: 6 files, ~1,400 lines
+
+### Documentation
+- **Root Docs**: 6 files (README, OVERVIEW, etc.)
+- **Task Summaries**: 3 files
+- **Total**: 9 files, ~1,500 lines
+
+## File Descriptions
+
+### Production Code
+
+#### `shared/models/`
+Data models for transcription results and configuration.
+
+- **`transcription_results.py`** (80 statements)
+  - `PartialResult`: Intermediate transcription with stability score
+  - `FinalResult`: Completed transcription segment
+  - `BufferedResult`: Partial result in buffer with metadata
+  - `ResultMetadata`: Extracted event metadata
+
+- **`configuration.py`** (25 statements)
+  - `PartialResultConfig`: Configuration with validation
+  - Validates stability threshold (0.70-0.95)
+  - Validates buffer timeout (2-10 seconds)
+
+- **`cache.py`** (16 statements)
+  - `CacheEntry`: Deduplication cache entry with TTL
+  - `is_expired()`: Check if entry has expired
+
+#### `shared/services/`
+Business logic services for processing.
+
+- **`deduplication_cache.py`** (57 statements)
+  - `DeduplicationCache`: Prevent duplicate synthesis
+  - `contains()`: Check if text exists in cache
+  - `add()`: Add text with TTL
+  - `cleanup_expired()`: Remove expired entries
+  - Opportunistic cleanup every 30 seconds
+  - Emergency cleanup at 10,000 entries
+
+- **`result_buffer.py`** (65 statements)
+  - `ResultBuffer`: Store partial results awaiting finalization
+  - `add()`: Add partial result with capacity check
+  - `remove_by_id()`: Remove specific result
+  - `get_orphaned_results()`: Find results older than timeout
+  - `sort_by_timestamp()`: Chronological ordering
+  - Capacity: 300 words (30 words/sec × 10 sec)
+
+#### `shared/utils/`
+Utility functions for text processing.
+
+- **`text_normalization.py`** (14 statements)
+  - `normalize_text()`: Lowercase, remove punctuation, collapse spaces
+  - `hash_text()`: SHA-256 hash of normalized text
+
+### Test Code
+
+#### `tests/unit/`
+Comprehensive unit tests with 97% coverage.
+
+- **`test_data_models.py`** (30 tests)
+  - PartialResult validation (7 tests)
+  - FinalResult validation (4 tests)
+  - BufferedResult validation (2 tests)
+  - ResultMetadata validation (2 tests)
+  - PartialResultConfig validation (9 tests)
+  - CacheEntry validation (5 tests)
+  - Edge cases: empty strings, invalid ranges, None values
+
+- **`test_text_normalization.py`** (21 tests)
+  - Text normalization (12 tests)
+  - Hash generation (9 tests)
+  - Edge cases: empty, punctuation-only, unicode, long text
+
+- **`test_deduplication_cache.py`** (20 tests)
+  - Cache operations (11 tests)
+  - TTL expiration (3 tests)
+  - Cleanup mechanisms (3 tests)
+  - Edge cases: empty strings, long text, overflow
+
+- **`test_result_buffer.py`** (23 tests)
+  - Buffer operations (9 tests)
+  - Capacity management (3 tests)
+  - Orphan detection (2 tests)
+  - Timestamp ordering (2 tests)
+  - Edge cases: out-of-order, overflow, nonexistent results
+
+- **`conftest.py`**
+  - Shared pytest fixtures
+  - Valid partial/final/buffered results
+  - Default and custom configurations
+
+### Documentation
+
+#### Root-Level Docs
+
+- **`README.md`** (~400 lines)
+  - Technical architecture
+  - Development guide
+  - Configuration reference
+  - Troubleshooting
+
+- **`OVERVIEW.md`** (~150 lines)
+  - High-level summary
+  - Current status
+  - Quick commands
+  - Documentation guide
+
+- **`PROJECT_STRUCTURE.md`** (this file, ~250 lines)
+  - Complete file tree
+  - File descriptions
+  - Statistics
+
+- **`QUICKSTART.md`** (~200 lines)
+  - 5-minute setup tutorial
+  - First test run
+  - Development workflow
+
+- **`DEPLOYMENT.md`** (~300 lines)
+  - Deployment procedures
+  - Environment configuration
+  - Rollback procedures
+
+#### Task Summaries
+
+- **`docs/TASK_1_SUMMARY.md`** (~200 lines)
+  - Core data models implementation
+  - 30 tests, 94% coverage
+
+- **`docs/TASK_2_SUMMARY.md`** (~250 lines)
+  - Text normalization and deduplication
+  - 41 tests, 96% coverage
+
+- **`docs/TASK_3_SUMMARY.md`** (~250 lines)
+  - Result buffer with capacity management
+  - 23 tests, 97% coverage
+
+## Dependencies
+
+### Production (`requirements.txt`)
+```
+boto3>=1.28.0              # AWS SDK
+botocore>=1.31.0           # AWS SDK core
+librosa>=0.10.0            # Audio analysis
+numpy>=1.24.0              # Numerical computing
+soundfile>=0.12.0          # Audio I/O
+PyJWT>=2.8.0               # JWT validation
+cryptography>=41.0.0       # JWT signatures
+requests>=2.31.0           # HTTP client
+python-Levenshtein>=0.21.0 # Text similarity
+```
+
+### Development (`requirements-dev.txt`)
+```
+pytest>=7.4.0              # Testing framework
+pytest-asyncio>=0.21.0     # Async testing
+pytest-cov>=4.1.0          # Coverage reporting
+moto>=4.2.0                # AWS mocking
+pylint>=2.17.0             # Linting
+flake8>=6.0.0              # Style checking
+black>=23.0.0              # Code formatting
+mypy>=1.4.0                # Type checking
+```
+
+## Statistics
+
+### Code Metrics
+- **Production Code**: ~600 lines
+- **Test Code**: ~1,400 lines
+- **Documentation**: ~1,500 lines
+- **Test/Code Ratio**: 2.3:1
+- **Coverage**: 97%
+
+### File Counts
+- **Python Files**: 15 (9 production, 6 test)
+- **Documentation Files**: 9
+- **Configuration Files**: 5
+- **Total Files**: 29
+
+### Test Metrics
+- **Total Tests**: 94
+- **Test Execution Time**: ~10 seconds
+- **Tests per File**: ~19 average
+- **Coverage**: 97% (exceeds 80% requirement)
+
+## Future Structure
+
+As development progresses, these directories will be added:
+
+```
+audio-transcription/
+├── lambda/                          # Lambda function handlers
+│   ├── audio_processor/            # Main audio processor
+│   │   ├── handler.py              # Lambda entry point
+│   │   └── requirements.txt        # Function dependencies
+│   └── layers/                     # Lambda layers (optional)
+│
+├── infrastructure/                  # Component-specific IaC
+│   ├── stacks/
+│   │   └── audio_transcription_stack.py
+│   ├── app.py                      # CDK app entry
+│   └── cdk.json                    # CDK config
+│
+└── tests/
+    └── integration/                 # Integration tests
+        └── test_end_to_end.py
+```
+
+## Navigation Tips
+
+### Finding Code
+- **Models**: `shared/models/` - All dataclasses
+- **Business Logic**: `shared/services/` - Cache, buffer, handlers
+- **Utilities**: `shared/utils/` - Text processing, helpers
+
+### Finding Tests
+- **Unit Tests**: `tests/unit/test_*.py` - Mirrors source structure
+- **Fixtures**: `tests/conftest.py` - Reusable test data
+
+### Finding Documentation
+- **Getting Started**: `QUICKSTART.md`
+- **Architecture**: `README.md`
+- **Current Status**: `OVERVIEW.md`
+- **File Organization**: `PROJECT_STRUCTURE.md` (this file)
+- **Implementation Details**: `docs/TASK_*_SUMMARY.md`

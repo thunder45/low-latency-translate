@@ -207,6 +207,22 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines.
 
 Internal use only - Low Latency Translate Platform
 
+## Implementation Progress
+
+### Completed Tasks
+
+- ✅ [Task 1: Core Data Models and Configuration](docs/TASK_1_SUMMARY.md) - 30 tests, 94% coverage
+- ✅ [Task 2: Text Normalization and Deduplication Cache](docs/TASK_2_SUMMARY.md) - 41 tests, 96% coverage
+- ✅ [Task 3: Result Buffer with Capacity Management](docs/TASK_3_SUMMARY.md) - 23 tests, 97% coverage
+
+### In Progress
+
+- 🚧 Task 4: Rate Limiter (not started)
+
+### Planned
+
+- 📋 Tasks 5-17: See [tasks.md](.kiro/specs/realtime-audio-transcription/tasks.md)
+
 ## References
 
 - [Requirements Document](.kiro/specs/realtime-audio-transcription/requirements.md)
