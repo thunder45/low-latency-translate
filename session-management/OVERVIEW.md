@@ -90,7 +90,7 @@ Start here based on your role:
 4. **[QUICKSTART.md](QUICKSTART.md)** - Quick deployment tutorial
 
 ### For Project Managers
-1. **Task Summaries** - See TASK_1_SUMMARY.md through TASK_14_SUMMARY.md
+1. **Task Summaries** - See docs/TASK_1_SUMMARY.md through docs/TASK_14_SUMMARY.md
 2. **[OVERVIEW.md](OVERVIEW.md)** - This file
 
 ### For Architects

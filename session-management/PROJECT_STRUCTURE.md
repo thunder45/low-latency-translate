@@ -17,7 +17,6 @@ session-management/
 ├── Makefile                            # Build and deployment commands
 ├── pytest.ini                          # Pytest configuration
 ├── validate_structure.py               # Project structure validation script
-├── TASK_*_SUMMARY.md                   # Task implementation summaries (1-14)
 │
 ├── infrastructure/                     # AWS CDK Infrastructure as Code
 │   ├── app.py                         # CDK app entry point
@@ -130,7 +129,6 @@ Documentation and configuration files:
 - **Makefile**: Common commands (install, test, lint, deploy)
 - **pytest.ini**: Pytest configuration
 - **validate_structure.py**: Validates all 94 required files are present
-- **TASK_*_SUMMARY.md**: Detailed summaries for each of the 14 tasks
 
 ### `/infrastructure`
 AWS CDK Infrastructure as Code (Tasks 1, 10, 13):
@@ -216,8 +214,9 @@ Comprehensive test suite (All tasks):
 **Total**: 165 passing tests, 6 E2E tests (require actual AWS infrastructure)
 
 ### `/docs`
-Additional documentation (Task 5):
-- **RATE_LIMITING.md**: Detailed rate limiting documentation
+Additional documentation:
+- **RATE_LIMITING.md**: Detailed rate limiting documentation (Task 5)
+- **TASK_1_SUMMARY.md** through **TASK_14_SUMMARY.md**: Detailed implementation summaries for each task
 
 ### `/examples`
 Client implementation examples (Task 14.1):

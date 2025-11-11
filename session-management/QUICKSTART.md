@@ -287,7 +287,7 @@ make test
 
 ### Task Summaries
 Each task has a detailed summary document:
-- TASK_1_SUMMARY.md through TASK_14_SUMMARY.md
+- docs/TASK_1_SUMMARY.md through docs/TASK_14_SUMMARY.md
 
 ### Validation
 ```bash

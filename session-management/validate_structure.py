@@ -101,6 +101,20 @@ REQUIRED_FILES = [
     
     # Documentation (Task 5, 14)
     "docs/RATE_LIMITING.md",
+    "docs/TASK_1_SUMMARY.md",
+    "docs/TASK_2_SUMMARY.md",
+    "docs/TASK_3_SUMMARY.md",
+    "docs/TASK_4_SUMMARY.md",
+    "docs/TASK_5_SUMMARY.md",
+    "docs/TASK_6_SUMMARY.md",
+    "docs/TASK_7_SUMMARY.md",
+    "docs/TASK_8_SUMMARY.md",
+    "docs/TASK_9_SUMMARY.md",
+    "docs/TASK_10_SUMMARY.md",
+    "docs/TASK_11_SUMMARY.md",
+    "docs/TASK_12_SUMMARY.md",
+    "docs/TASK_13_SUMMARY.md",
+    "docs/TASK_14_SUMMARY.md",
     
     # Client Examples (Task 14.1)
     "examples/README.md",
@@ -110,22 +124,7 @@ REQUIRED_FILES = [
     "examples/python-client/speaker_client.py",
     "examples/python-client/listener_client.py",
     "examples/python-client/requirements.txt",
-    
-    # Task Summaries
-    "TASK_1_SUMMARY.md",
-    "TASK_2_SUMMARY.md",
-    "TASK_3_SUMMARY.md",
-    "TASK_4_SUMMARY.md",
-    "TASK_5_SUMMARY.md",
-    "TASK_6_SUMMARY.md",
-    "TASK_7_SUMMARY.md",
-    "TASK_8_SUMMARY.md",
-    "TASK_9_SUMMARY.md",
-    "TASK_10_SUMMARY.md",
-    "TASK_11_SUMMARY.md",
-    "TASK_12_SUMMARY.md",
-    "TASK_13_SUMMARY.md",
-    "TASK_14_SUMMARY.md",
+
 ]
 
 def validate_structure():
