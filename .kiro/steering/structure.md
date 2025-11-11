@@ -79,16 +79,130 @@ Each component follows this standard structure:
 │   └── conftest.py           # Pytest configuration
 │
 ├── docs/                      # Component documentation
-│   ├── OVERVIEW.md           # High-level overview
-│   ├── API.md                # API contracts
-│   └── TROUBLESHOOTING.md    # Common issues
+│   ├── TASK_1_SUMMARY.md    # Task 1 implementation summary
+│   ├── TASK_2_SUMMARY.md    # Task 2 implementation summary
+│   ├── ...                  # Additional task summaries
+│   ├── TASK_N_SUMMARY.md    # Task N implementation summary
+│   ├── RATE_LIMITING.md     # Feature-specific documentation (example)
+│   └── {FEATURE}.md         # Other feature documentation as needed
 │
 ├── requirements.txt           # Python dependencies
 ├── requirements-dev.txt      # Dev dependencies
 ├── Makefile                  # Common commands
 ├── pytest.ini                # Pytest config
-└── README.md                 # Component README
+├── setup.py                  # Package configuration
+├── validate_structure.py     # Project structure validation
+│
+├── README.md                 # Component README (architecture, development)
+├── OVERVIEW.md               # High-level overview (what, why, status)
+├── QUICKSTART.md             # Quick start tutorial (5-minute setup)
+├── PROJECT_STRUCTURE.md      # Detailed file structure documentation
+├── DEPLOYMENT.md             # Deployment guide (detailed)
+├── DEPLOYMENT_CHECKLIST.md   # Deployment checklist
+└── DEPLOYMENT_QUICK_REFERENCE.md  # Quick deployment commands
 ```
+
+## Documentation Structure Pattern
+
+Each component MUST follow this documentation organization:
+
+### Root-Level Documentation Files
+
+These files live at the component root and serve different audiences:
+
+**README.md** - Primary technical documentation
+- Target: Developers and architects
+- Content: Architecture overview, component design, development guide
+- Includes: System diagrams, API contracts, integration points
+- Length: Comprehensive (typically 500-1000 lines)
+
+**OVERVIEW.md** - Executive summary and navigation
+- Target: Project managers, new team members, stakeholders
+- Content: What the component does, key features, current status
+- Includes: Documentation guide (where to find what), quick commands
+- Length: Concise (typically 200-400 lines)
+
+**QUICKSTART.md** - Hands-on tutorial
+- Target: Developers getting started
+- Content: Step-by-step setup and deployment tutorial
+- Includes: Prerequisites, installation, first deployment, verification
+- Length: Tutorial-focused (typically 300-500 lines)
+
+**PROJECT_STRUCTURE.md** - File organization reference
+- Target: Developers navigating the codebase
+- Content: Complete file tree with descriptions
+- Includes: File counts, statistics, purpose of each directory
+- Length: Detailed reference (typically 400-600 lines)
+
+**DEPLOYMENT.md** - Comprehensive deployment guide
+- Target: DevOps, deployment engineers
+- Content: Detailed deployment procedures, configuration, troubleshooting
+- Includes: Prerequisites, step-by-step instructions, rollback procedures
+- Length: Comprehensive (typically 600-1000 lines)
+
+**DEPLOYMENT_CHECKLIST.md** - Deployment verification checklist
+- Target: DevOps performing deployments
+- Content: Step-by-step checklist format
+- Includes: Pre-deployment, deployment, post-deployment, rollback steps
+- Length: Checklist format (typically 200-300 lines)
+
+**DEPLOYMENT_QUICK_REFERENCE.md** - Command reference
+- Target: Experienced operators needing quick command lookup
+- Content: Organized command reference by category
+- Includes: All deployment, testing, monitoring commands
+- Length: Reference format (typically 200-400 lines)
+
+### `/docs` Folder - Implementation Documentation
+
+This folder contains task summaries and feature-specific documentation:
+
+**TASK_N_SUMMARY.md** - Task implementation summaries
+- One file per task (TASK_1_SUMMARY.md, TASK_2_SUMMARY.md, etc.)
+- Content: Task description, requirements, tests, solution
+- Purpose: Track what was implemented and how
+- Created: After completing each task
+
+**{FEATURE}.md** - Feature-specific documentation
+- Examples: RATE_LIMITING.md, AUTHENTICATION.md, MONITORING.md
+- Content: Deep dive into specific features
+- Purpose: Detailed technical documentation for complex features
+- Created: When a feature needs extensive documentation beyond code comments
+
+### Documentation Hierarchy
+
+```
+Component Root
+├── README.md                    # Start here for technical details
+├── OVERVIEW.md                  # Start here for high-level understanding
+├── QUICKSTART.md                # Start here to get running quickly
+├── PROJECT_STRUCTURE.md         # Reference for file organization
+├── DEPLOYMENT.md                # Comprehensive deployment guide
+├── DEPLOYMENT_CHECKLIST.md      # Deployment verification steps
+├── DEPLOYMENT_QUICK_REFERENCE.md # Quick command reference
+│
+└── docs/                        # Implementation details
+    ├── TASK_*_SUMMARY.md        # What was built and how
+    └── {FEATURE}.md             # Feature deep dives
+```
+
+### Documentation Cross-References
+
+Documents should reference each other appropriately:
+
+- **OVERVIEW.md** → Links to all other docs with audience-specific guidance
+- **README.md** → Links to QUICKSTART.md, DEPLOYMENT.md, specs
+- **QUICKSTART.md** → Links to README.md for details, DEPLOYMENT.md for production
+- **PROJECT_STRUCTURE.md** → Links to task summaries for implementation details
+- **DEPLOYMENT.md** → Links to DEPLOYMENT_CHECKLIST.md and DEPLOYMENT_QUICK_REFERENCE.md
+
+### Documentation Maintenance
+
+- Update **README.md** when architecture or APIs change
+- Update **OVERVIEW.md** when status or features change
+- Update **PROJECT_STRUCTURE.md** when files are added/removed/moved
+- Update **validate_structure.py** when required files change
+- Create new **TASK_N_SUMMARY.md** after completing each task
+- Update **DEPLOYMENT.md** when deployment procedures change
 
 ## File Naming Conventions
 
