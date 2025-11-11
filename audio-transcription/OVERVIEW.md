@@ -6,7 +6,7 @@ The audio-transcription component processes real-time audio transcription result
 
 ## Key Features
 
-### Implemented (Tasks 1-3)
+### Implemented (Tasks 1-4)
 
 ✅ **Core Data Models** (Task 1)
 - Type-safe dataclasses for partial and final results
@@ -26,12 +26,11 @@ The audio-transcription component processes real-time audio transcription result
 - Timestamp-based ordering for out-of-order results
 - Automatic flush of oldest stable results
 
-### In Progress
-
-🚧 **Rate Limiting** (Task 4)
-- 5 partial results per second limit
-- Sliding window implementation
-- Best result selection
+✅ **Rate Limiter** (Task 4)
+- 5 partial results per second limit (200ms sliding windows)
+- Best result selection by stability score
+- Statistics tracking (processed/dropped counts)
+- CloudWatch metrics integration
 
 ### Planned
 
@@ -48,16 +47,16 @@ The audio-transcription component processes real-time audio transcription result
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 3 of 17 tasks complete (18%)  
-**Test Coverage**: 97%  
-**Tests Passing**: 94/94
+**Progress**: 4 of 17 tasks complete (24%)  
+**Test Coverage**: 87%  
+**Tests Passing**: 109/109
 
 ## Quick Stats
 
-- **Lines of Code**: ~600 (production code)
-- **Test Lines**: ~1,400
-- **Test Coverage**: 97%
-- **Files Created**: 15
+- **Lines of Code**: ~750 (production code)
+- **Test Lines**: ~1,780
+- **Test Coverage**: 87%
+- **Files Created**: 17
 - **Dependencies**: boto3, librosa, numpy, PyJWT, python-Levenshtein
 
 ## Documentation Guide
@@ -112,7 +111,7 @@ AWS Transcribe → Event Handler → Partial Result Processor
 - ✅ Core data models
 - ✅ Text normalization and deduplication
 - ✅ Result buffer
-- 🚧 Rate limiter
+- ✅ Rate limiter
 - 📋 Sentence boundary detector
 - 📋 Translation forwarder
 - 📋 Partial/final result handlers

@@ -13,9 +13,11 @@ audio-transcription/
 │   ├── services/                    # Business logic
 │   │   ├── __init__.py             # Service exports
 │   │   ├── deduplication_cache.py  # DeduplicationCache class
+│   │   ├── rate_limiter.py         # RateLimiter class
 │   │   └── result_buffer.py        # ResultBuffer class
 │   └── utils/                       # Utilities
 │       ├── __init__.py             # Utility exports
+│       ├── metrics.py              # MetricsEmitter class
 │       └── text_normalization.py   # normalize_text(), hash_text()
 │
 ├── tests/                           # All tests for component
@@ -23,6 +25,7 @@ audio-transcription/
 │   │   ├── __init__.py
 │   │   ├── test_data_models.py     # 30 tests for models
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
+│   │   ├── test_rate_limiter.py    # 15 tests for rate limiter
 │   │   ├── test_result_buffer.py   # 23 tests for buffer
 │   │   └── test_text_normalization.py # 21 tests for normalization
 │   ├── __init__.py
@@ -31,7 +34,8 @@ audio-transcription/
 ├── docs/                            # Component documentation
 │   ├── TASK_1_SUMMARY.md          # Task 1 implementation summary
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
-│   └── TASK_3_SUMMARY.md          # Task 3 implementation summary
+│   ├── TASK_3_SUMMARY.md          # Task 3 implementation summary
+│   └── TASK_4_SUMMARY.md          # Task 4 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -45,26 +49,27 @@ audio-transcription/
 ├── DEPLOYMENT.md                    # Deployment guide
 ├── requirements.txt                 # Production dependencies
 ├── requirements-dev.txt             # Development dependencies
-└── setup.py                         # Package configuration
+├── setup.py                         # Package configuration
+└── validate_structure.py            # Structure validation script
 ```
 
 ## File Counts
 
 ### Production Code
 - **Models**: 4 files, ~125 statements
-- **Services**: 3 files, ~122 statements
-- **Utils**: 2 files, ~14 statements
-- **Total**: 9 files, ~261 statements
+- **Services**: 4 files, ~172 statements
+- **Utils**: 3 files, ~49 statements
+- **Total**: 11 files, ~346 statements
 
 ### Test Code
-- **Unit Tests**: 5 files, 94 tests
+- **Unit Tests**: 6 files, 109 tests
 - **Fixtures**: 1 file
-- **Total**: 6 files, ~1,400 lines
+- **Total**: 7 files, ~1,780 lines
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
-- **Task Summaries**: 3 files
-- **Total**: 9 files, ~1,500 lines
+- **Task Summaries**: 4 files
+- **Total**: 10 files, ~2,000 lines
 
 ## File Descriptions
 
@@ -99,6 +104,13 @@ Business logic services for processing.
   - Opportunistic cleanup every 30 seconds
   - Emergency cleanup at 10,000 entries
 
+- **`rate_limiter.py`** (50 statements)
+  - `RateLimiter`: Limit processing to 5 results per second
+  - `should_process()`: Buffer results in 200ms windows
+  - `get_best_result_in_window()`: Select highest stability
+  - `flush_window()`: Process best result from window
+  - `get_statistics()`: Track processed/dropped counts
+
 - **`result_buffer.py`** (65 statements)
   - `ResultBuffer`: Store partial results awaiting finalization
   - `add()`: Add partial result with capacity check
@@ -108,7 +120,15 @@ Business logic services for processing.
   - Capacity: 300 words (30 words/sec × 10 sec)
 
 #### `shared/utils/`
-Utility functions for text processing.
+Utility functions for text processing and metrics.
+
+- **`metrics.py`** (35 statements)
+  - `MetricsEmitter`: CloudWatch metrics integration
+  - `emit_dropped_results()`: Track rate-limited results
+  - `emit_processing_latency()`: Track processing time
+  - `emit_partial_to_final_ratio()`: Track result ratios
+  - `emit_duplicates_detected()`: Track duplicates
+  - `emit_orphaned_results_flushed()`: Track orphans
 
 - **`text_normalization.py`** (14 statements)
   - `normalize_text()`: Lowercase, remove punctuation, collapse spaces
@@ -138,6 +158,13 @@ Comprehensive unit tests with 97% coverage.
   - TTL expiration (3 tests)
   - Cleanup mechanisms (3 tests)
   - Edge cases: empty strings, long text, overflow
+
+- **`test_rate_limiter.py`** (15 tests)
+  - Rate limiter initialization (2 tests)
+  - Buffering and selection (5 tests)
+  - Window flushing (3 tests)
+  - Statistics tracking (2 tests)
+  - Edge cases: missing stability, ties, empty buffers
 
 - **`test_result_buffer.py`** (23 tests)
   - Buffer operations (9 tests)
@@ -196,6 +223,10 @@ Comprehensive unit tests with 97% coverage.
   - Result buffer with capacity management
   - 23 tests, 97% coverage
 
+- **`docs/TASK_4_SUMMARY.md`** (~300 lines)
+  - Rate limiter with sliding windows
+  - 15 tests, 98% coverage
+
 ## Dependencies
 
 ### Production (`requirements.txt`)
@@ -226,23 +257,23 @@ mypy>=1.4.0                # Type checking
 ## Statistics
 
 ### Code Metrics
-- **Production Code**: ~600 lines
-- **Test Code**: ~1,400 lines
-- **Documentation**: ~1,500 lines
-- **Test/Code Ratio**: 2.3:1
-- **Coverage**: 97%
+- **Production Code**: ~750 lines
+- **Test Code**: ~1,780 lines
+- **Documentation**: ~2,000 lines
+- **Test/Code Ratio**: 2.4:1
+- **Coverage**: 87%
 
 ### File Counts
-- **Python Files**: 15 (9 production, 6 test)
-- **Documentation Files**: 9
+- **Python Files**: 18 (11 production, 7 test)
+- **Documentation Files**: 10
 - **Configuration Files**: 5
-- **Total Files**: 29
+- **Total Files**: 33
 
 ### Test Metrics
-- **Total Tests**: 94
+- **Total Tests**: 109
 - **Test Execution Time**: ~10 seconds
-- **Tests per File**: ~19 average
-- **Coverage**: 97% (exceeds 80% requirement)
+- **Tests per File**: ~18 average
+- **Coverage**: 87% (exceeds 80% requirement)
 
 ## Future Structure
 

@@ -42,8 +42,8 @@ make test
 
 **Expected output:**
 ```
-======================== 94 passed in 10.21s ========================
-Coverage: 97%
+======================== 109 passed in 10.54s ========================
+Coverage: 87%
 ```
 
 ## Step 4: Verify Installation
