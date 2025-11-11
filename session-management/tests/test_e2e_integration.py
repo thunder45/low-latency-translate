@@ -200,8 +200,15 @@ class TestSpeakerSessionLifecycle:
         heartbeat_event = {
             'requestContext': {
                 'connectionId': connection_id,
-                'routeKey': 'heartbeat'
-            }
+                'routeKey': 'heartbeat',
+                'eventType': 'MESSAGE',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
+            },
+            'body': json.dumps({
+                'action': 'heartbeat',
+                'timestamp': int(time.time() * 1000)
+            })
         }
         
         with patch('boto3.client', side_effect=mock_boto3_clients):
@@ -260,8 +267,8 @@ class TestListenerLifecycle:
         mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
-        # Create active session first
-        session_id = 'test-session-123'
+        # Create active session first (using valid session ID format)
+        session_id = 'faithful-shepherd-123'
         speaker_conn_id = 'speaker-conn-123'
         sessions_table.put_item(Item={
             'sessionId': session_id,
@@ -311,7 +318,10 @@ class TestListenerLifecycle:
         heartbeat_event = {
             'requestContext': {
                 'connectionId': listener_conn_id,
-                'routeKey': 'heartbeat'
+                'routeKey': 'heartbeat',
+                'eventType': 'MESSAGE',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -364,8 +374,8 @@ class TestMultiListenerScenario:
         mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
-        # Create active session
-        session_id = 'multi-listener-session'
+        # Create active session (using valid session ID format)
+        session_id = 'blessed-temple-456'
         speaker_conn_id = 'speaker-conn-multi'
         sessions_table.put_item(Item={
             'sessionId': session_id,
@@ -469,8 +479,8 @@ class TestConnectionRefreshLongSessions:
         mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
-        # Create session
-        session_id = 'refresh-test-session'
+        # Create session (using valid session ID format)
+        session_id = 'gracious-prophet-789'
         old_conn_id = 'speaker-old-conn'
         user_id = 'speaker-user-refresh'
         
@@ -500,7 +510,10 @@ class TestConnectionRefreshLongSessions:
         heartbeat_event = {
             'requestContext': {
                 'connectionId': old_conn_id,
-                'routeKey': 'heartbeat'
+                'routeKey': 'heartbeat',
+                'eventType': 'MESSAGE',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -580,8 +593,8 @@ class TestConnectionRefreshLongSessions:
         mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
-        # Create active session
-        session_id = 'listener-refresh-session'
+        # Create active session (using valid session ID format)
+        session_id = 'merciful-psalm-234'
         sessions_table.put_item(Item={
             'sessionId': session_id,
             'speakerConnectionId': 'speaker-conn',
@@ -610,7 +623,10 @@ class TestConnectionRefreshLongSessions:
         heartbeat_event = {
             'requestContext': {
                 'connectionId': old_listener_conn,
-                'routeKey': 'heartbeat'
+                'routeKey': 'heartbeat',
+                'eventType': 'MESSAGE',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -687,8 +703,8 @@ class TestSpeakerDisconnectNotifications:
         mock_boto3_clients, mock_api_gateway_client = mock_boto3_clients
         handlers = setup_handlers
         
-        # Create session
-        session_id = 'notify-test-session'
+        # Create session (using valid session ID format)
+        session_id = 'joyful-grace-567'
         speaker_conn_id = 'speaker-notify-conn'
         sessions_table.put_item(Item={
             'sessionId': session_id,

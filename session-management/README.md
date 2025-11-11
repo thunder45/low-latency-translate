@@ -32,11 +32,14 @@ session-management/
 └── tests/                  # Test files
 ```
 
-## Quick Start
+## Getting Started
 
-See [QUICKSTART.md](QUICKSTART.md) for a 5-minute setup guide.
+Choose the guide that fits your needs:
 
-For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+- 🚀 **[QUICKSTART.md](QUICKSTART.md)** - First-time setup (5 minutes, tutorial-style)
+- 📋 **[DEPLOYMENT_QUICK_REFERENCE.md](DEPLOYMENT_QUICK_REFERENCE.md)** - Command cheat sheet (for experienced users)
+- 📖 **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide (comprehensive documentation)
+- ✅ **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Step-by-step verification checklist
 
 ## Setup
 
@@ -77,6 +80,28 @@ pytest tests/
 
 See `infrastructure/config/` for environment-specific configurations.
 
+## Deployment
+
+For comprehensive deployment instructions, see:
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide with verification steps
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Step-by-step deployment checklist
+- **[DEPLOYMENT_QUICK_REFERENCE.md](DEPLOYMENT_QUICK_REFERENCE.md)** - Quick command reference
+
+### Quick Deploy
+
+```bash
+# Configure environment
+cp infrastructure/config/dev.json.example infrastructure/config/dev.json
+# Edit dev.json with your AWS account details
+
+# Deploy to development
+make deploy-dev
+
+# Verify deployment
+aws dynamodb list-tables --region us-east-1
+aws lambda list-functions --region us-east-1 | grep session
+```
+
 ## Task Implementation Summaries
 
 Detailed summaries of completed implementation tasks:
@@ -93,3 +118,5 @@ Detailed summaries of completed implementation tasks:
 - [Task 10: Implement API Gateway WebSocket API](TASK_10_SUMMARY.md)
 - [Task 11: Implement monitoring and logging](TASK_11_SUMMARY.md)
 - [Task 12: Implement error handling and resilience](TASK_12_SUMMARY.md)
+- [Task 13: Deploy infrastructure](TASK_13_SUMMARY.md)
+- [Task 14: Create deployment documentation](TASK_14_SUMMARY.md)

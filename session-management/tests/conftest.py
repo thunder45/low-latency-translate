@@ -15,7 +15,7 @@ def aws_credentials():
     os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session", autouse=True)
 def env_vars():
     """Set up environment variables for tests."""
     os.environ["ENV"] = "test"

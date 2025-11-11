@@ -1,0 +1,30 @@
+{
+  "name": "session-management-client-examples",
+  "version": "1.0.0",
+  "description": "JavaScript/TypeScript client examples for Session Management WebSocket API",
+  "main": "speaker-client.js",
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint *.js"
+  },
+  "keywords": [
+    "websocket",
+    "translation",
+    "real-time",
+    "audio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.450.0",
+    "ws": "^8.14.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.8",
+    "eslint": "^8.52.0",
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,12 @@
+# Python Client Dependencies
+
+# AWS SDK for Cognito authentication
+boto3>=1.28.0
+botocore>=1.31.0
+
+# WebSocket client
+websockets>=11.0.0
+
+# Optional: For audio processing
+# pyaudio>=0.2.13
+# numpy>=1.24.0

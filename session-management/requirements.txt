@@ -1,20 +1,72 @@
-# AWS CDK
-aws-cdk-lib==2.100.0
-constructs>=10.0.0,<11.0.0
+# Session Management & WebSocket Infrastructure - Requirements
+# Python 3.11+
+
+# ============================================================================
+# Production Dependencies
+# ============================================================================
 
 # AWS SDK
 boto3==1.28.85
 botocore==1.31.85
 
-# Lambda dependencies
+# Authentication & Security
 PyJWT==2.8.0
 cryptography==41.0.7
+
+# HTTP Client
 requests==2.31.0
 
-# Development
+# ============================================================================
+# Development Dependencies
+# ============================================================================
+
+# Testing Framework
 pytest==7.4.3
 pytest-cov==4.1.0
+pytest-asyncio==0.21.1
 moto==4.2.9
+
+# Code Quality
 black==23.11.0
 flake8==6.1.0
 mypy==1.7.1
+
+# Type Stubs for AWS SDK
+boto3-stubs[dynamodb,cognito-idp,apigatewaymanagementapi]==1.28.85
+
+# ============================================================================
+# Infrastructure as Code (CDK)
+# ============================================================================
+
+# AWS CDK
+aws-cdk-lib==2.100.0
+constructs>=10.0.0,<11.0.0
+
+# ============================================================================
+# Client Examples (Optional)
+# ============================================================================
+
+# WebSocket client for Python examples
+websockets==11.0.0
+
+# ============================================================================
+# Notes
+# ============================================================================
+# 
+# Installation options:
+# 
+# 1. Production only:
+#    pip install boto3 botocore PyJWT cryptography requests
+# 
+# 2. Development (includes testing):
+#    pip install -r requirements.txt
+# 
+# 3. Using setup.py (recommended):
+#    pip install -e .                    # Production
+#    pip install -e ".[dev]"             # Development
+#    pip install -e ".[cdk]"             # Infrastructure
+#    pip install -e ".[examples]"        # Client examples
+#    pip install -e ".[dev,cdk,examples]" # Everything
+# 
+# For Lambda deployment, only production dependencies are packaged.
+# Development dependencies are excluded from Lambda layers.

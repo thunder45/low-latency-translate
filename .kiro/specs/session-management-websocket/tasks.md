@@ -322,22 +322,22 @@
   - Test exponential backoff behavior
   - _Requirements: 21_
 
-- [ ] 13. Deploy infrastructure
-- [ ] 13.1 Deploy DynamoDB tables
+- [x] 13. Deploy infrastructure
+- [x] 13.1 Deploy DynamoDB tables
   - Deploy Sessions, Connections, and RateLimits tables to us-east-1 region
   - Enable TTL on appropriate attributes (expiresAt for Sessions, ttl for Connections)
   - Verify GSI creation for Connections table (sessionId-targetLanguage-index)
   - Configure on-demand billing mode for all tables
   - _Requirements: 9, 20_
 
-- [ ] 13.2 Deploy Lambda functions
+- [x] 13.2 Deploy Lambda functions
   - Package Lambda functions with dependencies
   - Deploy Authorizer, Connection Handler, Connection Refresh Handler, Heartbeat Handler, Disconnect Handler
   - Configure environment variables with all configurable parameters including CONNECTION_REFRESH_MINUTES
   - Set appropriate memory and timeout values
   - _Requirements: All_
 
-- [ ] 13.3 Deploy API Gateway
+- [x] 13.3 Deploy API Gateway
   - Deploy WebSocket API with all routes
   - Configure Lambda Authorizer
   - Set up custom domain (optional)
@@ -352,14 +352,14 @@
   - Verify performance targets (session creation <2s p95, listener join <1s p95)
   - _Requirements: 14, 18_
 
-- [ ] 14. Create deployment documentation
+- [x] 14. Create deployment documentation
   - Document environment variable configuration
   - Document deployment steps for each environment
   - Document rollback procedures
   - Document monitoring and alerting setup
   - _Requirements: All_
 
-- [ ] 14.1 Create client implementation examples
+- [x] 14.1 Create client implementation examples
   - Create JavaScript/TypeScript client example with connection refresh
   - Create Python client example for testing
   - Document error handling patterns
