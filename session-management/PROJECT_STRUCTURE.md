@@ -99,7 +99,8 @@ session-management/
 │   └── test_e2e_integration.py        # E2E integration tests
 │
 ├── docs/                              # Additional documentation
-│   └── RATE_LIMITING.md               # Rate limiting documentation (Task 5)
+│   ├── RATE_LIMITING.md               # Rate limiting documentation (Task 5)
+│   └── TASK_*_SUMMARY.md              # Task implementation summaries (1-14)
 │
 └── examples/                          # Client implementation examples (Task 14.1)
     ├── README.md                      # Client examples guide
