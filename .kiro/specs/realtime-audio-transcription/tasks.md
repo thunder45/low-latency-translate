@@ -38,30 +38,30 @@
   - _Requirements: 5.6, 8.5_
 
 
-- [ ] 3. Implement result buffer with capacity management
-- [ ] 3.1 Create ResultBuffer class with add/remove operations
+- [x] 3. Implement result buffer with capacity management
+- [x] 3.1 Create ResultBuffer class with add/remove operations
   - Implement dictionary-based storage with result_id as key
   - Add methods for add(), remove_by_id(), get_all()
   - _Requirements: 2.4, 3.5_
 
-- [ ] 3.2 Implement capacity management and overflow handling
+- [x] 3.2 Implement capacity management and overflow handling
   - Calculate total words in buffer (estimate 30 words/second)
   - Implement flush_oldest() to remove oldest stable results when capacity exceeded
   - Add capacity check on each add operation
   - _Requirements: 3.5_
 
-- [ ] 3.3 Implement orphan detection and cleanup
+- [x] 3.3 Implement orphan detection and cleanup
   - Create get_orphaned_results() method to find results older than timeout (15 seconds)
   - Track timestamp for each buffered result
   - _Requirements: 7.5_
 
-- [ ] 3.4 Implement timestamp-based result ordering
+- [x] 3.4 Implement timestamp-based result ordering
   - Add sort_by_timestamp() method to ResultBuffer
   - Implement out-of-order detection and logging
   - Ensure results processed in chronological order
   - _Requirements: 7.2, 7.3_
 
-- [ ]* 3.5 Write unit tests for result buffer
+- [x]* 3.5 Write unit tests for result buffer
   - Test add/remove operations
   - Test capacity overflow handling
   - Test orphan detection with various timeouts
