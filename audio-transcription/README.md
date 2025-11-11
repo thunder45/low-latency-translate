@@ -19,25 +19,31 @@ This component processes audio transcription results from AWS Transcribe Streami
 ## Architecture
 
 ```
-AWS Transcribe → Transcription Event Handler → Partial Result Processor
-                                                      ↓
-                                              Result Buffer
-                                                      ↓
-                                          Deduplication Cache
-                                                      ↓
-                                          Translation Pipeline
+AWS Transcribe Streaming API
+    ↓
+TranscribeStreamHandler (async event handler)
+    ↓
+Transcription Event Handler → Partial Result Processor
+                                      ↓
+                              Result Buffer
+                                      ↓
+                          Deduplication Cache
+                                      ↓
+                          Translation Pipeline
 ```
 
 ### Components
 
-1. **Transcription Event Handler**: Receives and parses AWS Transcribe events
-2. **Partial Result Handler**: Processes partial results with stability filtering
-3. **Final Result Handler**: Processes final results and cleans up partials
-4. **Result Buffer**: Stores partial results awaiting finalization
-5. **Deduplication Cache**: Prevents duplicate synthesis
-6. **Sentence Boundary Detector**: Identifies complete sentences
-7. **Rate Limiter**: Controls processing rate (5 per second)
-8. **Translation Forwarder**: Forwards results to translation pipeline
+1. **TranscribeStreamHandler**: Async handler for AWS Transcribe streaming events with null safety
+2. **TranscribeClientManager**: Manages Transcribe client lifecycle and configuration
+3. **Transcription Event Handler**: Receives and parses AWS Transcribe events
+4. **Partial Result Handler**: Processes partial results with stability filtering
+5. **Final Result Handler**: Processes final results and cleans up partials
+6. **Result Buffer**: Stores partial results awaiting finalization
+7. **Deduplication Cache**: Prevents duplicate synthesis
+8. **Sentence Boundary Detector**: Identifies complete sentences
+9. **Rate Limiter**: Controls processing rate (5 per second)
+10. **Translation Forwarder**: Forwards results to translation pipeline
 
 ## Getting Started
 
@@ -221,6 +227,7 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 8: Final Result Handler](docs/TASK_8_SUMMARY.md) - 15 tests, 98% coverage
 - ✅ [Task 9: Transcription Event Handler](docs/TASK_9_SUMMARY.md) - 20 tests, 97% coverage
 - ✅ [Task 10: Main Partial Result Processor](docs/TASK_10_SUMMARY.md) - 7 integration tests, 90% coverage
+- ✅ [Task 11: AWS Transcribe Streaming Integration](docs/TASK_11_SUMMARY.md) - 28 tests (13 stream handler, 15 client), 91.51% coverage
 
 ### In Progress
 
@@ -228,7 +235,7 @@ Internal use only - Low Latency Translate Platform
 
 ### Planned
 
-- 📋 Tasks 11-17: See [tasks.md](.kiro/specs/realtime-audio-transcription/tasks.md)
+- 📋 Tasks 12-17: See [tasks.md](.kiro/specs/realtime-audio-transcription/tasks.md)
 
 ## References
 

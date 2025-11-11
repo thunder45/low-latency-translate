@@ -19,6 +19,8 @@ audio-transcription/
 │   │   ├── rate_limiter.py         # RateLimiter class
 │   │   ├── result_buffer.py        # ResultBuffer class
 │   │   ├── sentence_boundary_detector.py # SentenceBoundaryDetector class
+│   │   ├── transcribe_client.py    # TranscribeClientConfig, TranscribeClientManager
+│   │   ├── transcribe_stream_handler.py # TranscribeStreamHandler class
 │   │   ├── transcription_event_handler.py # TranscriptionEventHandler class
 │   │   └── translation_forwarder.py # TranslationForwarder class
 │   └── utils/                       # Utilities
@@ -37,6 +39,8 @@ audio-transcription/
 │   │   ├── test_result_buffer.py   # 23 tests for buffer
 │   │   ├── test_sentence_boundary_detector.py # 29 tests for sentence detector
 │   │   ├── test_text_normalization.py # 21 tests for normalization
+│   │   ├── test_transcribe_client.py # 15 tests for Transcribe client config
+│   │   ├── test_transcribe_stream_handler.py # 13 tests for stream handler
 │   │   └── test_transcription_event_handler.py # 20 tests for event handler
 │   ├── integration/                # Integration tests
 │   │   └── test_partial_result_processor.py # 7 integration tests
@@ -48,6 +52,13 @@ audio-transcription/
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
 │   ├── TASK_3_SUMMARY.md          # Task 3 implementation summary
 │   ├── TASK_4_SUMMARY.md          # Task 4 implementation summary
+│   ├── TASK_5_SUMMARY.md          # Task 5 implementation summary
+│   ├── TASK_6_SUMMARY.md          # Task 6 implementation summary
+│   ├── TASK_7_SUMMARY.md          # Task 7 implementation summary
+│   ├── TASK_8_SUMMARY.md          # Task 8 implementation summary
+│   ├── TASK_9_SUMMARY.md          # Task 9 implementation summary
+│   ├── TASK_10_SUMMARY.md         # Task 10 implementation summary
+│   └── TASK_11_SUMMARY.md         # Task 11 implementation summary
 │   ├── TASK_5_SUMMARY.md          # Task 5 implementation summary
 │   ├── TASK_6_SUMMARY.md          # Task 6 implementation summary
 │   ├── TASK_7_SUMMARY.md          # Task 7 implementation summary
@@ -87,8 +98,8 @@ audio-transcription/
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
-- **Task Summaries**: 10 files
-- **Total**: 16 files, ~3,200 lines
+- **Task Summaries**: 11 files
+- **Total**: 17 files, ~3,500 lines
 
 ## File Descriptions
 
@@ -183,6 +194,24 @@ Business logic services for processing.
   - `_cleanup_orphans_if_needed()`: Opportunistic orphan cleanup every 5 seconds
   - Integrates all components into cohesive pipeline
 
+- **`transcribe_stream_handler.py`** (78 statements)
+  - `TranscribeStreamHandler`: Async handler for AWS Transcribe streaming events
+  - `handle_transcript_event()`: Process transcription events asynchronously
+  - `_process_result()`: Extract metadata and route to processor
+  - `_extract_stability_score()`: Extract stability with null safety and validation
+  - Defensive null checks for all event fields
+  - Generates result_id if missing from event
+  - Clamps stability scores to [0.0, 1.0] range
+
+- **`transcribe_client.py`** (49 statements)
+  - `TranscribeClientConfig`: Configuration with validation
+  - `TranscribeClientManager`: Manages client lifecycle
+  - `create_transcribe_client_for_session()`: Convenience function
+  - Validates language code, sample rate, encoding, stability level
+  - Supports 4 sample rates: 8000, 16000, 24000, 48000 Hz
+  - Supports 3 encodings: pcm, ogg-opus, flac
+  - Defaults to partial results enabled with 'high' stability
+
 #### `shared/utils/`
 Utility functions for text processing and metrics.
 
@@ -216,6 +245,19 @@ Comprehensive unit tests with 97% coverage.
   - Text normalization (12 tests)
   - Hash generation (9 tests)
   - Edge cases: empty, punctuation-only, unicode, long text
+
+- **`test_transcribe_stream_handler.py`** (13 tests)
+  - Partial result handling with/without stability (2 tests)
+  - Final result handling (1 test)
+  - Missing/malformed event fields (4 tests)
+  - Stability score extraction edge cases (6 tests)
+  - Edge cases: out of range, negative, invalid type
+
+- **`test_transcribe_client.py`** (15 tests)
+  - TranscribeClientConfig validation (9 tests)
+  - TranscribeClientManager operations (4 tests)
+  - Convenience function (2 tests)
+  - Edge cases: invalid parameters, all valid combinations
 
 - **`test_deduplication_cache.py`** (20 tests)
   - Cache operations (11 tests)

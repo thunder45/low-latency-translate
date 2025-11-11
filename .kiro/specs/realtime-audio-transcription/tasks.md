@@ -224,15 +224,15 @@
   - Test 6: Deduplication prevents double synthesis
   - _Requirements: 1.1, 7.2, 7.3, 7.5, 7.6, 9.1_
 
-- [ ] 11. Integrate with AWS Transcribe Streaming API
-- [ ] 11.1 Create async stream handler for Transcribe events
+- [x] 11. Integrate with AWS Transcribe Streaming API
+- [x] 11.1 Create async stream handler for Transcribe events
   - Extend TranscriptResultStreamHandler
   - Implement handle_transcript_event() async method
   - Extract stability scores with null safety
   - Call PartialResultProcessor methods
   - _Requirements: 2.1, 2.2, 7.6_
 
-- [ ] 11.2 Configure Transcribe client with partial results enabled
+- [x] 11.2 Configure Transcribe client with partial results enabled
   - Set enable_partial_results_stabilization=True
   - Set partial_results_stability='high'
   - Configure language code and media parameters

@@ -72,26 +72,34 @@ The audio-transcription component processes real-time audio transcription result
 - Opportunistic orphan cleanup (every 5 seconds)
 - Complete integration tests (7 tests, all passing)
 
+✅ **AWS Transcribe Streaming Integration** (Task 11)
+- TranscribeStreamHandler for async event processing
+- Defensive null checks for all event fields
+- Stability score extraction with validation and clamping
+- TranscribeClientConfig with parameter validation
+- TranscribeClientManager for client lifecycle
+- Partial results enabled with 'high' stability level
+- 28 new tests (13 stream handler, 15 client config)
+
 ### Planned
 
-📋 **AWS Transcribe Integration** (Task 11)
 📋 **Lambda Integration** (Task 12)
 📋 **Monitoring & Metrics** (Task 13)
 
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 10 of 17 tasks complete (59%)  
-**Test Coverage**: 90%  
-**Tests Passing**: 197/197
+**Progress**: 11 of 17 tasks complete (65%)  
+**Test Coverage**: 91.51%  
+**Tests Passing**: 225/225
 
 ## Quick Stats
 
-- **Lines of Code**: ~975 (production code)
-- **Test Lines**: ~3,000
-- **Test Coverage**: 90%
-- **Files Created**: 21
-- **Dependencies**: boto3, librosa, numpy, PyJWT, python-Levenshtein
+- **Lines of Code**: ~1,569 (production code)
+- **Test Lines**: ~3,500
+- **Test Coverage**: 91.51%
+- **Files Created**: 25
+- **Dependencies**: boto3, amazon-transcribe, librosa, numpy, PyJWT, python-Levenshtein
 
 ## Documentation Guide
 
@@ -130,13 +138,17 @@ make deploy-dev
 ## Architecture at a Glance
 
 ```
-AWS Transcribe → Event Handler → Partial Result Processor
-                                        ↓
-                                  Result Buffer
-                                        ↓
-                              Deduplication Cache
-                                        ↓
-                              Translation Pipeline
+AWS Transcribe Streaming API
+    ↓
+TranscribeStreamHandler (async)
+    ↓
+Event Handler → Partial Result Processor
+                        ↓
+                  Result Buffer
+                        ↓
+              Deduplication Cache
+                        ↓
+              Translation Pipeline
 ```
 
 ## Next Milestones
