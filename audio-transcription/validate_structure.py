@@ -47,6 +47,7 @@ def validate_structure():
         'shared/services/rate_limiter.py',
         'shared/services/result_buffer.py',
         'shared/services/sentence_boundary_detector.py',
+        'shared/services/transcription_event_handler.py',
         'shared/services/translation_forwarder.py',
         
         # Utils
@@ -66,6 +67,7 @@ def validate_structure():
         'tests/unit/test_result_buffer.py',
         'tests/unit/test_sentence_boundary_detector.py',
         'tests/unit/test_text_normalization.py',
+        'tests/unit/test_transcription_event_handler.py',
         
         # Task summaries
         'docs/TASK_1_SUMMARY.md',
@@ -76,6 +78,7 @@ def validate_structure():
         'docs/TASK_6_SUMMARY.md',
         'docs/TASK_7_SUMMARY.md',
         'docs/TASK_8_SUMMARY.md',
+        'docs/TASK_9_SUMMARY.md',
     ]
     
     required_dirs = [

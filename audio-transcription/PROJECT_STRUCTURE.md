@@ -150,6 +150,15 @@ Business logic services for processing.
   - `_forward_to_translation()`: Forward to translation and mark as forwarded
   - Implements rate limiting, buffering, and deduplication
 
+- **`transcription_event_handler.py`** (78 statements)
+  - `TranscriptionEventHandler`: Receives and parses AWS Transcribe events
+  - `handle_event()`: Main event processing with error handling
+  - `_extract_result_metadata()`: Parse event structure with defensive null checks
+  - `_extract_stability_score()`: Extract stability with comprehensive validation
+  - `_handle_partial_result()`: Route partial results to PartialResultHandler
+  - `_handle_final_result()`: Route final results to FinalResultHandler
+  - Implements defensive parsing and graceful error handling
+
 #### `shared/utils/`
 Utility functions for text processing and metrics.
 
@@ -226,6 +235,13 @@ Comprehensive unit tests with 97% coverage.
   - Window flushing (3 tests)
   - Statistics tracking (2 tests)
   - Edge cases: missing stability, ties, empty buffers
+
+- **`test_transcription_event_handler.py`** (20 tests)
+  - Event parsing with valid events (3 tests)
+  - Routing logic for partial vs final (1 test)
+  - Malformed event handling (10 tests)
+  - Null safety for Items array (4 tests)
+  - Metadata extraction and timestamps (2 tests)
 
 - **`test_result_buffer.py`** (23 tests)
   - Buffer operations (9 tests)

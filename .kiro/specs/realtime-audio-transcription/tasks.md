@@ -172,24 +172,24 @@
   - Test handling of missing corresponding partials
   - _Requirements: 2.4, 5.2, 8.1_
 
-- [ ] 9. Implement transcription event handler
-- [ ] 9.1 Create TranscriptionEventHandler class
+- [x] 9. Implement transcription event handler
+- [x] 9.1 Create TranscriptionEventHandler class
   - Initialize with partial and final result handlers
   - _Requirements: 2.2_
 
-- [ ] 9.2 Implement event parsing and metadata extraction
+- [x] 9.2 Implement event parsing and metadata extraction
   - Parse AWS Transcribe event structure
   - Extract IsPartial flag, stability score, text, result_id, timestamp
   - Handle missing or malformed fields gracefully
   - Add defensive null checks for items array
   - _Requirements: 2.2, 2.3, 7.1, 7.6_
 
-- [ ] 9.3 Implement routing logic for partial vs final results
+- [x] 9.3 Implement routing logic for partial vs final results
   - Route to PartialResultHandler if IsPartial is true
   - Route to FinalResultHandler if IsPartial is false
   - _Requirements: 2.2_
 
-- [ ] 9.4 Write unit tests for transcription event handler
+- [x] 9.4 Write unit tests for transcription event handler
   - Test event parsing with valid and malformed events
   - Test metadata extraction with missing fields
   - Test routing logic for partial vs final results
