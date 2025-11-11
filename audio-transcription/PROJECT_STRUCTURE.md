@@ -61,19 +61,19 @@ audio-transcription/
 
 ### Production Code
 - **Models**: 4 files, ~125 statements
-- **Services**: 4 files, ~172 statements
+- **Services**: 7 files, ~282 statements
 - **Utils**: 3 files, ~49 statements
-- **Total**: 11 files, ~346 statements
+- **Total**: 14 files, ~456 statements
 
 ### Test Code
-- **Unit Tests**: 6 files, 109 tests
+- **Unit Tests**: 9 files, 155 tests
 - **Fixtures**: 1 file
-- **Total**: 7 files, ~1,780 lines
+- **Total**: 10 files, ~2,150 lines
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
-- **Task Summaries**: 4 files
-- **Total**: 10 files, ~2,000 lines
+- **Task Summaries**: 7 files
+- **Total**: 13 files, ~2,500 lines
 
 ## File Descriptions
 
@@ -137,6 +137,14 @@ Business logic services for processing.
   - `_should_skip_duplicate()`: Check deduplication cache
   - Prevents duplicate synthesis of identical text segments
 
+- **`partial_result_handler.py`** (55 statements)
+  - `PartialResultHandler`: Orchestrates partial result processing pipeline
+  - `process()`: Main processing flow with stability filtering
+  - `_should_forward_based_on_stability()`: Stability check with timeout fallback
+  - `_is_complete_sentence()`: Sentence boundary detection integration
+  - `_forward_to_translation()`: Forward to translation and mark as forwarded
+  - Implements rate limiting, buffering, and deduplication
+
 #### `shared/utils/`
 Utility functions for text processing and metrics.
 
@@ -178,6 +186,30 @@ Comprehensive unit tests with 97% coverage.
   - Edge cases: empty strings, long text, overflow
 
 - **`test_rate_limiter.py`** (15 tests)
+  - Rate limiter initialization and configuration
+  - Window-based buffering and best result selection
+  - Statistics tracking and reset
+  - Edge cases: None stability, ties, empty buffer
+
+- **`test_result_buffer.py`** (23 tests)
+  - Buffer operations: add, remove, get, mark forwarded
+  - Orphan detection and cleanup
+  - Capacity management and flush logic
+  - Edge cases: out-of-order timestamps, overflow
+
+- **`test_sentence_boundary_detector.py`** (29 tests)
+  - Punctuation detection (. ? !)
+  - Pause threshold detection
+  - Buffer timeout detection
+  - Final result handling
+  - Edge cases: whitespace, exact boundaries
+
+- **`test_translation_forwarder.py`** (included in integration tests)
+  - Forwarding with deduplication
+  - Error handling
+  - Cache integration
+
+- **`test_partial_result_handler.py`** (17 tests)
   - Rate limiter initialization (2 tests)
   - Buffering and selection (5 tests)
   - Window flushing (3 tests)

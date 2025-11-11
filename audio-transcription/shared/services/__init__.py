@@ -10,6 +10,7 @@ from .result_buffer import ResultBuffer
 from .rate_limiter import RateLimiter
 from .sentence_boundary_detector import SentenceBoundaryDetector
 from .translation_forwarder import TranslationForwarder, TranslationPipeline
+from .partial_result_handler import PartialResultHandler
 
 __all__ = [
     'DeduplicationCache',
@@ -17,5 +18,6 @@ __all__ = [
     'RateLimiter',
     'SentenceBoundaryDetector',
     'TranslationForwarder',
-    'TranslationPipeline'
+    'TranslationPipeline',
+    'PartialResultHandler'
 ]

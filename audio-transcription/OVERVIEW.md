@@ -6,7 +6,7 @@ The audio-transcription component processes real-time audio transcription result
 
 ## Key Features
 
-### Implemented (Tasks 1-5)
+### Implemented (Tasks 1-7)
 
 ✅ **Core Data Models** (Task 1)
 - Type-safe dataclasses for partial and final results
@@ -39,10 +39,20 @@ The audio-transcription component processes real-time audio transcription result
 - Final result handling (always complete)
 - Configurable thresholds
 
+✅ **Translation Forwarder** (Task 6)
+- Forwards results to translation pipeline
+- Deduplication integration
+- Error handling and logging
+
+✅ **Partial Result Handler** (Task 7)
+- Stability-based filtering (≥0.85 threshold)
+- 3-second timeout fallback for missing stability
+- Intelligent buffering and forwarding
+- Sentence boundary integration
+- Deduplication support
+
 ### Planned
 
-📋 **Translation Forwarding** (Task 6)
-📋 **Partial Result Handler** (Task 7)
 📋 **Final Result Handler** (Task 8)
 📋 **Transcription Event Handler** (Task 9)
 📋 **Main Processor** (Task 10)
@@ -53,9 +63,9 @@ The audio-transcription component processes real-time audio transcription result
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 6 of 17 tasks complete (35%)  
-**Test Coverage**: 86%  
-**Tests Passing**: 138/138
+**Progress**: 7 of 17 tasks complete (41%)  
+**Test Coverage**: 87%  
+**Tests Passing**: 155/155
 
 ## Quick Stats
 
