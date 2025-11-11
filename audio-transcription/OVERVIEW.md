@@ -98,6 +98,27 @@ The audio-transcription component processes real-time audio transcription result
 - OrphanedResultsFlushed count metric
 - CloudWatch Logs Insights query support
 
+✅ **DynamoDB Session Schema Updates** (Task 14)
+- Added partialResultsEnabled, minStabilityThreshold, maxBufferTimeout fields
+- Session creation API accepts configuration parameters
+- Configuration validation with PartialResultConfig
+- No migration needed (DynamoDB schemaless)
+
+✅ **Infrastructure Configuration** (Task 15)
+- Lambda memory increased to 512 MB (768 MB if needed)
+- Lambda timeout increased to 60 seconds
+- CloudWatch alarms for latency, dropped results, orphaned results, fallback
+- SNS topic for alarm notifications
+- Environment variables for all configuration parameters
+
+✅ **Deployment and Rollout Plan** (Task 16)
+- Feature flag service with AWS Systems Manager Parameter Store
+- Percentage-based gradual rollout (10% → 50% → 100%)
+- Consistent hashing for stable session assignment
+- Multiple rollback methods (feature flag, environment variable, code)
+- Comprehensive deployment guide and rollback runbook
+- Automated rollback testing script
+
 ✅ **DynamoDB Session Schema** (Task 14)
 - Added partial result configuration fields to Sessions table
 - Session creation API accepts configuration parameters
@@ -182,9 +203,9 @@ Event Handler → Partial Result Processor
               Translation Pipeline
 ```
 
-## Next Milestones
+## Current Status
 
-**Milestone 3** (End of Week 4): Real-time transcription with partial results working
+**Milestone 3** (End of Week 4): ✅ COMPLETE - Real-time transcription with partial results working
 - ✅ Core data models
 - ✅ Text normalization and deduplication
 - ✅ Result buffer
@@ -197,8 +218,8 @@ Event Handler → Partial Result Processor
 - ✅ CloudWatch metrics and logging
 - ✅ DynamoDB session schema
 - ✅ Infrastructure configuration
-- 📋 Deployment and rollout plan
-- 📋 Performance and quality validation
+- ✅ Deployment and rollout plan
+- 📋 Performance and quality validation (ready for deployment testing)
 
 ## Team
 

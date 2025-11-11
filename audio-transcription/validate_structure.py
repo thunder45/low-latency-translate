@@ -48,6 +48,7 @@ def validate_structure():
         # Services
         'shared/services/__init__.py',
         'shared/services/deduplication_cache.py',
+        'shared/services/feature_flag_service.py',
         'shared/services/final_result_handler.py',
         'shared/services/partial_result_handler.py',
         'shared/services/rate_limiter.py',
@@ -86,6 +87,14 @@ def validate_structure():
         'infrastructure/config/staging.json.example',
         'infrastructure/config/prod.json.example',
         
+        # Scripts
+        'scripts/manage_rollout.py',
+        'scripts/test_rollback.py',
+        
+        # Deployment documentation
+        'docs/DEPLOYMENT_ROLLOUT_GUIDE.md',
+        'docs/ROLLBACK_RUNBOOK.md',
+        
         # Task summaries
         'docs/TASK_1_SUMMARY.md',
         'docs/TASK_2_SUMMARY.md',
@@ -102,6 +111,7 @@ def validate_structure():
         'docs/TASK_13_SUMMARY.md',
         'docs/TASK_14_SUMMARY.md',
         'docs/TASK_15_SUMMARY.md',
+        'docs/TASK_16_SUMMARY.md',
     ]
     
     required_dirs = [
@@ -114,6 +124,7 @@ def validate_structure():
         'tests',
         'tests/unit',
         'docs',
+        'scripts',
         'infrastructure',
         'infrastructure/stacks',
         'infrastructure/config',

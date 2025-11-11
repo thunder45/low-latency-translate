@@ -310,14 +310,14 @@
   - Create alarm for Transcribe fallback triggered
   - _Requirements: 4.3_
 
-- [ ] 16. Create deployment and rollout plan
-- [ ] 16.1 Implement feature flag for gradual rollout
+- [x] 16. Create deployment and rollout plan
+- [x] 16.1 Implement feature flag for gradual rollout
   - Use AWS AppConfig or Parameter Store for dynamic configuration
   - Support enabling/disabling partial results without redeployment
   - Implement canary deployment (10% → 50% → 100%)
   - _Requirements: 6.3, 6.4_
 
-- [ ] 16.2 Document rollback procedures
+- [x] 16.2 Document rollback procedures
   - Create runbook for disabling partial results via environment variable
   - Document fallback behavior to final-only mode
   - Test rollback procedure

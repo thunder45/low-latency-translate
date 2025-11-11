@@ -20,6 +20,7 @@ audio-transcription/
 │   ├── services/                    # Business logic
 │   │   ├── __init__.py             # Service exports
 │   │   ├── deduplication_cache.py  # DeduplicationCache class
+│   │   ├── feature_flag_service.py # FeatureFlagService class (Task 16)
 │   │   ├── final_result_handler.py # FinalResultHandler class
 │   │   ├── partial_result_handler.py # PartialResultHandler class
 │   │   ├── partial_result_processor.py # PartialResultProcessor class
@@ -67,7 +68,13 @@ audio-transcription/
 │   ├── requirements.txt            # CDK dependencies
 │   └── README.md                   # Infrastructure documentation
 │
+├── scripts/                         # Deployment and utility scripts
+│   ├── manage_rollout.py          # Rollout management script (Task 16)
+│   └── test_rollback.py           # Rollback testing script (Task 16)
+│
 ├── docs/                            # Component documentation
+│   ├── DEPLOYMENT_ROLLOUT_GUIDE.md # Deployment and rollout guide (Task 16)
+│   ├── ROLLBACK_RUNBOOK.md        # Rollback procedures runbook (Task 16)
 │   ├── TASK_1_SUMMARY.md          # Task 1 implementation summary
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
 │   ├── TASK_3_SUMMARY.md          # Task 3 implementation summary
@@ -82,7 +89,8 @@ audio-transcription/
 │   ├── TASK_12_SUMMARY.md         # Task 12 implementation summary
 │   ├── TASK_13_SUMMARY.md         # Task 13 implementation summary
 │   ├── TASK_14_SUMMARY.md         # Task 14 implementation summary
-│   └── TASK_15_SUMMARY.md         # Task 15 implementation summary
+│   ├── TASK_15_SUMMARY.md         # Task 15 implementation summary
+│   └── TASK_16_SUMMARY.md         # Task 16 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -105,10 +113,11 @@ audio-transcription/
 ### Production Code
 - **Lambda**: 3 files, ~200 statements
 - **Models**: 4 files, ~125 statements
-- **Services**: 11 files, ~464 statements
+- **Services**: 12 files, ~660 statements (includes feature_flag_service.py)
 - **Utils**: 3 files, ~49 statements
-- **Infrastructure**: 2 files, ~350 statements
-- **Total**: 23 files, ~1,188 statements
+- **Infrastructure**: 2 files, ~400 statements (updated with SSM parameter)
+- **Scripts**: 2 files, ~650 statements (rollout management and testing)
+- **Total**: 26 files, ~2,084 statements
 
 ### Test Code
 - **Unit Tests**: 10 files, 190 tests
@@ -117,6 +126,10 @@ audio-transcription/
 - **Total**: 12 files, ~3,000 lines
 
 ### Documentation
+- **Root Documentation**: 6 files (README, OVERVIEW, PROJECT_STRUCTURE, QUICKSTART, DEPLOYMENT)
+- **Task Summaries**: 16 files (TASK_1 through TASK_16)
+- **Deployment Guides**: 2 files (DEPLOYMENT_ROLLOUT_GUIDE, ROLLBACK_RUNBOOK)
+- **Total**: 24 files, ~15,000 lines
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
 - **Task Summaries**: 12 files (TASK_1 through TASK_12)
 - **Task Summaries**: 11 files

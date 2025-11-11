@@ -15,8 +15,10 @@ from aws_cdk import (
     aws_cloudwatch as cloudwatch,
     aws_cloudwatch_actions as cw_actions,
     aws_sns as sns,
+    aws_ssm as ssm,
 )
 from constructs import Construct
+import json
 
 
 class AudioTranscriptionStack(Stack):
@@ -40,8 +42,11 @@ class AudioTranscriptionStack(Stack):
             topic_name='audio-transcription-alarms'
         )
 
+        # Create feature flag parameter for gradual rollout
+        feature_flag_parameter = self._create_feature_flag_parameter()
+
         # Create Lambda execution role
-        lambda_role = self._create_lambda_role()
+        lambda_role = self._create_lambda_role(feature_flag_parameter)
 
         # Create Audio Processor Lambda function
         audio_processor = self._create_audio_processor_lambda(lambda_role)
@@ -49,7 +54,37 @@ class AudioTranscriptionStack(Stack):
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms(audio_processor, alarm_topic)
 
-    def _create_lambda_role(self) -> iam.Role:
+    def _create_feature_flag_parameter(self) -> ssm.StringParameter:
+        """
+        Create SSM parameter for feature flag configuration.
+        
+        This parameter enables dynamic configuration of partial results processing
+        without redeployment. Supports gradual rollout with percentage-based
+        canary deployment (10% → 50% → 100%).
+        
+        Returns:
+            SSM parameter for feature flag configuration
+        """
+        # Default configuration: 100% rollout, partial results enabled
+        default_config = {
+            'enabled': True,
+            'rollout_percentage': 100,
+            'min_stability_threshold': 0.85,
+            'max_buffer_timeout': 5.0
+        }
+        
+        parameter = ssm.StringParameter(
+            self,
+            'PartialResultsFeatureFlagParameter',
+            parameter_name='/audio-transcription/partial-results/config',
+            string_value=json.dumps(default_config),
+            description='Feature flag configuration for partial results processing with gradual rollout support',
+            tier=ssm.ParameterTier.STANDARD
+        )
+        
+        return parameter
+
+    def _create_lambda_role(self, feature_flag_parameter: ssm.StringParameter) -> iam.Role:
         """
         Create IAM role for Lambda function with required permissions.
         
@@ -113,6 +148,20 @@ class AudioTranscriptionStack(Stack):
             )
         )
 
+        # SSM Parameter Store permissions (for feature flags)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'ssm:GetParameter',
+                    'ssm:GetParameters'
+                ],
+                resources=[
+                    feature_flag_parameter.parameter_arn
+                ]
+            )
+        )
+
         return role
 
     def _create_audio_processor_lambda(self, role: iam.Role) -> lambda_.Function:
@@ -136,8 +185,13 @@ class AudioTranscriptionStack(Stack):
             memory_size=512,  # Increased from 256 MB for buffers and cache
             timeout=Duration.seconds(60),  # Increased from 30s for orphan cleanup
             environment={
-                # Partial results configuration
+                # Feature flag configuration
+                'FEATURE_FLAG_PARAMETER_NAME': '/audio-transcription/partial-results/config',
+                'FEATURE_FLAG_CACHE_TTL': '60',  # Cache for 60 seconds
+                
+                # Partial results configuration (fallback if SSM unavailable)
                 'PARTIAL_RESULTS_ENABLED': 'true',
+                'ROLLOUT_PERCENTAGE': '100',
                 'MIN_STABILITY_THRESHOLD': '0.85',
                 'MAX_BUFFER_TIMEOUT': '5.0',
                 'PAUSE_THRESHOLD': '2.0',
