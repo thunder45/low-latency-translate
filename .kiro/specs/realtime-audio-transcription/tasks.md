@@ -1,17 +1,17 @@
 # Implementation Plan
 
-- [ ] 1. Create core data models and configuration
-- [ ] 1.1 Implement PartialResult and FinalResult dataclasses with validation
+- [x] 1. Create core data models and configuration
+- [x] 1.1 Implement PartialResult and FinalResult dataclasses with validation
   - Create dataclasses with all required fields (result_id, text, stability_score, timestamp, session_id, source_language)
   - Add validation methods for field constraints
   - _Requirements: 2.2, 2.3_
 
-- [ ] 1.2 Implement PartialResultConfig dataclass with validation
+- [x] 1.2 Implement PartialResultConfig dataclass with validation
   - Create configuration dataclass with all tunable parameters
   - Implement validate() method to check parameter ranges (stability 0.70-0.95, timeout 2-10s)
   - _Requirements: 6.1, 6.2, 6.5_
 
-- [ ] 1.3 Implement BufferedResult and CacheEntry dataclasses
+- [x] 1.3 Implement BufferedResult and CacheEntry dataclasses
   - Create BufferedResult with forwarded tracking flag
   - Create CacheEntry with TTL and expiration check
   - _Requirements: 2.4, 5.3_
@@ -30,7 +30,7 @@
   - Implement emergency cleanup if cache exceeds 10,000 entries
   - _Requirements: 5.2, 5.3, 5.6_
 
-- [ ]* 2.3 Write unit tests for text normalization and deduplication
+- [ ] 2.3 Write unit tests for text normalization and deduplication
   - Test normalization with various punctuation and case combinations
   - Test cache hit/miss scenarios
   - Test TTL expiration

@@ -1,0 +1,215 @@
+# Real-Time Audio Transcription with Partial Results
+
+Real-time audio transcription component with intelligent partial results processing for the Low Latency Translate platform.
+
+## Overview
+
+This component processes audio transcription results from AWS Transcribe Streaming API, implementing partial results processing to reduce end-to-end latency from 3-7 seconds to 2-4 seconds while maintaining ≥90% translation accuracy.
+
+### Key Features
+
+- **Partial Results Processing**: Forward high-stability partial results before final results arrive
+- **Intelligent Buffering**: Buffer low-stability results until they stabilize or finalize
+- **Rate Limiting**: Process maximum 5 partial results per second to control costs
+- **Deduplication**: Prevent duplicate synthesis of identical text segments
+- **Sentence Boundary Detection**: Identify complete sentences for natural speech synthesis
+- **Orphan Cleanup**: Automatically flush partial results that never finalize
+- **Configurable**: Per-session configuration of stability thresholds and timeouts
+
+## Architecture
+
+```
+AWS Transcribe → Transcription Event Handler → Partial Result Processor
+                                                      ↓
+                                              Result Buffer
+                                                      ↓
+                                          Deduplication Cache
+                                                      ↓
+                                          Translation Pipeline
+```
+
+### Components
+
+1. **Transcription Event Handler**: Receives and parses AWS Transcribe events
+2. **Partial Result Handler**: Processes partial results with stability filtering
+3. **Final Result Handler**: Processes final results and cleans up partials
+4. **Result Buffer**: Stores partial results awaiting finalization
+5. **Deduplication Cache**: Prevents duplicate synthesis
+6. **Sentence Boundary Detector**: Identifies complete sentences
+7. **Rate Limiter**: Controls processing rate (5 per second)
+8. **Translation Forwarder**: Forwards results to translation pipeline
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+
+- AWS account with Transcribe, Translate, and Polly access
+- boto3 configured with appropriate credentials
+
+### Installation
+
+```bash
+# Install dependencies
+make install
+
+# Or manually
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test file
+pytest tests/unit/test_data_models.py -v
+
+# Run with coverage
+pytest --cov=shared --cov=lambda --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code
+make format
+
+# Run linters
+make lint
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+PARTIAL_RESULTS_ENABLED=true              # Enable/disable partial results
+MIN_STABILITY_THRESHOLD=0.85              # Minimum stability to forward (0.70-0.95)
+MAX_BUFFER_TIMEOUT=5.0                    # Maximum buffer timeout (2-10 seconds)
+PAUSE_THRESHOLD=2.0                       # Pause detection threshold (seconds)
+ORPHAN_TIMEOUT=15.0                       # Orphan cleanup timeout (seconds)
+MAX_RATE_PER_SECOND=5                     # Maximum partial results per second
+DEDUP_CACHE_TTL=10                        # Deduplication cache TTL (seconds)
+```
+
+### Per-Session Configuration
+
+Sessions can override default configuration via query parameters:
+
+```
+?partialResults=true&minStability=0.90&maxBufferTimeout=7.0
+```
+
+## Development
+
+### Project Structure
+
+```
+audio-transcription/
+├── shared/                    # Shared code
+│   ├── models/               # Data models
+│   ├── data_access/          # Repository pattern
+│   ├── services/             # Business logic
+│   └── utils/                # Utilities
+├── lambda/                   # Lambda functions
+│   ├── audio_processor/      # Main audio processor
+│   └── layers/               # Lambda layers
+├── infrastructure/           # CDK infrastructure
+├── tests/                    # All tests
+│   ├── unit/                # Unit tests
+│   ├── integration/         # Integration tests
+│   └── fixtures/            # Test fixtures
+└── docs/                    # Documentation
+    └── TASK_*_SUMMARY.md    # Task summaries
+```
+
+### Development Workflow
+
+1. Create feature branch
+2. Implement changes with tests
+3. Run tests: `make test`
+4. Format code: `make format`
+5. Run linters: `make lint`
+6. Submit PR
+
+## Performance Targets
+
+- **End-to-End Latency**: 2-4 seconds (target), <5 seconds (maximum)
+- **Translation Accuracy**: ≥90% vs final-only mode
+- **Processing Overhead**: <5% of real-time duration
+- **Rate Limiting**: 5 partial results per second per session
+- **Cache Hit Rate**: >30% for translation cache
+
+## Monitoring
+
+### CloudWatch Metrics
+
+- `PartialResultProcessingLatency` - Processing time (p50, p95, p99)
+- `PartialResultsDropped` - Count of rate-limited results
+- `PartialToFinalRatio` - Ratio of partial to final results
+- `DuplicatesDetected` - Count of duplicate text segments
+- `OrphanedResultsFlushed` - Count of orphaned results
+
+### CloudWatch Alarms
+
+- End-to-end latency p95 > 5 seconds (Critical)
+- Partial results dropped > 100/minute (Warning)
+- Orphaned results > 10/session (Warning)
+- Transcribe fallback triggered (Critical)
+
+## Deployment
+
+### Development Environment
+
+```bash
+make deploy-dev
+```
+
+### Staging Environment
+
+```bash
+make deploy-staging
+```
+
+### Production Environment
+
+```bash
+make deploy-prod
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue**: Partial results not being forwarded
+- Check `MIN_STABILITY_THRESHOLD` configuration
+- Verify stability scores are available for source language
+- Check rate limiter metrics
+
+**Issue**: High duplicate detection rate
+- Verify deduplication cache TTL is appropriate
+- Check text normalization logic
+- Review CloudWatch logs for cache behavior
+
+**Issue**: Orphaned results accumulating
+- Check AWS Transcribe service health
+- Verify final results are arriving
+- Review orphan timeout configuration
+
+## Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines.
+
+## License
+
+Internal use only - Low Latency Translate Platform
+
+## References
+
+- [Requirements Document](.kiro/specs/realtime-audio-transcription/requirements.md)
+- [Design Document](.kiro/specs/realtime-audio-transcription/design.md)
+- [Implementation Tasks](.kiro/specs/realtime-audio-transcription/tasks.md)
+- [AWS Transcribe Documentation](https://docs.aws.amazon.com/transcribe/)

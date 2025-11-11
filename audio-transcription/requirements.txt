@@ -1,0 +1,18 @@
+# Core AWS dependencies
+boto3>=1.28.0
+botocore>=1.31.0
+
+# Audio processing
+librosa>=0.10.0
+numpy>=1.24.0
+soundfile>=0.12.0
+
+# JWT token validation
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# HTTP client
+requests>=2.31.0
+
+# Text similarity (for discrepancy calculation)
+python-Levenshtein>=0.21.0
