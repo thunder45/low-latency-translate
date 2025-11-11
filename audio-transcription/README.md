@@ -19,6 +19,8 @@ This component processes audio transcription results from AWS Transcribe Streami
 ## Architecture
 
 ```
+AWS Lambda Handler (sync/async bridge)
+    ↓
 AWS Transcribe Streaming API
     ↓
 TranscribeStreamHandler (async event handler)
@@ -34,16 +36,18 @@ Transcription Event Handler → Partial Result Processor
 
 ### Components
 
-1. **TranscribeStreamHandler**: Async handler for AWS Transcribe streaming events with null safety
-2. **TranscribeClientManager**: Manages Transcribe client lifecycle and configuration
-3. **Transcription Event Handler**: Receives and parses AWS Transcribe events
-4. **Partial Result Handler**: Processes partial results with stability filtering
-5. **Final Result Handler**: Processes final results and cleans up partials
-6. **Result Buffer**: Stores partial results awaiting finalization
-7. **Deduplication Cache**: Prevents duplicate synthesis
-8. **Sentence Boundary Detector**: Identifies complete sentences
-9. **Rate Limiter**: Controls processing rate (5 per second)
-10. **Translation Forwarder**: Forwards results to translation pipeline
+1. **Lambda Handler**: Bridges synchronous Lambda interface with async Transcribe processing
+2. **TranscribeStreamHandler**: Async handler for AWS Transcribe streaming events with null safety
+3. **TranscribeClientManager**: Manages Transcribe client lifecycle and configuration
+4. **Transcription Event Handler**: Receives and parses AWS Transcribe events
+5. **Partial Result Handler**: Processes partial results with stability filtering
+6. **Final Result Handler**: Processes final results and cleans up partials
+7. **Result Buffer**: Stores partial results awaiting finalization
+8. **Deduplication Cache**: Prevents duplicate synthesis
+9. **Sentence Boundary Detector**: Identifies complete sentences
+10. **Rate Limiter**: Controls processing rate (5 per second)
+11. **Translation Forwarder**: Forwards results to translation pipeline
+12. **Health Monitor**: Tracks Transcribe service health and enables fallback mode
 
 ## Getting Started
 
@@ -91,6 +95,8 @@ make lint
 
 ### Environment Variables
 
+Lambda function configuration:
+
 ```bash
 PARTIAL_RESULTS_ENABLED=true              # Enable/disable partial results
 MIN_STABILITY_THRESHOLD=0.85              # Minimum stability to forward (0.70-0.95)
@@ -98,6 +104,7 @@ MAX_BUFFER_TIMEOUT=5.0                    # Maximum buffer timeout (2-10 seconds
 PAUSE_THRESHOLD=2.0                       # Pause detection threshold (seconds)
 ORPHAN_TIMEOUT=15.0                       # Orphan cleanup timeout (seconds)
 MAX_RATE_PER_SECOND=5                     # Maximum partial results per second
+DEDUP_CACHE_TTL=10                        # Deduplication cache TTL (seconds)
 DEDUP_CACHE_TTL=10                        # Deduplication cache TTL (seconds)
 ```
 

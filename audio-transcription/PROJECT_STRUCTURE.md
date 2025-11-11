@@ -4,6 +4,13 @@
 
 ```
 audio-transcription/
+├── lambda/                          # Lambda function handlers
+│   ├── __init__.py                 # Lambda package initialization
+│   └── audio_processor/            # Audio processor Lambda
+│       ├── __init__.py             # Audio processor package
+│       ├── handler.py              # Lambda handler with async/sync bridge
+│       └── requirements.txt        # Lambda-specific dependencies
+│
 ├── shared/                          # Shared code within component
 │   ├── models/                      # Data models & types
 │   │   ├── __init__.py             # Model exports
@@ -58,13 +65,8 @@ audio-transcription/
 │   ├── TASK_8_SUMMARY.md          # Task 8 implementation summary
 │   ├── TASK_9_SUMMARY.md          # Task 9 implementation summary
 │   ├── TASK_10_SUMMARY.md         # Task 10 implementation summary
-│   └── TASK_11_SUMMARY.md         # Task 11 implementation summary
-│   ├── TASK_5_SUMMARY.md          # Task 5 implementation summary
-│   ├── TASK_6_SUMMARY.md          # Task 6 implementation summary
-│   ├── TASK_7_SUMMARY.md          # Task 7 implementation summary
-│   ├── TASK_8_SUMMARY.md          # Task 8 implementation summary
-│   ├── TASK_9_SUMMARY.md          # Task 9 implementation summary
-│   └── TASK_10_SUMMARY.md         # Task 10 implementation summary
+│   ├── TASK_11_SUMMARY.md         # Task 11 implementation summary
+│   └── TASK_12_SUMMARY.md         # Task 12 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -85,10 +87,11 @@ audio-transcription/
 ## File Counts
 
 ### Production Code
+- **Lambda**: 3 files, ~200 statements
 - **Models**: 4 files, ~125 statements
-- **Services**: 10 files, ~404 statements
+- **Services**: 11 files, ~464 statements
 - **Utils**: 3 files, ~49 statements
-- **Total**: 17 files, ~578 statements
+- **Total**: 21 files, ~838 statements
 
 ### Test Code
 - **Unit Tests**: 10 files, 190 tests
@@ -98,6 +101,7 @@ audio-transcription/
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
+- **Task Summaries**: 12 files (TASK_1 through TASK_12)
 - **Task Summaries**: 11 files
 - **Total**: 17 files, ~3,500 lines
 

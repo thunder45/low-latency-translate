@@ -81,16 +81,23 @@ The audio-transcription component processes real-time audio transcription result
 - Partial results enabled with 'high' stability level
 - 28 new tests (13 stream handler, 15 client config)
 
+✅ **Lambda Function Integration** (Task 12)
+- Lambda handler with async/sync bridge
+- Configuration loading from environment variables
+- Error handling with automatic fallback to final-only mode
+- Transcribe service health monitoring (10-second timeout)
+- CloudWatch metrics emission for fallback triggers
+- Singleton pattern for processor reuse across invocations
+
 ### Planned
 
-📋 **Lambda Integration** (Task 12)
 📋 **Monitoring & Metrics** (Task 13)
 
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 11 of 17 tasks complete (65%)  
-**Test Coverage**: 91.51%  
+**Progress**: 12 of 17 tasks complete (71%)  
+**Test Coverage**: 80.11%  
 **Tests Passing**: 225/225
 
 ## Quick Stats
@@ -138,6 +145,8 @@ make deploy-dev
 ## Architecture at a Glance
 
 ```
+Lambda Handler (sync/async bridge)
+    ↓
 AWS Transcribe Streaming API
     ↓
 TranscribeStreamHandler (async)

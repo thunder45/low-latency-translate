@@ -33,6 +33,12 @@ def validate_structure():
         'setup.py',
         '.gitignore',
         
+        # Lambda
+        'lambda/__init__.py',
+        'lambda/audio_processor/__init__.py',
+        'lambda/audio_processor/handler.py',
+        'lambda/audio_processor/requirements.txt',
+        
         # Models
         'shared/models/__init__.py',
         'shared/models/cache.py',
@@ -79,9 +85,14 @@ def validate_structure():
         'docs/TASK_7_SUMMARY.md',
         'docs/TASK_8_SUMMARY.md',
         'docs/TASK_9_SUMMARY.md',
+        'docs/TASK_10_SUMMARY.md',
+        'docs/TASK_11_SUMMARY.md',
+        'docs/TASK_12_SUMMARY.md',
     ]
     
     required_dirs = [
+        'lambda',
+        'lambda/audio_processor',
         'shared',
         'shared/models',
         'shared/services',
@@ -111,6 +122,8 @@ def validate_structure():
     
     # Verify __init__.py files in all Python packages
     python_packages = [
+        'lambda',
+        'lambda/audio_processor',
         'shared',
         'shared/models',
         'shared/services',
