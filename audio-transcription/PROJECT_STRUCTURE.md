@@ -14,7 +14,8 @@ audio-transcription/
 │   │   ├── __init__.py             # Service exports
 │   │   ├── deduplication_cache.py  # DeduplicationCache class
 │   │   ├── rate_limiter.py         # RateLimiter class
-│   │   └── result_buffer.py        # ResultBuffer class
+│   │   ├── result_buffer.py        # ResultBuffer class
+│   │   └── sentence_boundary_detector.py # SentenceBoundaryDetector class
 │   └── utils/                       # Utilities
 │       ├── __init__.py             # Utility exports
 │       ├── metrics.py              # MetricsEmitter class
@@ -27,6 +28,7 @@ audio-transcription/
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
 │   │   ├── test_rate_limiter.py    # 15 tests for rate limiter
 │   │   ├── test_result_buffer.py   # 23 tests for buffer
+│   │   ├── test_sentence_boundary_detector.py # 29 tests for sentence detector
 │   │   └── test_text_normalization.py # 21 tests for normalization
 │   ├── __init__.py
 │   └── conftest.py                 # Shared pytest fixtures
@@ -35,7 +37,8 @@ audio-transcription/
 │   ├── TASK_1_SUMMARY.md          # Task 1 implementation summary
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
 │   ├── TASK_3_SUMMARY.md          # Task 3 implementation summary
-│   └── TASK_4_SUMMARY.md          # Task 4 implementation summary
+│   ├── TASK_4_SUMMARY.md          # Task 4 implementation summary
+│   └── TASK_5_SUMMARY.md          # Task 5 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -119,6 +122,13 @@ Business logic services for processing.
   - `sort_by_timestamp()`: Chronological ordering
   - Capacity: 300 words (30 words/sec × 10 sec)
 
+- **`sentence_boundary_detector.py`** (38 statements)
+  - `SentenceBoundaryDetector`: Detect complete sentences
+  - `is_complete_sentence()`: Check if result is complete
+  - `update_last_result_time()`: Track pause detection
+  - Detection methods: punctuation (. ? !), pause (2s), buffer timeout (5s), final results
+  - Configurable thresholds for pause and buffer timeout
+
 #### `shared/utils/`
 Utility functions for text processing and metrics.
 
@@ -169,6 +179,16 @@ Comprehensive unit tests with 97% coverage.
 - **`test_result_buffer.py`** (23 tests)
   - Buffer operations (9 tests)
   - Capacity management (3 tests)
+  - Orphan detection (2 tests)
+  - Edge cases: out-of-order, session tracking
+
+- **`test_sentence_boundary_detector.py`** (29 tests)
+  - Initialization and validation (6 tests)
+  - Punctuation detection (7 tests)
+  - Pause detection (5 tests)
+  - Buffer timeout detection (3 tests)
+  - Final result handling (3 tests)
+  - Combined conditions (5 tests)
   - Orphan detection (2 tests)
   - Timestamp ordering (2 tests)
   - Edge cases: out-of-order, overflow, nonexistent results
@@ -227,6 +247,10 @@ Comprehensive unit tests with 97% coverage.
   - Rate limiter with sliding windows
   - 15 tests, 98% coverage
 
+- **`docs/TASK_5_SUMMARY.md`** (~350 lines)
+  - Sentence boundary detector with multiple detection methods
+  - 29 tests, 97% coverage
+
 ## Dependencies
 
 ### Production (`requirements.txt`)
@@ -257,23 +281,23 @@ mypy>=1.4.0                # Type checking
 ## Statistics
 
 ### Code Metrics
-- **Production Code**: ~750 lines
-- **Test Code**: ~1,780 lines
-- **Documentation**: ~2,000 lines
-- **Test/Code Ratio**: 2.4:1
-- **Coverage**: 87%
+- **Production Code**: ~790 lines
+- **Test Code**: ~2,100 lines
+- **Documentation**: ~2,350 lines
+- **Test/Code Ratio**: 2.7:1
+- **Coverage**: 89%
 
 ### File Counts
-- **Python Files**: 18 (11 production, 7 test)
-- **Documentation Files**: 10
+- **Python Files**: 20 (12 production, 8 test)
+- **Documentation Files**: 11
 - **Configuration Files**: 5
-- **Total Files**: 33
+- **Total Files**: 36
 
 ### Test Metrics
-- **Total Tests**: 109
-- **Test Execution Time**: ~10 seconds
-- **Tests per File**: ~18 average
-- **Coverage**: 87% (exceeds 80% requirement)
+- **Total Tests**: 138
+- **Test Execution Time**: ~11 seconds
+- **Tests per File**: ~17 average
+- **Coverage**: 89% (exceeds 80% requirement)
 
 ## Future Structure
 

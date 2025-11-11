@@ -214,10 +214,12 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 1: Core Data Models and Configuration](docs/TASK_1_SUMMARY.md) - 30 tests, 94% coverage
 - ✅ [Task 2: Text Normalization and Deduplication Cache](docs/TASK_2_SUMMARY.md) - 41 tests, 96% coverage
 - ✅ [Task 3: Result Buffer with Capacity Management](docs/TASK_3_SUMMARY.md) - 23 tests, 97% coverage
+- ✅ [Task 4: Rate Limiter](docs/TASK_4_SUMMARY.md) - 15 tests, 98% coverage
+- ✅ [Task 5: Sentence Boundary Detector](docs/TASK_5_SUMMARY.md) - 29 tests, 97% coverage
 
 ### In Progress
 
-- 🚧 Task 4: Rate Limiter (not started)
+- 🚧 Task 6: Translation Forwarder (not started)
 
 ### Planned
 

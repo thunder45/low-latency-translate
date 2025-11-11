@@ -6,7 +6,7 @@ The audio-transcription component processes real-time audio transcription result
 
 ## Key Features
 
-### Implemented (Tasks 1-4)
+### Implemented (Tasks 1-5)
 
 ✅ **Core Data Models** (Task 1)
 - Type-safe dataclasses for partial and final results
@@ -32,9 +32,15 @@ The audio-transcription component processes real-time audio transcription result
 - Statistics tracking (processed/dropped counts)
 - CloudWatch metrics integration
 
+✅ **Sentence Boundary Detector** (Task 5)
+- Punctuation detection (. ? !)
+- Pause threshold detection (2+ seconds)
+- Buffer timeout detection (5 seconds)
+- Final result handling (always complete)
+- Configurable thresholds
+
 ### Planned
 
-📋 **Sentence Boundary Detection** (Task 5)
 📋 **Translation Forwarding** (Task 6)
 📋 **Partial Result Handler** (Task 7)
 📋 **Final Result Handler** (Task 8)
@@ -47,9 +53,9 @@ The audio-transcription component processes real-time audio transcription result
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 4 of 17 tasks complete (24%)  
-**Test Coverage**: 87%  
-**Tests Passing**: 109/109
+**Progress**: 5 of 17 tasks complete (29%)  
+**Test Coverage**: 89%  
+**Tests Passing**: 138/138
 
 ## Quick Stats
 

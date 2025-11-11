@@ -94,20 +94,20 @@
   - Test handling of missing stability scores
   - _Requirements: 9.1, 9.2, 9.4_
 
-- [ ] 5. Implement sentence boundary detector
-- [ ] 5.1 Create SentenceBoundaryDetector class
+- [x] 5. Implement sentence boundary detector
+- [x] 5.1 Create SentenceBoundaryDetector class
   - Initialize with configurable pause threshold (2 seconds) and buffer timeout (5 seconds)
   - Track last result timestamp
   - _Requirements: 5.4, 5.5_
 
-- [ ] 5.2 Implement sentence completion detection logic
+- [x] 5.2 Implement sentence completion detection logic
   - Check for sentence-ending punctuation (. ? !)
   - Detect pause threshold (2+ seconds since last result)
   - Detect buffer timeout (5 seconds since first buffered result)
   - Handle final results (always complete)
   - _Requirements: 3.1, 5.4, 5.5_
 
-- [ ] 5.3 Write unit tests for sentence boundary detector
+- [x] 5.3 Write unit tests for sentence boundary detector
   - Test punctuation detection (. ? !)
   - Test pause threshold detection
   - Test buffer timeout detection
