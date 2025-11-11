@@ -61,19 +61,19 @@ audio-transcription/
 
 ### Production Code
 - **Models**: 4 files, ~125 statements
-- **Services**: 7 files, ~282 statements
+- **Services**: 8 files, ~344 statements
 - **Utils**: 3 files, ~49 statements
-- **Total**: 14 files, ~456 statements
+- **Total**: 15 files, ~518 statements
 
 ### Test Code
-- **Unit Tests**: 9 files, 155 tests
+- **Unit Tests**: 10 files, 170 tests
 - **Fixtures**: 1 file
-- **Total**: 10 files, ~2,150 lines
+- **Total**: 11 files, ~2,550 lines
 
 ### Documentation
 - **Root Docs**: 6 files (README, OVERVIEW, etc.)
-- **Task Summaries**: 7 files
-- **Total**: 13 files, ~2,500 lines
+- **Task Summaries**: 8 files
+- **Total**: 14 files, ~2,700 lines
 
 ## File Descriptions
 
@@ -140,6 +140,11 @@ Business logic services for processing.
 - **`partial_result_handler.py`** (55 statements)
   - `PartialResultHandler`: Orchestrates partial result processing pipeline
   - `process()`: Main processing flow with stability filtering
+
+- **`final_result_handler.py`** (62 statements)
+  - `FinalResultHandler`: Processes final transcription results
+  - `process()`: Removes partials, checks duplicates, forwards to translation
+  - `_calculate_discrepancy()`: Levenshtein distance calculation for quality monitoring
   - `_should_forward_based_on_stability()`: Stability check with timeout fallback
   - `_is_complete_sentence()`: Sentence boundary detection integration
   - `_forward_to_translation()`: Forward to translation and mark as forwarded
@@ -212,6 +217,12 @@ Comprehensive unit tests with 97% coverage.
 - **`test_partial_result_handler.py`** (17 tests)
   - Rate limiter initialization (2 tests)
   - Buffering and selection (5 tests)
+
+- **`test_final_result_handler.py`** (15 tests)
+  - Partial removal by ID and timestamp (3 tests)
+  - Deduplication cache checking (2 tests)
+  - Discrepancy calculation (4 tests)
+  - Warning logs and edge cases (6 tests)
   - Window flushing (3 tests)
   - Statistics tracking (2 tests)
   - Edge cases: missing stability, ties, empty buffers
@@ -329,15 +340,15 @@ mypy>=1.4.0                # Type checking
 
 ### File Counts
 - **Python Files**: 21 (13 production, 8 test)
-- **Documentation Files**: 12
+- **Documentation Files**: 13
 - **Configuration Files**: 5
-- **Total Files**: 38
+- **Total Files**: 40
 
 ### Test Metrics
-- **Total Tests**: 138
+- **Total Tests**: 170
 - **Test Execution Time**: ~11 seconds
 - **Tests per File**: ~17 average
-- **Coverage**: 86% (exceeds 80% requirement)
+- **Coverage**: 90% (exceeds 80% requirement)
 
 ## Future Structure
 

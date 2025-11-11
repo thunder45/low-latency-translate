@@ -42,6 +42,8 @@ def validate_structure():
         # Services
         'shared/services/__init__.py',
         'shared/services/deduplication_cache.py',
+        'shared/services/final_result_handler.py',
+        'shared/services/partial_result_handler.py',
         'shared/services/rate_limiter.py',
         'shared/services/result_buffer.py',
         'shared/services/sentence_boundary_detector.py',
@@ -58,6 +60,8 @@ def validate_structure():
         'tests/unit/__init__.py',
         'tests/unit/test_data_models.py',
         'tests/unit/test_deduplication_cache.py',
+        'tests/unit/test_final_result_handler.py',
+        'tests/unit/test_partial_result_handler.py',
         'tests/unit/test_rate_limiter.py',
         'tests/unit/test_result_buffer.py',
         'tests/unit/test_sentence_boundary_detector.py',
@@ -70,6 +74,8 @@ def validate_structure():
         'docs/TASK_4_SUMMARY.md',
         'docs/TASK_5_SUMMARY.md',
         'docs/TASK_6_SUMMARY.md',
+        'docs/TASK_7_SUMMARY.md',
+        'docs/TASK_8_SUMMARY.md',
     ]
     
     required_dirs = [
