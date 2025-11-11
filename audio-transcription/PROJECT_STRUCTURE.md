@@ -15,7 +15,8 @@ audio-transcription/
 │   │   ├── deduplication_cache.py  # DeduplicationCache class
 │   │   ├── rate_limiter.py         # RateLimiter class
 │   │   ├── result_buffer.py        # ResultBuffer class
-│   │   └── sentence_boundary_detector.py # SentenceBoundaryDetector class
+│   │   ├── sentence_boundary_detector.py # SentenceBoundaryDetector class
+│   │   └── translation_forwarder.py # TranslationForwarder class
 │   └── utils/                       # Utilities
 │       ├── __init__.py             # Utility exports
 │       ├── metrics.py              # MetricsEmitter class
@@ -128,6 +129,13 @@ Business logic services for processing.
   - `update_last_result_time()`: Track pause detection
   - Detection methods: punctuation (. ? !), pause (2s), buffer timeout (5s), final results
   - Configurable thresholds for pause and buffer timeout
+
+- **`translation_forwarder.py`** (25 statements)
+  - `TranslationForwarder`: Forward results to translation pipeline with deduplication
+  - `TranslationPipeline`: Protocol defining translation pipeline interface
+  - `forward()`: Forward text if not duplicate, update cache
+  - `_should_skip_duplicate()`: Check deduplication cache
+  - Prevents duplicate synthesis of identical text segments
 
 #### `shared/utils/`
 Utility functions for text processing and metrics.
@@ -281,23 +289,23 @@ mypy>=1.4.0                # Type checking
 ## Statistics
 
 ### Code Metrics
-- **Production Code**: ~790 lines
+- **Production Code**: ~815 lines
 - **Test Code**: ~2,100 lines
-- **Documentation**: ~2,350 lines
-- **Test/Code Ratio**: 2.7:1
-- **Coverage**: 89%
+- **Documentation**: ~2,400 lines
+- **Test/Code Ratio**: 2.6:1
+- **Coverage**: 86%
 
 ### File Counts
-- **Python Files**: 20 (12 production, 8 test)
-- **Documentation Files**: 11
+- **Python Files**: 21 (13 production, 8 test)
+- **Documentation Files**: 12
 - **Configuration Files**: 5
-- **Total Files**: 36
+- **Total Files**: 38
 
 ### Test Metrics
 - **Total Tests**: 138
 - **Test Execution Time**: ~11 seconds
 - **Tests per File**: ~17 average
-- **Coverage**: 89% (exceeds 80% requirement)
+- **Coverage**: 86% (exceeds 80% requirement)
 
 ## Future Structure
 

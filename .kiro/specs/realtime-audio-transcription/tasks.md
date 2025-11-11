@@ -114,12 +114,12 @@
   - Test final result handling
   - _Requirements: 5.4, 5.5_
 
-- [ ] 6. Implement translation forwarder
-- [ ] 6.1 Create TranslationForwarder class
+- [x] 6. Implement translation forwarder
+- [x] 6.1 Create TranslationForwarder class
   - Initialize with deduplication cache and translation pipeline reference
   - _Requirements: 5.2_
 
-- [ ] 6.2 Implement forward() method with deduplication
+- [x] 6.2 Implement forward() method with deduplication
   - Normalize text before checking cache
   - Check deduplication cache to prevent duplicate synthesis
   - Forward to translation pipeline if not duplicate

@@ -9,10 +9,13 @@ from .deduplication_cache import DeduplicationCache
 from .result_buffer import ResultBuffer
 from .rate_limiter import RateLimiter
 from .sentence_boundary_detector import SentenceBoundaryDetector
+from .translation_forwarder import TranslationForwarder, TranslationPipeline
 
 __all__ = [
     'DeduplicationCache',
     'ResultBuffer',
     'RateLimiter',
-    'SentenceBoundaryDetector'
+    'SentenceBoundaryDetector',
+    'TranslationForwarder',
+    'TranslationPipeline'
 ]

@@ -216,6 +216,7 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 3: Result Buffer with Capacity Management](docs/TASK_3_SUMMARY.md) - 23 tests, 97% coverage
 - ✅ [Task 4: Rate Limiter](docs/TASK_4_SUMMARY.md) - 15 tests, 98% coverage
 - ✅ [Task 5: Sentence Boundary Detector](docs/TASK_5_SUMMARY.md) - 29 tests, 97% coverage
+- ✅ [Task 6: Translation Forwarder](docs/TASK_6_SUMMARY.md) - 138 tests, 86% coverage
 
 ### In Progress
 
