@@ -75,6 +75,17 @@ def validate_structure():
         'tests/unit/test_text_normalization.py',
         'tests/unit/test_transcription_event_handler.py',
         
+        # Infrastructure
+        'infrastructure/stacks/__init__.py',
+        'infrastructure/stacks/audio_transcription_stack.py',
+        'infrastructure/app.py',
+        'infrastructure/cdk.json',
+        'infrastructure/requirements.txt',
+        'infrastructure/README.md',
+        'infrastructure/config/dev.json.example',
+        'infrastructure/config/staging.json.example',
+        'infrastructure/config/prod.json.example',
+        
         # Task summaries
         'docs/TASK_1_SUMMARY.md',
         'docs/TASK_2_SUMMARY.md',
@@ -88,6 +99,9 @@ def validate_structure():
         'docs/TASK_10_SUMMARY.md',
         'docs/TASK_11_SUMMARY.md',
         'docs/TASK_12_SUMMARY.md',
+        'docs/TASK_13_SUMMARY.md',
+        'docs/TASK_14_SUMMARY.md',
+        'docs/TASK_15_SUMMARY.md',
     ]
     
     required_dirs = [
@@ -100,6 +114,9 @@ def validate_structure():
         'tests',
         'tests/unit',
         'docs',
+        'infrastructure',
+        'infrastructure/stacks',
+        'infrastructure/config',
     ]
     
     # Check required directories
@@ -130,6 +147,7 @@ def validate_structure():
         'shared/utils',
         'tests',
         'tests/unit',
+        'infrastructure/stacks',
     ]
     
     for package in python_packages:

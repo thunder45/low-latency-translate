@@ -91,6 +91,32 @@ make format
 make lint
 ```
 
+## Infrastructure
+
+### AWS CDK Deployment
+
+Infrastructure is defined using AWS CDK in the `infrastructure/` directory.
+
+**Quick Deployment**:
+```bash
+cd infrastructure
+pip install -r requirements.txt
+cdk deploy --context environment=dev
+```
+
+**Components**:
+- Lambda function (512 MB memory, 60s timeout)
+- IAM roles with least privilege permissions
+- CloudWatch alarms for monitoring
+- SNS topic for alarm notifications
+
+See [infrastructure/README.md](infrastructure/README.md) for detailed deployment instructions.
+
+### Lambda Configuration
+
+**Memory**: 512 MB (increase to 768 MB if memory pressure detected)
+**Timeout**: 60 seconds (for orphan cleanup)
+
 ## Configuration
 
 ### Environment Variables

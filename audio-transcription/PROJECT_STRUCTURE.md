@@ -54,6 +54,19 @@ audio-transcription/
 │   ├── __init__.py
 │   └── conftest.py                 # Shared pytest fixtures
 │
+├── infrastructure/                   # AWS CDK infrastructure
+│   ├── stacks/                     # CDK stacks
+│   │   ├── __init__.py             # Stack package initialization
+│   │   └── audio_transcription_stack.py # Main CDK stack
+│   ├── config/                     # Environment-specific configs
+│   │   ├── dev.json.example        # Development configuration
+│   │   ├── staging.json.example    # Staging configuration
+│   │   └── prod.json.example       # Production configuration
+│   ├── app.py                      # CDK app entry point
+│   ├── cdk.json                    # CDK configuration
+│   ├── requirements.txt            # CDK dependencies
+│   └── README.md                   # Infrastructure documentation
+│
 ├── docs/                            # Component documentation
 │   ├── TASK_1_SUMMARY.md          # Task 1 implementation summary
 │   ├── TASK_2_SUMMARY.md          # Task 2 implementation summary
@@ -66,7 +79,10 @@ audio-transcription/
 │   ├── TASK_9_SUMMARY.md          # Task 9 implementation summary
 │   ├── TASK_10_SUMMARY.md         # Task 10 implementation summary
 │   ├── TASK_11_SUMMARY.md         # Task 11 implementation summary
-│   └── TASK_12_SUMMARY.md         # Task 12 implementation summary
+│   ├── TASK_12_SUMMARY.md         # Task 12 implementation summary
+│   ├── TASK_13_SUMMARY.md         # Task 13 implementation summary
+│   ├── TASK_14_SUMMARY.md         # Task 14 implementation summary
+│   └── TASK_15_SUMMARY.md         # Task 15 implementation summary
 │
 ├── .gitignore                       # Git ignore patterns
 ├── .pytest_cache/                   # Pytest cache (gitignored)
@@ -91,7 +107,8 @@ audio-transcription/
 - **Models**: 4 files, ~125 statements
 - **Services**: 11 files, ~464 statements
 - **Utils**: 3 files, ~49 statements
-- **Total**: 21 files, ~838 statements
+- **Infrastructure**: 2 files, ~350 statements
+- **Total**: 23 files, ~1,188 statements
 
 ### Test Code
 - **Unit Tests**: 10 files, 190 tests

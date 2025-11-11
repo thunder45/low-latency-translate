@@ -98,12 +98,27 @@ The audio-transcription component processes real-time audio transcription result
 - OrphanedResultsFlushed count metric
 - CloudWatch Logs Insights query support
 
+✅ **DynamoDB Session Schema** (Task 14)
+- Added partial result configuration fields to Sessions table
+- Session creation API accepts configuration parameters
+- Configuration validation with descriptive errors
+- No migration needed (DynamoDB is schemaless)
+
+✅ **Infrastructure Configuration** (Task 15)
+- AWS CDK stack for Lambda function and monitoring
+- Lambda: 512 MB memory, 60-second timeout
+- IAM roles with least privilege permissions
+- 6 CloudWatch alarms (latency, rate limiting, orphaned results, fallback, errors, throttles)
+- SNS topic for alarm notifications
+- Environment-specific configuration (dev, staging, prod)
+- Comprehensive deployment documentation
+
 ### Planned
 
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 13 of 17 tasks complete (76%)  
+**Progress**: 15 of 17 tasks complete (88%)  
 **Test Coverage**: 94.58%  
 **Tests Passing**: 225/225
 
@@ -174,10 +189,16 @@ Event Handler → Partial Result Processor
 - ✅ Text normalization and deduplication
 - ✅ Result buffer
 - ✅ Rate limiter
-- 📋 Sentence boundary detector
-- 📋 Translation forwarder
-- 📋 Partial/final result handlers
-- 📋 AWS Transcribe integration
+- ✅ Sentence boundary detector
+- ✅ Translation forwarder
+- ✅ Partial/final result handlers
+- ✅ AWS Transcribe integration
+- ✅ Lambda function integration
+- ✅ CloudWatch metrics and logging
+- ✅ DynamoDB session schema
+- ✅ Infrastructure configuration
+- 📋 Deployment and rollout plan
+- 📋 Performance and quality validation
 
 ## Team
 

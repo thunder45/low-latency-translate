@@ -296,14 +296,14 @@
   - Return error for invalid configuration
   - _Requirements: 6.1, 6.2, 6.5_
 
-- [ ] 15. Update infrastructure configuration
-- [ ] 15.1 Update Lambda function configuration
+- [x] 15. Update infrastructure configuration
+- [x] 15.1 Update Lambda function configuration
   - Increase memory to 512 MB (monitor and increase to 768 MB if needed)
   - Increase timeout to 60 seconds
   - Add environment variables for all configuration parameters
   - _Requirements: 6.1, 6.2_
 
-- [ ] 15.2 Add CloudWatch alarms for monitoring
+- [x] 15.2 Add CloudWatch alarms for monitoring
   - Create alarm for end-to-end latency p95 > 5 seconds
   - Create alarm for partial results dropped > 100/minute
   - Create alarm for orphaned results > 10/session
