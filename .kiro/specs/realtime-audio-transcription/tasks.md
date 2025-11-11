@@ -16,21 +16,21 @@
   - Create CacheEntry with TTL and expiration check
   - _Requirements: 2.4, 5.3_
 
-- [ ] 2. Implement text normalization and deduplication cache
-- [ ] 2.1 Create text normalization function
+- [x] 2. Implement text normalization and deduplication cache
+- [x] 2.1 Create text normalization function
   - Implement lowercase conversion and punctuation removal
   - Add whitespace normalization (strip and collapse multiple spaces)
   - Create SHA-256 hash generation for normalized text
   - _Requirements: 5.6, 8.5_
 
-- [ ] 2.2 Implement DeduplicationCache class
+- [x] 2.2 Implement DeduplicationCache class
   - Create in-memory cache with TTL support
   - Implement contains(), add(), and cleanup_expired() methods
   - Add opportunistic cleanup for expired entries (check every 30 seconds, similar to orphan cleanup pattern)
   - Implement emergency cleanup if cache exceeds 10,000 entries
   - _Requirements: 5.2, 5.3, 5.6_
 
-- [ ] 2.3 Write unit tests for text normalization and deduplication
+- [x] 2.3 Write unit tests for text normalization and deduplication
   - Test normalization with various punctuation and case combinations
   - Test cache hit/miss scenarios
   - Test TTL expiration
