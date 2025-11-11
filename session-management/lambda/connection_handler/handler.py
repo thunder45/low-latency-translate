@@ -178,6 +178,40 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     validate_language_code(source_language, 'sourceLanguage')
     validate_quality_tier(quality_tier)
     
+    # Extract and validate partial results configuration
+    partial_results_enabled = query_params.get('partialResults', 'true').lower() == 'true'
+    min_stability = query_params.get('minStability', '0.85')
+    max_buffer_timeout = query_params.get('maxBufferTimeout', '5.0')
+    
+    # Validate configuration parameters
+    try:
+        min_stability_threshold = float(min_stability)
+        max_buffer_timeout_seconds = float(max_buffer_timeout)
+        
+        # Validate ranges
+        if not 0.70 <= min_stability_threshold <= 0.95:
+            raise ValueError(
+                f"minStability must be between 0.70 and 0.95, got {min_stability_threshold}"
+            )
+        
+        if not 2.0 <= max_buffer_timeout_seconds <= 10.0:
+            raise ValueError(
+                f"maxBufferTimeout must be between 2.0 and 10.0, got {max_buffer_timeout_seconds}"
+            )
+    except ValueError as e:
+        logger.warning(
+            message=f"Invalid partial results configuration: {str(e)}",
+            correlation_id=connection_id,
+            operation='handle_create_session',
+            error_code='INVALID_CONFIGURATION'
+        )
+        metrics_publisher.emit_connection_error('INVALID_CONFIGURATION')
+        return error_response(
+            status_code=400,
+            error_code='INVALID_CONFIGURATION',
+            message=str(e)
+        )
+    
     # Extract user context from authorizer
     authorizer_context = event['requestContext'].get('authorizer', {})
     user_id = authorizer_context.get('userId')
@@ -218,7 +252,10 @@ def handle_create_session(event, connection_id, query_params, ip_address):
         speaker_user_id=user_id,
         source_language=source_language,
         quality_tier=quality_tier,
-        session_max_duration_hours=SESSION_MAX_DURATION_HOURS
+        session_max_duration_hours=SESSION_MAX_DURATION_HOURS,
+        partial_results_enabled=partial_results_enabled,
+        min_stability_threshold=min_stability_threshold,
+        max_buffer_timeout=max_buffer_timeout_seconds
     )
     
     # Create connection record for speaker
@@ -251,6 +288,9 @@ def handle_create_session(event, connection_id, query_params, ip_address):
             'sessionId': session_id,
             'sourceLanguage': source_language,
             'qualityTier': quality_tier,
+            'partialResultsEnabled': partial_results_enabled,
+            'minStabilityThreshold': min_stability_threshold,
+            'maxBufferTimeout': max_buffer_timeout_seconds,
             'connectionId': connection_id,
             'timestamp': int(time.time() * 1000)
         }

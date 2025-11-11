@@ -281,15 +281,15 @@
   - Emit OrphanedResultsFlushed count
   - _Requirements: 4.3, 4.4, 9.3_
 
-- [ ] 14. Update DynamoDB session schema
-- [ ] 14.1 Add partial result configuration fields to Sessions table
+- [x] 14. Update DynamoDB session schema
+- [x] 14.1 Add partial result configuration fields to Sessions table
   - Add partialResultsEnabled boolean field
   - Add minStabilityThreshold float field
   - Add maxBufferTimeout float field
   - No migration needed (DynamoDB is schemaless)
   - _Requirements: 6.3_
 
-- [ ] 14.2 Update session creation API to accept configuration parameters
+- [x] 14.2 Update session creation API to accept configuration parameters
   - Parse partialResults, minStability query parameters
   - Validate configuration using PartialResultConfig.validate()
   - Store configuration in DynamoDB session item

@@ -3,6 +3,7 @@ Repository for Sessions table operations.
 """
 import time
 import logging
+from decimal import Decimal
 from typing import Dict, Optional, Any
 
 from .dynamodb_client import DynamoDBClient
@@ -34,7 +35,10 @@ class SessionsRepository:
         speaker_user_id: str,
         source_language: str,
         quality_tier: str,
-        session_max_duration_hours: int = 2
+        session_max_duration_hours: int = 2,
+        partial_results_enabled: bool = True,
+        min_stability_threshold: float = 0.85,
+        max_buffer_timeout: float = 5.0
     ) -> Dict[str, Any]:
         """
         Create a new session record.
@@ -46,6 +50,9 @@ class SessionsRepository:
             source_language: Source language code
             quality_tier: Quality tier (standard or premium)
             session_max_duration_hours: Maximum session duration in hours
+            partial_results_enabled: Enable partial result processing
+            min_stability_threshold: Minimum stability score for forwarding partials
+            max_buffer_timeout: Maximum buffer timeout in seconds
 
         Returns:
             Created session item
@@ -65,7 +72,10 @@ class SessionsRepository:
             'createdAt': current_time,
             'isActive': True,
             'listenerCount': 0,
-            'expiresAt': expires_at
+            'expiresAt': expires_at,
+            'partialResultsEnabled': partial_results_enabled,
+            'minStabilityThreshold': Decimal(str(min_stability_threshold)),
+            'maxBufferTimeout': Decimal(str(max_buffer_timeout))
         }
 
         # Ensure session ID doesn't already exist
@@ -75,7 +85,7 @@ class SessionsRepository:
             condition_expression='attribute_not_exists(sessionId)'
         )
 
-        logger.info(f"Created session {session_id}")
+        logger.info(f"Created session {session_id} with partial results: {partial_results_enabled}")
         return session_item
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
