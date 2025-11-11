@@ -50,12 +50,14 @@ class TranslationForwarder:
     Attributes:
         dedup_cache: Deduplication cache for tracking processed text
         translation_pipeline: Translation pipeline for processing text
+        metrics_emitter: Optional metrics emitter for CloudWatch metrics
     """
     
     def __init__(
         self,
         dedup_cache: DeduplicationCache,
-        translation_pipeline: TranslationPipeline
+        translation_pipeline: TranslationPipeline,
+        metrics_emitter=None
     ):
         """
         Initialize translation forwarder.
@@ -63,9 +65,11 @@ class TranslationForwarder:
         Args:
             dedup_cache: Deduplication cache instance
             translation_pipeline: Translation pipeline instance
+            metrics_emitter: Optional metrics emitter for CloudWatch metrics
         """
         self.dedup_cache = dedup_cache
         self.translation_pipeline = translation_pipeline
+        self.metrics_emitter = metrics_emitter
         
         logger.info("TranslationForwarder initialized")
     
@@ -105,6 +109,11 @@ class TranslationForwarder:
                 f"Skipping duplicate text for session {session_id}: "
                 f"{text[:50]}..."
             )
+            
+            # Emit metric for duplicate detected
+            if self.metrics_emitter:
+                self.metrics_emitter.emit_duplicates_detected(session_id, 1)
+            
             return False
         
         # Add to cache before forwarding to prevent race conditions

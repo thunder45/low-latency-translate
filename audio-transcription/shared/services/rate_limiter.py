@@ -7,9 +7,13 @@ the limiter buffers results in 200ms windows and selects the best result (highes
 stability score) from each window.
 """
 
+import json
+import logging
 import time
 from typing import List, Optional
 from shared.models.transcription_results import PartialResult
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
@@ -20,13 +24,14 @@ class RateLimiter:
     in windows and selecting the best result from each window based on stability score.
     """
     
-    def __init__(self, max_rate: int = 5, window_ms: int = 200):
+    def __init__(self, max_rate: int = 5, window_ms: int = 200, metrics_emitter=None):
         """
         Initialize rate limiter.
         
         Args:
             max_rate: Maximum results to process per second (default: 5)
             window_ms: Window size in milliseconds (default: 200)
+            metrics_emitter: Optional metrics emitter for CloudWatch metrics
         """
         self.max_rate = max_rate
         self.window_ms = window_ms
@@ -34,6 +39,7 @@ class RateLimiter:
         self.last_window_start: float = 0
         self.processed_count = 0
         self.dropped_count = 0
+        self.metrics_emitter = metrics_emitter
     
     def should_process(self, result: PartialResult) -> bool:
         """
@@ -124,6 +130,21 @@ class RateLimiter:
         dropped = len(self.window_buffer) - 1  # All except best
         if dropped > 0:
             self.dropped_count += dropped
+            # Log dropped results at WARNING level
+            logger.warning(json.dumps({
+                'event': 'rate_limit_dropped_results',
+                'dropped_count': dropped,
+                'window_size': len(self.window_buffer),
+                'best_stability': best_result.stability_score if best_result else None,
+                'session_id': best_result.session_id if best_result else None
+            }))
+            
+            # Emit metric for dropped results
+            if self.metrics_emitter and best_result:
+                self.metrics_emitter.emit_dropped_results(
+                    best_result.session_id,
+                    dropped
+                )
         
         if best_result:
             self.processed_count += 1

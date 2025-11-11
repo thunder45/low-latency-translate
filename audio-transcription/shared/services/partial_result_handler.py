@@ -6,6 +6,7 @@ transcription results with rate limiting, stability filtering, and intelligent
 buffering before forwarding to translation.
 """
 
+import json
 import time
 import logging
 from typing import Optional
@@ -97,26 +98,37 @@ class PartialResultHandler:
             >>> result = PartialResult(...)
             >>> handler.process(result)
         """
-        logger.debug(
-            f"Processing partial result: {result.result_id} "
-            f"(stability={result.stability_score}, text={result.text[:50]}...)"
-        )
+        # Structured logging for partial result received
+        logger.debug(json.dumps({
+            'event': 'partial_result_received',
+            'result_id': result.result_id,
+            'session_id': result.session_id,
+            'stability_score': result.stability_score,
+            'text_length': len(result.text),
+            'text_preview': result.text[:50],
+            'timestamp': result.timestamp
+        }))
         
         # Step 1: Check rate limiter
         if not self._should_process_rate_limited(result):
-            logger.debug(
-                f"Rate limited: buffering result {result.result_id} "
-                f"(will process best in window)"
-            )
+            logger.debug(json.dumps({
+                'event': 'partial_result_rate_limited',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'action': 'buffered'
+            }))
             return
         
         # Step 2 & 3: Check stability threshold
         if not self._should_forward_based_on_stability(result):
-            logger.debug(
-                f"Stability too low: buffering result {result.result_id} "
-                f"(stability={result.stability_score}, "
-                f"threshold={self.config.min_stability_threshold})"
-            )
+            logger.debug(json.dumps({
+                'event': 'partial_result_low_stability',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'stability_score': result.stability_score,
+                'threshold': self.config.min_stability_threshold,
+                'action': 'buffered'
+            }))
             # Add to buffer and wait for higher stability or final result
             self.result_buffer.add(result)
             return
@@ -129,15 +141,21 @@ class PartialResultHandler:
         
         # Step 6: Check sentence boundary detector
         if self._is_complete_sentence(result, buffered_result):
-            logger.debug(
-                f"Complete sentence detected: forwarding result {result.result_id}"
-            )
+            logger.debug(json.dumps({
+                'event': 'complete_sentence_detected',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'action': 'forwarding'
+            }))
             # Step 7: Forward to translation
             self._forward_to_translation(result)
         else:
-            logger.debug(
-                f"Incomplete sentence: keeping result {result.result_id} in buffer"
-            )
+            logger.debug(json.dumps({
+                'event': 'incomplete_sentence',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'action': 'buffered'
+            }))
     
     def _should_process_rate_limited(self, result: PartialResult) -> bool:
         """
@@ -248,11 +266,16 @@ class PartialResultHandler:
             # Update sentence detector's last result time
             self.sentence_detector.update_last_result_time(result.timestamp)
             
-            logger.info(
-                f"Forwarded partial result to translation: {result.result_id} "
-                f"(text: {result.text[:50]}...)"
-            )
+            logger.debug(json.dumps({
+                'event': 'partial_result_forwarded',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'text_preview': result.text[:50],
+                'stability_score': result.stability_score
+            }))
         else:
-            logger.debug(
-                f"Skipped forwarding (duplicate): {result.result_id}"
-            )
+            logger.debug(json.dumps({
+                'event': 'partial_result_duplicate_skipped',
+                'result_id': result.result_id,
+                'session_id': result.session_id
+            }))

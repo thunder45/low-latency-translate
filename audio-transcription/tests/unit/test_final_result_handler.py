@@ -238,10 +238,10 @@ class TestFinalResultHandler:
         # Process final result
         handler.process(final)
         
-        # Verify warning was logged
+        # Verify warning was logged (now in JSON format)
         warning_calls = [
             call for call in mock_logger.warning.call_args_list
-            if 'Significant discrepancy detected' in str(call)
+            if 'significant_discrepancy_detected' in str(call)
         ]
         assert len(warning_calls) > 0
     

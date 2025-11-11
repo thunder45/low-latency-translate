@@ -6,6 +6,7 @@ transcription results, removes corresponding partial results from the buffer,
 and forwards to translation with deduplication and discrepancy tracking.
 """
 
+import json
 import logging
 import Levenshtein
 from typing import List, Optional
@@ -78,17 +79,25 @@ class FinalResultHandler:
             >>> final = FinalResult(...)
             >>> handler.process(final)
         """
-        logger.info(
-            f"Processing final result {result.result_id} for session {result.session_id}: "
-            f"{result.text[:50]}..."
-        )
+        # Structured logging for final result received
+        logger.info(json.dumps({
+            'event': 'final_result_received',
+            'result_id': result.result_id,
+            'session_id': result.session_id,
+            'text_length': len(result.text),
+            'text_preview': result.text[:50],
+            'timestamp': result.timestamp
+        }))
         
         # Remove corresponding partial results from buffer
         removed_partials = self._remove_corresponding_partials(result)
         
-        logger.debug(
-            f"Removed {len(removed_partials)} partial results for final {result.result_id}"
-        )
+        logger.debug(json.dumps({
+            'event': 'partials_removed',
+            'result_id': result.result_id,
+            'session_id': result.session_id,
+            'partials_removed_count': len(removed_partials)
+        }))
         
         # Check for discrepancies with forwarded partials
         if removed_partials:
@@ -96,10 +105,12 @@ class FinalResultHandler:
         
         # Check deduplication cache to avoid re-processing
         if self.dedup_cache.contains(result.text):
-            logger.info(
-                f"Skipping final result {result.result_id} - already processed "
-                f"(duplicate detected)"
-            )
+            logger.info(json.dumps({
+                'event': 'final_result_duplicate_skipped',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'reason': 'already_processed'
+            }))
             return
         
         # Forward to translation pipeline
@@ -110,14 +121,19 @@ class FinalResultHandler:
         )
         
         if forwarded:
-            logger.info(
-                f"Forwarded final result {result.result_id} to translation "
-                f"(length: {len(result.text)})"
-            )
+            logger.info(json.dumps({
+                'event': 'final_result_forwarded',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'text_length': len(result.text)
+            }))
         else:
-            logger.debug(
-                f"Final result {result.result_id} not forwarded (duplicate)"
-            )
+            logger.debug(json.dumps({
+                'event': 'final_result_not_forwarded',
+                'result_id': result.result_id,
+                'session_id': result.session_id,
+                'reason': 'duplicate'
+            }))
     
     def _remove_corresponding_partials(
         self,
@@ -196,17 +212,23 @@ class FinalResultHandler:
             )
             
             if discrepancy_pct > self.discrepancy_threshold:
-                logger.warning(
-                    f"Significant discrepancy detected for session {final.session_id}: "
-                    f"{discrepancy_pct:.1f}% difference between partial and final. "
-                    f"Partial: '{partial.text[:100]}...' "
-                    f"Final: '{final.text[:100]}...'"
-                )
+                logger.warning(json.dumps({
+                    'event': 'significant_discrepancy_detected',
+                    'result_id': final.result_id,
+                    'session_id': final.session_id,
+                    'discrepancy_percentage': round(discrepancy_pct, 1),
+                    'threshold': self.discrepancy_threshold,
+                    'partial_text_preview': partial.text[:100],
+                    'final_text_preview': final.text[:100]
+                }))
             else:
-                logger.debug(
-                    f"Discrepancy for {final.result_id}: {discrepancy_pct:.1f}% "
-                    f"(within threshold)"
-                )
+                logger.debug(json.dumps({
+                    'event': 'discrepancy_within_threshold',
+                    'result_id': final.result_id,
+                    'session_id': final.session_id,
+                    'discrepancy_percentage': round(discrepancy_pct, 1),
+                    'threshold': self.discrepancy_threshold
+                }))
     
     def _calculate_discrepancy(
         self,

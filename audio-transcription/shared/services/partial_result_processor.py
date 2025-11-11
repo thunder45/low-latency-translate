@@ -6,6 +6,7 @@ sub-components for processing partial and final transcription results. It
 serves as the main entry point for the partial results processing pipeline.
 """
 
+import json
 import time
 import logging
 import os
@@ -20,6 +21,7 @@ from shared.services.deduplication_cache import DeduplicationCache
 from shared.services.rate_limiter import RateLimiter
 from shared.services.sentence_boundary_detector import SentenceBoundaryDetector
 from shared.services.translation_forwarder import TranslationForwarder
+from shared.utils.metrics import MetricsEmitter
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,9 @@ class PartialResultProcessor:
         
         # Initialize sub-components in dependency order
         
+        # 0. Metrics emitter (no dependencies)
+        self.metrics = MetricsEmitter()
+        
         # 1. Result buffer (no dependencies)
         self.result_buffer = ResultBuffer(
             max_capacity_seconds=10  # 10 seconds of text
@@ -113,10 +118,11 @@ class PartialResultProcessor:
             ttl_seconds=self.config.dedup_cache_ttl_seconds
         )
         
-        # 3. Rate limiter (no dependencies)
+        # 3. Rate limiter (depends on metrics)
         self.rate_limiter = RateLimiter(
             max_rate=self.config.max_rate_per_second,
-            window_ms=200  # 200ms window
+            window_ms=200,  # 200ms window
+            metrics_emitter=self.metrics
         )
         
         # 4. Sentence boundary detector (no dependencies)
@@ -125,10 +131,11 @@ class PartialResultProcessor:
             buffer_timeout_seconds=self.config.max_buffer_timeout_seconds
         )
         
-        # 5. Translation forwarder (depends on dedup_cache)
+        # 5. Translation forwarder (depends on dedup_cache and metrics)
         self.translation_forwarder = TranslationForwarder(
             dedup_cache=self.dedup_cache,
-            translation_pipeline=translation_pipeline
+            translation_pipeline=translation_pipeline,
+            metrics_emitter=self.metrics
         )
         
         # 6. Partial result handler (depends on multiple components)
@@ -158,6 +165,11 @@ class PartialResultProcessor:
         
         # Initialize orphan cleanup tracking
         self.last_cleanup = time.time()
+        
+        # Initialize counters for partial-to-final ratio
+        self.partial_count = 0
+        self.final_count = 0
+        self.session_id = session_id
         
         logger.info(
             f"PartialResultProcessor initialized successfully with "
@@ -211,14 +223,31 @@ class PartialResultProcessor:
             >>> partial = PartialResult(...)
             >>> await processor.process_partial(partial)
         """
+        start_time = time.time()
+        
         try:
             logger.debug(
                 f"Processing partial result {result.result_id} for "
                 f"session {result.session_id}"
             )
             
+            # Increment partial count
+            self.partial_count += 1
+            
             # Process the partial result
             self.partial_handler.process(result)
+            
+            # Emit processing latency metric
+            latency_ms = (time.time() - start_time) * 1000
+            self.metrics.emit_processing_latency(result.session_id, latency_ms)
+            
+            # Emit partial-to-final ratio metric (every 10 results)
+            if (self.partial_count + self.final_count) % 10 == 0:
+                self.metrics.emit_partial_to_final_ratio(
+                    result.session_id,
+                    self.partial_count,
+                    self.final_count
+                )
             
             # Opportunistic orphan cleanup
             await self._cleanup_orphans_if_needed()
@@ -252,8 +281,19 @@ class PartialResultProcessor:
                 f"session {result.session_id}"
             )
             
+            # Increment final count
+            self.final_count += 1
+            
             # Process the final result
             self.final_handler.process(result)
+            
+            # Emit partial-to-final ratio metric (every 10 results)
+            if (self.partial_count + self.final_count) % 10 == 0:
+                self.metrics.emit_partial_to_final_ratio(
+                    result.session_id,
+                    self.partial_count,
+                    self.final_count
+                )
             
             # Opportunistic orphan cleanup
             await self._cleanup_orphans_if_needed()
@@ -294,16 +334,30 @@ class PartialResultProcessor:
             )
             
             if orphaned:
-                logger.warning(
-                    f"Found {len(orphaned)} orphaned results, flushing to translation"
-                )
+                logger.warning(json.dumps({
+                    'event': 'orphaned_results_found',
+                    'orphaned_count': len(orphaned),
+                    'timeout_seconds': self.config.orphan_timeout_seconds,
+                    'action': 'flushing_to_translation'
+                }))
+                
+                # Emit metric for orphaned results
+                # Use first result's session_id for metric
+                if orphaned:
+                    self.metrics.emit_orphaned_results_flushed(
+                        orphaned[0].session_id,
+                        len(orphaned)
+                    )
                 
                 # Flush each orphaned result to translation
                 for result in orphaned:
-                    logger.warning(
-                        f"Flushing orphaned result {result.result_id}: "
-                        f"{result.text[:50]}..."
-                    )
+                    logger.warning(json.dumps({
+                        'event': 'orphaned_result_flushed',
+                        'result_id': result.result_id,
+                        'session_id': result.session_id,
+                        'text_preview': result.text[:50],
+                        'age_seconds': round(current_time - result.added_at, 1)
+                    }))
                     
                     # Forward to translation as complete segment
                     self.translation_forwarder.forward(
