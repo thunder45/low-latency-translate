@@ -78,6 +78,13 @@ Additionally, this component includes audio quality validation to monitor and al
 - TranscribeStreamHandler for async event processing
 - Defensive null checks for all event fields
 - Stability score extraction with validation and clamping
+
+✅ **Audio Quality Validation** (Tasks 3-7 from audio-quality-validation spec)
+- SNR calculation with rolling average (Task 3)
+- Clipping detection with percentage calculation (Task 4)
+- Echo detection using autocorrelation (Task 5)
+- Silence detection with duration tracking (Task 6)
+- Quality metrics aggregation via AudioQualityAnalyzer (Task 7)
 - TranscribeClientConfig with parameter validation
 - TranscribeClientManager for client lifecycle
 - Partial results enabled with 'high' stability level
