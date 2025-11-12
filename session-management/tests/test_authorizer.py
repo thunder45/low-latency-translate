@@ -37,10 +37,8 @@ spec.loader.exec_module(authorizer_handler)
 lambda_handler = authorizer_handler.lambda_handler
 validate_jwt_token = authorizer_handler.validate_jwt_token
 get_cognito_public_keys = authorizer_handler.get_cognito_public_keys
-get_public_key_for_token = authorizer_handler.get_public_key_for_token
-generate_allow_policy = authorizer_handler.generate_allow_policy
-generate_deny_policy = authorizer_handler.generate_deny_policy
-AuthorizationError = authorizer_handler.AuthorizationError
+verify_jwt_signature = authorizer_handler.verify_jwt_signature
+deny_policy = authorizer_handler.deny_policy
 
 
 class TestJWTValidation:
@@ -60,27 +58,26 @@ class TestJWTValidation:
     
     @pytest.fixture
     def mock_jwks(self, rsa_key_pair):
-        """Create mock JWKS response."""
+        """Create mock JWKS response (already processed format)."""
         _, public_key = rsa_key_pair
         
         # Convert public key to JWK format
         public_numbers = public_key.public_numbers()
         
+        # Return in the format that get_cognito_public_keys returns (kid -> key data)
         return {
-            'keys': [
-                {
-                    'kid': 'test-key-id',
-                    'kty': 'RSA',
-                    'use': 'sig',
-                    'alg': 'RS256',
-                    'n': jwt.utils.base64url_encode(
-                        public_numbers.n.to_bytes(256, byteorder='big')
-                    ).decode('utf-8'),
-                    'e': jwt.utils.base64url_encode(
-                        public_numbers.e.to_bytes(3, byteorder='big')
-                    ).decode('utf-8')
-                }
-            ]
+            'test-key-id': {
+                'kid': 'test-key-id',
+                'kty': 'RSA',
+                'use': 'sig',
+                'alg': 'RS256',
+                'n': jwt.utils.base64url_encode(
+                    public_numbers.n.to_bytes(256, byteorder='big')
+                ).decode('utf-8'),
+                'e': jwt.utils.base64url_encode(
+                    public_numbers.e.to_bytes(3, byteorder='big')
+                ).decode('utf-8')
+            }
         }
     
     @pytest.fixture
@@ -166,8 +163,8 @@ class TestJWTValidation:
     def test_expired_token_rejection(self, expired_token, mock_jwks):
         """Test that expired tokens are rejected."""
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
-            with pytest.raises(AuthorizationError, match='Token expired'):
-                validate_jwt_token(expired_token)
+            claims = validate_jwt_token(expired_token)
+            assert claims is None  # Expired tokens return None
     
     def test_invalid_signature_rejection(self, rsa_key_pair, mock_jwks):
         """Test that tokens with invalid signatures are rejected."""
@@ -194,14 +191,14 @@ class TestJWTValidation:
         )
         
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
-            with pytest.raises(AuthorizationError, match='Invalid token signature'):
-                validate_jwt_token(invalid_token)
+            claims_result = validate_jwt_token(invalid_token)
+            assert claims_result is None  # Invalid signature returns None
     
     def test_wrong_audience_rejection(self, wrong_audience_token, mock_jwks):
         """Test that tokens with wrong audience are rejected."""
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
-            with pytest.raises(AuthorizationError, match='Invalid token audience'):
-                validate_jwt_token(wrong_audience_token)
+            claims = validate_jwt_token(wrong_audience_token)
+            assert claims is None  # Wrong audience returns None
     
     def test_missing_token_handling(self):
         """Test handling of missing token."""
@@ -221,48 +218,34 @@ class TestJWTValidation:
     def test_malformed_token_handling(self, mock_jwks):
         """Test handling of malformed tokens."""
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
-            with pytest.raises(AuthorizationError):
-                validate_jwt_token('not-a-valid-jwt-token')
+            claims = validate_jwt_token('not-a-valid-jwt-token')
+            assert claims is None  # Malformed tokens return None
 
 
 class TestIAMPolicyGeneration:
     """Test IAM policy generation."""
     
-    def test_allow_policy_structure(self):
-        """Test Allow policy has correct structure."""
-        policy = generate_allow_policy(
-            principal_id='test-user-123',
-            method_arn='arn:aws:execute-api:us-east-1:123456789012:abcdef/prod/POST/*',
-            context={'userId': 'test-user-123', 'email': 'test@example.com'}
-        )
-        
-        assert policy['principalId'] == 'test-user-123'
-        assert policy['policyDocument']['Version'] == '2012-10-17'
-        assert len(policy['policyDocument']['Statement']) == 1
-        
-        statement = policy['policyDocument']['Statement'][0]
-        assert statement['Effect'] == 'Allow'
-        assert statement['Action'] == 'execute-api:Invoke'
-        assert 'Resource' in statement
-        
-        assert policy['context']['userId'] == 'test-user-123'
-        assert policy['context']['email'] == 'test@example.com'
-    
     def test_deny_policy_structure(self):
         """Test Deny policy has correct structure."""
-        policy = generate_deny_policy(
-            principal_id='unauthorized',
-            method_arn='arn:aws:execute-api:us-east-1:123456789012:abcdef/prod/POST/*'
-        )
+        policy = deny_policy("Test reason")
         
-        assert policy['principalId'] == 'unauthorized'
+        assert policy['principalId'] == 'unknown'
         assert policy['policyDocument']['Version'] == '2012-10-17'
         assert len(policy['policyDocument']['Statement']) == 1
         
         statement = policy['policyDocument']['Statement'][0]
         assert statement['Effect'] == 'Deny'
         assert statement['Action'] == 'execute-api:Invoke'
-        assert 'Resource' in statement
+        assert statement['Resource'] == '*'
+        
+        assert policy['context']['reason'] == 'Test reason'
+    
+    def test_deny_policy_default_reason(self):
+        """Test Deny policy with default reason."""
+        policy = deny_policy()
+        
+        assert policy['principalId'] == 'unknown'
+        assert policy['context']['reason'] == 'Unauthorized'
 
 
 class TestLambdaHandler:
@@ -310,25 +293,24 @@ class TestLambdaHandler:
     
     @pytest.fixture
     def mock_jwks(self, rsa_key_pair):
-        """Create mock JWKS response."""
+        """Create mock JWKS response (already processed format)."""
         _, public_key = rsa_key_pair
         public_numbers = public_key.public_numbers()
         
+        # Return in the format that get_cognito_public_keys returns (kid -> key data)
         return {
-            'keys': [
-                {
-                    'kid': 'test-key-id',
-                    'kty': 'RSA',
-                    'use': 'sig',
-                    'alg': 'RS256',
-                    'n': jwt.utils.base64url_encode(
-                        public_numbers.n.to_bytes(256, byteorder='big')
-                    ).decode('utf-8'),
-                    'e': jwt.utils.base64url_encode(
-                        public_numbers.e.to_bytes(3, byteorder='big')
-                    ).decode('utf-8')
-                }
-            ]
+            'test-key-id': {
+                'kid': 'test-key-id',
+                'kty': 'RSA',
+                'use': 'sig',
+                'alg': 'RS256',
+                'n': jwt.utils.base64url_encode(
+                    public_numbers.n.to_bytes(256, byteorder='big')
+                ).decode('utf-8'),
+                'e': jwt.utils.base64url_encode(
+                    public_numbers.e.to_bytes(3, byteorder='big')
+                ).decode('utf-8')
+            }
         }
     
     def test_successful_authorization(self, valid_event, mock_jwks):
@@ -356,7 +338,7 @@ class TestLambdaHandler:
         
         result = lambda_handler(event, context)
         
-        assert result['principalId'] == 'unauthorized'
+        assert result['principalId'] == 'unknown'
         assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
     
     def test_invalid_token_returns_deny(self, mock_jwks):
@@ -374,7 +356,7 @@ class TestLambdaHandler:
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
             result = lambda_handler(event, context)
             
-            assert result['principalId'] == 'unauthorized'
+            assert result['principalId'] == 'unknown'
             assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
     
     def test_error_logging_on_failure(self, mock_jwks):
@@ -404,25 +386,25 @@ class TestCognitoPublicKeys:
     def test_public_keys_cached(self):
         """Test that public keys are cached."""
         mock_response = Mock()
-        mock_response.json.return_value = {'keys': [{'kid': 'test-key'}]}
-        mock_response.raise_for_status = Mock()
+        mock_response.read.return_value = json.dumps({'keys': [{'kid': 'test-key'}]}).encode()
+        mock_response.__enter__.return_value = mock_response
         
-        with patch('requests.get', return_value=mock_response) as mock_get:
-            # First call
-            keys1 = get_cognito_public_keys()
-            # Second call should use cache
-            keys2 = get_cognito_public_keys()
-            
-            # Should only call requests.get once due to caching
-            assert mock_get.call_count == 1
-            assert keys1 == keys2
+        with patch('urllib.request.urlopen', return_value=mock_response) as mock_urlopen:
+            with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool'}):
+                # First call
+                keys1 = get_cognito_public_keys()
+                # Second call should use cache
+                keys2 = get_cognito_public_keys()
+                
+                # Should only call urlopen once due to caching
+                assert mock_urlopen.call_count == 1
+                assert keys1 == keys2
     
     def test_public_key_fetch_failure(self):
         """Test handling of public key fetch failures."""
-        # Clear cache first
-        get_cognito_public_keys.cache_clear()
-        
-        import requests
-        with patch.object(requests, 'get', side_effect=requests.RequestException('Network error')):
-            with pytest.raises(AuthorizationError, match='Unable to fetch public keys'):
-                get_cognito_public_keys()
+        # Mock urlopen to raise exception
+        with patch('urllib.request.urlopen', side_effect=Exception('Network error')):
+            with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool'}):
+                keys = get_cognito_public_keys()
+                # Should return empty dict on failure
+                assert keys == {}
