@@ -37,8 +37,8 @@
   - Return ClippingResult with percentage and clipped sample count
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 5. Implement echo detection
-- [ ] 5.1 Create EchoDetector class
+- [x] 5. Implement echo detection
+- [x] 5.1 Create EchoDetector class
   - Implement `analyzers/echo_detector.py` with EchoDetector class
   - Implement detect_echo method using autocorrelation algorithm
   - Search for echo patterns in 10-500ms delay range

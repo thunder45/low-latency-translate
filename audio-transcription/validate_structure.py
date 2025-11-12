@@ -126,11 +126,15 @@ def validate_structure():
         'audio_quality/validators/format_validator.py',
         'audio_quality/analyzers/__init__.py',
         'audio_quality/analyzers/snr_calculator.py',
+        'audio_quality/analyzers/clipping_detector.py',
+        'audio_quality/analyzers/echo_detector.py',
         'audio_quality/processors/__init__.py',
         'audio_quality/notifiers/__init__.py',
         'audio_quality/docs/TASK_1_SUMMARY.md',
         'audio_quality/docs/TASK_2_SUMMARY.md',
         'audio_quality/docs/TASK_3_SUMMARY.md',
+        'audio_quality/docs/TASK_4_SUMMARY.md',
+        'audio_quality/docs/TASK_5_SUMMARY.md',
         
         # Audio Quality tests
         'tests/unit/test_audio_format_validator.py',

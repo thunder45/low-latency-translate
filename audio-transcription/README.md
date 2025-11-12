@@ -280,14 +280,15 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 2: Audio Format Validation](audio_quality/docs/TASK_2_SUMMARY.md) - AudioFormatValidator and ValidationResult, 20 tests
 - ✅ [Task 3: Implement SNR Calculation](audio_quality/docs/TASK_3_SUMMARY.md) - SNRCalculator with rolling window, 245 tests, 86% coverage
 - ✅ [Task 4: Implement Clipping Detection](audio_quality/docs/TASK_4_SUMMARY.md) - ClippingDetector with 98% threshold, 245 tests, 86% coverage
+- ✅ [Task 5: Implement Echo Detection](audio_quality/docs/TASK_5_SUMMARY.md) - EchoDetector with autocorrelation, 245 tests, 86% coverage
 
 ### In Progress
 
-- Audio Quality Validation - Tasks 1-4 complete (package structure, data models, format validation, SNR calculation, clipping detection)
+- Audio Quality Validation - Tasks 1-5 complete (package structure, data models, format validation, SNR calculation, clipping detection, echo detection)
 
 ### Planned
 
-- Audio Quality Validation - Tasks 5-8 (echo detection, silence detection, processors, integration)
+- Audio Quality Validation - Tasks 6-8 (silence detection, processors, integration)
 
 ## References
 

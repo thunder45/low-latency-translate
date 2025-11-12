@@ -138,7 +138,7 @@ Additionally, this component includes audio quality validation to monitor and al
 
 ### In Progress
 
-🔄 **Audio Quality Validation** (Tasks 1-4 of 8)
+🔄 **Audio Quality Validation** (Tasks 1-5 of 8)
 
 ✅ **Task 1: Core Data Models** (Completed)
 - Core data models implemented (QualityConfig, QualityMetrics, AudioFormat, QualityEvent, result types)
@@ -169,9 +169,18 @@ Additionally, this component includes audio quality validation to monitor and al
 - Returns ClippingResult with percentage, count, and threshold status
 - 245 tests passing, 86.17% coverage
 
+✅ **Task 5: Echo Detection** (Completed)
+- EchoDetector class with autocorrelation-based algorithm
+- Detects echo patterns in 10-500ms delay range
+- Measures echo level in dB relative to primary signal
+- Threshold-based detection (-15 dB) to avoid false positives
+- Optional downsampling to 8 kHz for performance optimization
+- Returns EchoResult with level, delay, and detection status
+- 245 tests passing, 86.17% coverage
+
 ### Planned
 
-- Audio Quality Validation Tasks 5-8 (echo detector, silence detector, processors, notifiers, integration)
+- Audio Quality Validation Tasks 6-8 (silence detector, processors, notifiers, integration)
 
 ## Current Status
 
