@@ -4,6 +4,8 @@
 
 The audio-transcription component processes real-time audio transcription results from AWS Transcribe Streaming API with intelligent partial results processing. It reduces end-to-end latency from 3-7 seconds to 2-4 seconds while maintaining ≥90% translation accuracy through stability-based filtering, deduplication, and smart buffering.
 
+Additionally, this component includes audio quality validation to monitor and alert speakers about audio quality issues (SNR, clipping, echo, silence) in real-time.
+
 ## Key Features
 
 ### Implemented (Tasks 1-9)
@@ -134,7 +136,17 @@ The audio-transcription component processes real-time audio transcription result
 - Environment-specific configuration (dev, staging, prod)
 - Comprehensive deployment documentation
 
+### In Progress
+
+🔄 **Audio Quality Validation** (Task 1 of 8)
+- Core data models implemented (QualityConfig, QualityMetrics, AudioFormat, QualityEvent, result types)
+- Package structure created (validators, analyzers, processors, notifiers)
+- Validation logic for configuration and format specifications
+- EventBridge integration for quality events
+
 ### Planned
+
+- Audio Quality Validation Tasks 2-8 (SNR calculator, clipping detector, echo detector, silence detector, processors, notifiers, integration)
 
 ## Current Status
 
