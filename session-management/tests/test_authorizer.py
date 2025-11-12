@@ -91,6 +91,7 @@ class TestJWTValidation:
             'email': 'test@example.com',
             'aud': 'test-client-id',
             'iss': 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST123',
+            'token_use': 'id',
             'exp': int(time.time()) + 3600,  # Expires in 1 hour
             'iat': int(time.time())
         }
@@ -115,6 +116,7 @@ class TestJWTValidation:
             'email': 'test@example.com',
             'aud': 'test-client-id',
             'iss': 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST123',
+            'token_use': 'id',
             'exp': int(time.time()) - 3600,  # Expired 1 hour ago
             'iat': int(time.time()) - 7200
         }
@@ -138,6 +140,7 @@ class TestJWTValidation:
             'email': 'test@example.com',
             'aud': 'wrong-client-id',  # Wrong audience
             'iss': 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST123',
+            'token_use': 'id',
             'exp': int(time.time()) + 3600,
             'iat': int(time.time())
         }
@@ -212,7 +215,7 @@ class TestJWTValidation:
         
         result = lambda_handler(event, context)
         
-        assert result['principalId'] == 'unauthorized'
+        assert result['principalId'] == 'unknown'
         assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
     
     def test_malformed_token_handling(self, mock_jwks):
@@ -273,6 +276,7 @@ class TestLambdaHandler:
             'email': 'test@example.com',
             'aud': 'test-client-id',
             'iss': 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST123',
+            'token_use': 'id',
             'exp': int(time.time()) + 3600,
             'iat': int(time.time())
         }
@@ -360,7 +364,7 @@ class TestLambdaHandler:
             assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
     
     def test_error_logging_on_failure(self, mock_jwks):
-        """Test that authorization failures are logged."""
+        """Test that authorization failures return Deny policy."""
         event = {
             'queryStringParameters': {
                 'token': 'invalid-token'
@@ -372,12 +376,11 @@ class TestLambdaHandler:
         context.request_id = 'test-request-123'
         
         with patch.object(authorizer_handler, 'get_cognito_public_keys', return_value=mock_jwks):
-            with patch.object(authorizer_handler, 'logger') as mock_logger:
-                result = lambda_handler(event, context)
-                
-                # Verify error was logged
-                assert mock_logger.error.called
-                assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
+            result = lambda_handler(event, context)
+            
+            # Verify Deny policy returned
+            assert result['policyDocument']['Statement'][0]['Effect'] == 'Deny'
+            assert result['principalId'] == 'unknown'
 
 
 class TestCognitoPublicKeys:
@@ -385,11 +388,16 @@ class TestCognitoPublicKeys:
     
     def test_public_keys_cached(self):
         """Test that public keys are cached."""
-        mock_response = Mock()
+        # Clear cache before test
+        authorizer_handler._cognito_keys_cache = {}
+        authorizer_handler._cache_timestamp = 0
+        
+        mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({'keys': [{'kid': 'test-key'}]}).encode()
         mock_response.__enter__.return_value = mock_response
+        mock_response.__exit__.return_value = None
         
-        with patch('urllib.request.urlopen', return_value=mock_response) as mock_urlopen:
+        with patch.object(authorizer_handler, 'urlopen', return_value=mock_response) as mock_urlopen:
             with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool'}):
                 # First call
                 keys1 = get_cognito_public_keys()

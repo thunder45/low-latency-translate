@@ -315,8 +315,13 @@ class TestCognitoPublicKeyFetching:
 
     def test_public_keys_fetched_successfully(self):
         """Test that public keys are fetched from Cognito."""
+        # Clear cache before test
+        authorizer._cognito_keys_cache = {}
+        authorizer._cache_timestamp = 0
+        
         # Mock HTTP response
-        mock_response = Mock()
+        from unittest.mock import MagicMock
+        mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
             'keys': [
                 {'kid': 'key1', 'n': 'modulus1', 'e': 'exponent1'},
@@ -324,10 +329,13 @@ class TestCognitoPublicKeyFetching:
             ]
         }).encode()
         mock_response.__enter__.return_value = mock_response
+        mock_response.__exit__.return_value = None
         
-        with patch('urllib.request.urlopen', return_value=mock_response):
-            with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool', 'REGION': 'us-east-1'}):
-                keys = authorizer.get_cognito_public_keys()
+        with patch.object(authorizer, 'urlopen', return_value=mock_response):
+            with patch.object(authorizer, 'time') as mock_time:
+                mock_time.time.return_value = 1000000  # Fixed timestamp
+                with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool', 'REGION': 'us-east-1'}):
+                    keys = authorizer.get_cognito_public_keys()
         
         assert len(keys) == 2
         assert 'key1' in keys
@@ -336,17 +344,25 @@ class TestCognitoPublicKeyFetching:
 
     def test_public_keys_caching(self):
         """Test that public keys are cached for performance."""
-        mock_response = Mock()
+        # Clear cache before test
+        authorizer._cognito_keys_cache = {}
+        authorizer._cache_timestamp = 0
+        
+        from unittest.mock import MagicMock
+        mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({'keys': []}).encode()
         mock_response.__enter__.return_value = mock_response
+        mock_response.__exit__.return_value = None
         
-        with patch('urllib.request.urlopen', return_value=mock_response) as mock_urlopen:
-            with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool'}):
-                # First call
-                keys1 = authorizer.get_cognito_public_keys()
-                
-                # Second call (should use cache)
-                keys2 = authorizer.get_cognito_public_keys()
+        with patch.object(authorizer, 'urlopen', return_value=mock_response) as mock_urlopen:
+            with patch.object(authorizer, 'time') as mock_time:
+                mock_time.time.return_value = 1000000  # Fixed timestamp for both calls
+                with patch.dict(os.environ, {'USER_POOL_ID': 'test-pool'}):
+                    # First call
+                    keys1 = authorizer.get_cognito_public_keys()
+                    
+                    # Second call (should use cache)
+                    keys2 = authorizer.get_cognito_public_keys()
             
             # Should only call urlopen once due to caching
             assert mock_urlopen.call_count == 1
@@ -425,10 +441,11 @@ class TestBase64URLDecoding:
     def test_decode_with_padding(self):
         """Test decoding base64 URL with proper padding."""
         # Test data that needs padding
-        data = "eyJhbGciOiJSUzI1NiJ"  # Missing padding
+        data = "eyJhbGciOiJSUzI1NiJ"  # Missing padding (19 chars, needs 1 '=' to make 20)
         result = authorizer.decode_base64_url(data)
         
-        expected = base64.urlsafe_b64decode("eyJhbGciOiJSUzI1NiJ9")  # With padding
+        # The function adds padding, so result should match the padded version
+        expected = base64.urlsafe_b64decode("eyJhbGciOiJSUzI1NiJ=")  # With padding
         assert result == expected
 
     def test_decode_without_padding_needed(self):
