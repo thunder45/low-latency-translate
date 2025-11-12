@@ -19,8 +19,10 @@ audio-transcription/
 │   │   ├── quality_metrics.py      # QualityMetrics dataclass
 │   │   ├── audio_format.py         # AudioFormat dataclass
 │   │   ├── quality_event.py        # QualityEvent dataclass
+│   │   ├── validation_result.py    # ValidationResult dataclass
 │   │   └── results.py              # ClippingResult, EchoResult, SilenceResult
 │   ├── validators/                 # Audio format validators
+│   │   ├── format_validator.py     # AudioFormatValidator class
 │   │   └── __init__.py
 │   ├── analyzers/                  # Quality analyzers (SNR, clipping, echo, silence)
 │   │   └── __init__.py
@@ -29,7 +31,8 @@ audio-transcription/
 │   ├── notifiers/                  # Quality notifiers (metrics, events)
 │   │   └── __init__.py
 │   └── docs/                       # Audio quality documentation
-│       └── TASK_1_SUMMARY.md       # Task 1 implementation summary
+│       ├── TASK_1_SUMMARY.md       # Task 1 implementation summary
+│       └── TASK_2_SUMMARY.md       # Task 2 implementation summary
 │
 ├── shared/                          # Shared code within component
 │   ├── models/                      # Data models & types
@@ -59,6 +62,7 @@ audio-transcription/
 ├── tests/                           # All tests for component
 │   ├── unit/                       # Unit tests
 │   │   ├── __init__.py
+│   │   ├── test_audio_format_validator.py # 20 tests for audio format validation
 │   │   ├── test_data_models.py     # 30 tests for models
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
 │   │   ├── test_final_result_handler.py # 15 tests for final handler

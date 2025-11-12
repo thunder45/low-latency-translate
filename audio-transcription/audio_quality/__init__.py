@@ -14,6 +14,8 @@ from audio_quality.models.quality_metrics import QualityMetrics
 from audio_quality.models.audio_format import AudioFormat
 from audio_quality.models.quality_event import QualityEvent
 from audio_quality.models.results import ClippingResult, EchoResult, SilenceResult
+from audio_quality.models.validation_result import ValidationResult
+from audio_quality.validators.format_validator import AudioFormatValidator
 
 __all__ = [
     'QualityConfig',
@@ -23,4 +25,6 @@ __all__ = [
     'ClippingResult',
     'EchoResult',
     'SilenceResult',
+    'ValidationResult',
+    'AudioFormatValidator',
 ]

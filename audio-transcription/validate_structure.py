@@ -112,6 +112,26 @@ def validate_structure():
         'docs/TASK_14_SUMMARY.md',
         'docs/TASK_15_SUMMARY.md',
         'docs/TASK_16_SUMMARY.md',
+        
+        # Audio Quality package
+        'audio_quality/__init__.py',
+        'audio_quality/models/__init__.py',
+        'audio_quality/models/audio_format.py',
+        'audio_quality/models/quality_config.py',
+        'audio_quality/models/quality_event.py',
+        'audio_quality/models/quality_metrics.py',
+        'audio_quality/models/results.py',
+        'audio_quality/models/validation_result.py',
+        'audio_quality/validators/__init__.py',
+        'audio_quality/validators/format_validator.py',
+        'audio_quality/analyzers/__init__.py',
+        'audio_quality/processors/__init__.py',
+        'audio_quality/notifiers/__init__.py',
+        'audio_quality/docs/TASK_1_SUMMARY.md',
+        'audio_quality/docs/TASK_2_SUMMARY.md',
+        
+        # Audio Quality tests
+        'tests/unit/test_audio_format_validator.py',
     ]
     
     required_dirs = [
@@ -128,6 +148,13 @@ def validate_structure():
         'infrastructure',
         'infrastructure/stacks',
         'infrastructure/config',
+        'audio_quality',
+        'audio_quality/models',
+        'audio_quality/validators',
+        'audio_quality/analyzers',
+        'audio_quality/processors',
+        'audio_quality/notifiers',
+        'audio_quality/docs',
     ]
     
     # Check required directories
@@ -159,6 +186,12 @@ def validate_structure():
         'tests',
         'tests/unit',
         'infrastructure/stacks',
+        'audio_quality',
+        'audio_quality/models',
+        'audio_quality/validators',
+        'audio_quality/analyzers',
+        'audio_quality/processors',
+        'audio_quality/notifiers',
     ]
     
     for package in python_packages:
