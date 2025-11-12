@@ -2,3 +2,23 @@
 session-management/infrastructure/config/dev.json
 session-management/infrastructure/config/staging.json
 session-management/infrastructure/config/prod.json
+
+# Lambda dependencies (installed via pip with --platform flag)
+session-management/lambda/authorizer/cryptography/
+session-management/lambda/authorizer/cryptography-*.dist-info/
+session-management/lambda/authorizer/cffi/
+session-management/lambda/authorizer/cffi-*.dist-info/
+session-management/lambda/authorizer/pycparser/
+session-management/lambda/authorizer/pycparser-*.dist-info/
+session-management/lambda/authorizer/_cffi_backend.*
+
+session-management/lambda/refresh_handler/cryptography/
+session-management/lambda/refresh_handler/cryptography-*.dist-info/
+session-management/lambda/refresh_handler/cffi/
+session-management/lambda/refresh_handler/cffi-*.dist-info/
+session-management/lambda/refresh_handler/pycparser/
+session-management/lambda/refresh_handler/pycparser-*.dist-info/
+session-management/lambda/refresh_handler/_cffi_backend.*
+
+# Lambda Layer (generated from shared/)
+session-management/lambda_layer/

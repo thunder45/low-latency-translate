@@ -1,104 +1,44 @@
 """
-Secure Lambda Authorizer with proper JWT validation.
-Uses only standard library (no external dependencies) to validate Cognito JWT tokens.
+Application-level JWT validation for refresh handler.
+
+Since WebSocket custom routes don't support API Gateway authorizers,
+we validate JWT tokens at the application level.
 """
 import json
 import logging
 import os
 import time
 import base64
-import hashlib
-import hmac
 from urllib.request import urlopen
 from typing import Dict, Any, Optional
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Cache for Cognito public keys (populated on first use)
+# Cache for Cognito public keys
 _cognito_keys_cache = {}
 _cache_timestamp = 0
 CACHE_DURATION = 3600  # 1 hour
 
 
-def lambda_handler(event, context):
+def validate_speaker_token(token: str) -> Optional[Dict[str, Any]]:
     """
-    Validate JWT token with full signature verification.
-    
-    Args:
-        event: API Gateway authorizer event
-        context: Lambda context
-        
-    Returns:
-        IAM policy (Allow/Deny) with user context
-    """
-    try:
-        # Extract token from query string
-        query_params = event.get('queryStringParameters') or {}
-        token = query_params.get('token', '')
-        
-        logger.info(f"Authorizer invoked with token present: {bool(token)}")
-        
-        if not token:
-            logger.warning("No token provided")
-            return deny_policy("No token provided")
-        
-        # Validate JWT format
-        if token.count('.') != 2:
-            logger.warning("Invalid JWT format")
-            return deny_policy("Invalid JWT format")
-        
-        # Validate JWT signature and claims
-        claims = validate_jwt_token(token)
-        
-        if not claims:
-            logger.warning("JWT validation failed")
-            return deny_policy("Invalid token")
-        
-        user_id = claims.get('sub')
-        email = claims.get('email', '')
-        
-        if not user_id:
-            logger.warning("Missing user ID in token")
-            return deny_policy("Invalid token claims")
-        
-        # Return allow policy
-        policy = {
-            'principalId': user_id,
-            'policyDocument': {
-                'Version': '2012-10-17',
-                'Statement': [
-                    {
-                        'Action': 'execute-api:Invoke',
-                        'Effect': 'Allow',
-                        'Resource': event['methodArn']
-                    }
-                ]
-            },
-            'context': {
-                'userId': user_id,
-                'email': email
-            }
-        }
-        
-        logger.info(f"Authorization successful for user {user_id[:8]}...")
-        return policy
-        
-    except Exception as e:
-        logger.error(f"Authorization error: {e}")
-        return deny_policy("Authorization failed")
-
-
-def validate_jwt_token(token: str) -> Optional[Dict[str, Any]]:
-    """
-    Validate JWT token with Cognito public key verification.
+    Validate JWT token for speaker authentication.
     
     Args:
         token: JWT token string
         
     Returns:
-        Decoded claims if valid, None otherwise
+        Claims dict if valid, None otherwise
     """
+    if not token:
+        logger.warning("No token provided")
+        return None
+    
+    # Validate JWT format
+    if token.count('.') != 2:
+        logger.warning("Invalid JWT format")
+        return None
+    
     try:
         # Parse token
         header_b64, payload_b64, signature_b64 = token.split('.')
@@ -119,7 +59,7 @@ def validate_jwt_token(token: str) -> Optional[Dict[str, Any]]:
             logger.warning(f"Unknown key ID: {kid}")
             return None
         
-        # Verify JWT signature with RSA public key
+        # 🔒 CRITICAL: Verify JWT signature with RSA public key
         public_key_data = public_keys[kid]
         if not verify_jwt_signature(header_b64, payload_b64, signature_b64, public_key_data):
             logger.warning("JWT signature verification failed")
@@ -129,15 +69,15 @@ def validate_jwt_token(token: str) -> Optional[Dict[str, Any]]:
         payload = decode_base64_url(payload_b64)
         claims = json.loads(payload)
         
-        # Validate required claims
+        # Validate claims
         if not validate_claims(claims):
             return None
         
-        logger.info("JWT validation successful (signature verified)")
+        logger.info(f"Token validated for user {claims.get('sub', '')[:8]}... (signature verified)")
         return claims
         
     except Exception as e:
-        logger.error(f"JWT validation error: {e}")
+        logger.error(f"Token validation error: {e}")
         return None
 
 
@@ -157,14 +97,6 @@ def validate_claims(claims: Dict[str, Any]) -> bool:
             logger.warning("Missing 'sub' claim")
             return False
         
-        if not claims.get('aud'):
-            logger.warning("Missing 'aud' claim")
-            return False
-        
-        if not claims.get('iss'):
-            logger.warning("Missing 'iss' claim")
-            return False
-        
         # Check expiration
         exp = claims.get('exp', 0)
         current_time = int(time.time())
@@ -176,13 +108,13 @@ def validate_claims(claims: Dict[str, Any]) -> bool:
         # Check issuer (Cognito)
         expected_issuer = f"https://cognito-idp.{os.environ.get('REGION', 'us-east-1')}.amazonaws.com/{os.environ.get('USER_POOL_ID', '')}"
         if claims.get('iss') != expected_issuer:
-            logger.warning(f"Invalid issuer: {claims.get('iss')} != {expected_issuer}")
+            logger.warning(f"Invalid issuer: {claims.get('iss')}")
             return False
         
         # Check audience (client ID)
         expected_audience = os.environ.get('CLIENT_ID', '')
         if expected_audience and claims.get('aud') != expected_audience:
-            logger.warning(f"Invalid audience: {claims.get('aud')} != {expected_audience}")
+            logger.warning(f"Invalid audience: {claims.get('aud')}")
             return False
         
         # Check token use
@@ -311,31 +243,3 @@ def decode_base64_url(data: str) -> bytes:
     # Add padding if needed
     data += '=' * (4 - len(data) % 4)
     return base64.urlsafe_b64decode(data)
-
-
-def deny_policy(reason: str = "Unauthorized") -> Dict[str, Any]:
-    """
-    Create deny policy.
-    
-    Args:
-        reason: Reason for denial
-        
-    Returns:
-        IAM deny policy
-    """
-    return {
-        'principalId': 'unknown',
-        'policyDocument': {
-            'Version': '2012-10-17',
-            'Statement': [
-                {
-                    'Action': 'execute-api:Invoke',
-                    'Effect': 'Deny',
-                    'Resource': '*'
-                }
-            ]
-        },
-        'context': {
-            'reason': reason
-        }
-    }

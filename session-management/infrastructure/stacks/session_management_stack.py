@@ -41,6 +41,9 @@ class SessionManagementStack(Stack):
         self.connections_table = self._create_connections_table()
         self.rate_limits_table = self._create_rate_limits_table()
 
+        # Create shared Lambda layer
+        self.shared_layer = self._create_shared_layer()
+
         # Create Lambda functions
         self.authorizer_function = self._create_authorizer_function()
         self.connection_handler = self._create_connection_handler()
@@ -123,8 +126,25 @@ class SessionManagementStack(Stack):
         )
         return table
 
+    def _create_shared_layer(self) -> lambda_.LayerVersion:
+        """Create Lambda Layer with shared code.
+        
+        Lambda Layers require a specific directory structure:
+        lambda_layer/python/shared/  <- shared code goes here
+        """
+        layer = lambda_.LayerVersion(
+            self,
+            "SharedLayer",
+            layer_version_name=f"session-management-shared-{self.env_name}",
+            code=lambda_.Code.from_asset("../lambda_layer"),
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_11],
+            description="Shared libraries for session management (repositories, services, utils)",
+            removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
+        )
+        return layer
+
     def _create_authorizer_function(self) -> lambda_.Function:
-        """Create Lambda Authorizer function."""
+        """Create Lambda Authorizer function with cryptography library."""
         # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
         log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
@@ -136,6 +156,7 @@ class SessionManagementStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("../lambda/authorizer"),
+            layers=[self.shared_layer],
             timeout=Duration.seconds(10),
             environment={
                 "ENV": self.env_name,
@@ -160,6 +181,7 @@ class SessionManagementStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("../lambda/connection_handler"),
+            layers=[self.shared_layer],
             timeout=Duration.seconds(30),
             environment={
                 "ENV": self.env_name,
@@ -200,6 +222,7 @@ class SessionManagementStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("../lambda/heartbeat_handler"),
+            layers=[self.shared_layer],
             timeout=Duration.seconds(10),
             environment={
                 "ENV": self.env_name,
@@ -228,6 +251,7 @@ class SessionManagementStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("../lambda/disconnect_handler"),
+            layers=[self.shared_layer],
             timeout=Duration.seconds(30),
             environment={
                 "ENV": self.env_name,
@@ -256,11 +280,17 @@ class SessionManagementStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("../lambda/refresh_handler"),
+            layers=[self.shared_layer],
             timeout=Duration.seconds(30),
             environment={
                 "ENV": self.env_name,
                 "SESSIONS_TABLE": self.sessions_table.table_name,
                 "CONNECTIONS_TABLE": self.connections_table.table_name,
+                "SESSION_MAX_DURATION_HOURS": str(self.config.get("sessionMaxDurationHours", 2)),
+                # JWT validation (application-level since WebSocket custom routes don't support authorizers)
+                "REGION": self.config.get("region", "us-east-1"),
+                "USER_POOL_ID": self.config.get("cognitoUserPoolId", ""),
+                "CLIENT_ID": self.config.get("cognitoClientId", ""),
             },
             log_retention=log_retention,
         )
@@ -353,7 +383,9 @@ class SessionManagementStack(Stack):
             target=f"integrations/{heartbeat_integration.ref}",
         )
 
-        # Create refreshConnection custom route (no authorization - WebSocket limitation)
+        # Create refreshConnection custom route
+        # Note: WebSocket custom routes don't support authorization at API Gateway level
+        # Authorization must be implemented in the Lambda function itself
         refresh_route = apigwv2.CfnRoute(
             self,
             "RefreshRoute",

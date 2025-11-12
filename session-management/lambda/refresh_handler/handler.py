@@ -3,6 +3,9 @@ Connection Refresh Handler Lambda.
 
 Handles seamless connection refresh for sessions longer than 2 hours.
 Supports both speaker and listener connection refresh with identity validation.
+
+Note: WebSocket custom routes don't support API Gateway authorizers,
+so we implement application-level JWT validation for speakers.
 """
 
 import json
@@ -13,6 +16,8 @@ from typing import Dict, Any
 
 import boto3
 from botocore.exceptions import ClientError
+
+from auth_validator import validate_speaker_token
 
 # Configure logging
 logger = logging.getLogger()
@@ -96,13 +101,21 @@ def handle_speaker_refresh(
     Returns:
         Response dict
     """
-    # Validate speaker identity matches
-    authorizer_context = event['requestContext'].get('authorizer', {})
-    user_id = authorizer_context.get('userId')
+    # Application-level JWT validation (WebSocket custom routes don't support API Gateway authorizers)
+    query_params = event.get('queryStringParameters', {})
+    token = query_params.get('token')
     
-    if not user_id:
-        return error_response(401, 'UNAUTHORIZED', 'Speaker authentication required')
+    if not token:
+        return error_response(401, 'UNAUTHORIZED', 'Speaker token required')
     
+    # Validate JWT token
+    claims = validate_speaker_token(token)
+    if not claims:
+        return error_response(401, 'UNAUTHORIZED', 'Invalid or expired token')
+    
+    user_id = claims.get('sub')
+    
+    # Validate speaker identity matches session
     if user_id != session.get('speakerUserId'):
         logger.warning(
             f"Speaker identity mismatch for session {session_id}",
