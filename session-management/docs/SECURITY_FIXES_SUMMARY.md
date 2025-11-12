@@ -56,6 +56,12 @@ def verify_jwt_signature(header_b64, payload_b64, signature_b64, public_key_data
 cryptography>=41.0.0
 ```
 
+**Installation (Linux binaries for Lambda):**
+```bash
+pip install cryptography -t session-management/lambda/authorizer/ \
+  --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11
+```
+
 ---
 
 ### 3. WebSocket Authorization Architecture
@@ -87,6 +93,14 @@ cryptography>=41.0.0
    boto3>=1.28.0
    botocore>=1.31.0
    ```
+
+5. **Manual cryptography installation** (Linux binaries)
+   ```bash
+   pip install cryptography -t session-management/lambda/refresh_handler/ \
+     --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.11
+   ```
+   
+   Note: Docker bundling was attempted but didn't work reliably. Manual installation with platform-specific binaries is the working solution.
 
 **Security Improvement:**
 - ✅ Speaker identity verified on refresh
