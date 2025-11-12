@@ -66,8 +66,8 @@
   - Aggregate results from all detectors into single QualityMetrics object
   - _Requirements: 1.1, 2.1, 3.1, 8.1_
 
-- [ ] 8. Implement metrics emission
-- [ ] 8.1 Create QualityMetricsEmitter class
+- [x] 8. Implement metrics emission
+- [x] 8.1 Create QualityMetricsEmitter class
   - Implement `notifiers/metrics_emitter.py` with QualityMetricsEmitter class
   - Implement emit_metrics method to publish to CloudWatch
   - Implement emit_quality_event method to publish to EventBridge

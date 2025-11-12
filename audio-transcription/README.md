@@ -56,6 +56,7 @@ Transcription Event Handler → Partial Result Processor
 15. **ClippingDetector**: Detects audio distortion from clipping
 16. **EchoDetector**: Detects echo patterns using autocorrelation
 17. **SilenceDetector**: Detects extended silence periods (>5 seconds)
+18. **QualityMetricsEmitter**: Publishes metrics to CloudWatch and events to EventBridge with batching
 
 ## Getting Started
 

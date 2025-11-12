@@ -34,9 +34,11 @@ audio-transcription/
 │   ├── processors/                 # Audio processors (high-pass, noise gate)
 │   │   └── __init__.py
 │   ├── notifiers/                  # Quality notifiers (metrics, events)
-│   │   └── __init__.py
+│   │   ├── __init__.py             # Notifier exports
+│   │   └── metrics_emitter.py      # QualityMetricsEmitter class (Task 8)
 │   ├── examples/                   # Example scripts
-│   │   └── demo_quality_analyzer.py # Demo of AudioQualityAnalyzer
+│   │   ├── demo_quality_analyzer.py # Demo of AudioQualityAnalyzer
+│   │   └── demo_metrics_emitter.py # Demo of QualityMetricsEmitter
 │   └── docs/                       # Audio quality documentation
 │       ├── TASK_1_SUMMARY.md       # Task 1 implementation summary
 │       ├── TASK_2_SUMMARY.md       # Task 2 implementation summary
@@ -44,7 +46,8 @@ audio-transcription/
 │       ├── TASK_4_SUMMARY.md       # Task 4 implementation summary
 │       ├── TASK_5_SUMMARY.md       # Task 5 implementation summary
 │       ├── TASK_6_SUMMARY.md       # Task 6 implementation summary
-│       └── TASK_7_SUMMARY.md       # Task 7 implementation summary
+│       ├── TASK_7_SUMMARY.md       # Task 7 implementation summary
+│       └── TASK_8_SUMMARY.md       # Task 8 implementation summary
 │
 ├── shared/                          # Shared code within component
 │   ├── models/                      # Data models & types
@@ -79,6 +82,7 @@ audio-transcription/
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
 │   │   ├── test_final_result_handler.py # 15 tests for final handler
 │   │   ├── test_partial_result_handler.py # 17 tests for partial handler
+│   │   ├── test_metrics_emitter.py # 16 tests for QualityMetricsEmitter
 │   │   ├── test_quality_analyzer.py # 18 tests for AudioQualityAnalyzer
 │   │   ├── test_rate_limiter.py    # 15 tests for rate limiter
 │   │   ├── test_result_buffer.py   # 23 tests for buffer
