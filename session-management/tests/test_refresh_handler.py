@@ -23,26 +23,32 @@ def mock_api_gateway():
 
 
 @pytest.fixture
-def lambda_handler(env_vars, mock_api_gateway):
-    """Import lambda_handler after environment is set up using importlib to avoid path pollution."""
+def handler_module(env_vars, mock_api_gateway):
+    """Import handler module after environment is set up using importlib to avoid path pollution."""
     import importlib.util
     
     # Import handler using importlib to avoid adding Lambda dir to sys.path
     # This prevents importing Linux cryptography binaries that don't work on macOS
     handler_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler/handler.py')
-    spec = importlib.util.spec_from_file_location('refresh_handler', handler_path)
-    handler_module = importlib.util.module_from_spec(spec)
+    spec = importlib.util.spec_from_file_location('refresh_handler_module', handler_path)
+    module = importlib.util.module_from_spec(spec)
     
     # Temporarily add only the handler's parent dir to sys.path for relative imports
     refresh_handler_dir = os.path.dirname(handler_path)
     sys.path.insert(0, refresh_handler_dir)
     try:
-        spec.loader.exec_module(handler_module)
+        spec.loader.exec_module(module)
     finally:
         # Remove from sys.path to avoid polluting other tests
         if refresh_handler_dir in sys.path:
             sys.path.remove(refresh_handler_dir)
     
+    return module
+
+
+@pytest.fixture
+def lambda_handler(handler_module):
+    """Get lambda_handler function from handler module."""
     return handler_module.lambda_handler
 
 
@@ -129,6 +135,7 @@ class TestSpeakerConnectionRefresh:
         self,
         mock_api_gateway,
         lambda_handler,
+        handler_module,
         dynamodb_tables,
         active_session
     ):
@@ -136,15 +143,9 @@ class TestSpeakerConnectionRefresh:
         # Arrange
         new_connection_id = 'new-conn-456'
         
-        # Import auth_validator to patch it
-        import importlib.util
-        auth_validator_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler/auth_validator.py')
-        spec = importlib.util.spec_from_file_location('auth_validator', auth_validator_path)
-        auth_validator = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(auth_validator)
-        
         # Mock the token validation to return valid claims
-        with patch.object(auth_validator, 'validate_speaker_token') as mock_validate:
+        # Patch in the handler module where it's imported
+        with patch.object(handler_module, 'validate_speaker_token') as mock_validate:
             mock_validate.return_value = {
                 'sub': active_session['speakerUserId'],
                 'email': 'speaker@example.com'
@@ -189,14 +190,15 @@ class TestSpeakerConnectionRefresh:
         self,
         mock_api_gateway,
         lambda_handler,
+        handler_module,
         dynamodb_tables,
         active_session
     ):
         """Test speaker refresh fails with wrong user ID."""
         # Arrange
         # Mock the token validation to return claims with wrong user ID
-        # Patch in the refresh_handler module where it's imported
-        with patch('refresh_handler.validate_speaker_token') as mock_validate:
+        # Patch in the handler module where it's imported
+        with patch.object(handler_module, 'validate_speaker_token') as mock_validate:
             mock_validate.return_value = {
                 'sub': 'wrong-user-999',  # Different from session owner
                 'email': 'wrong@example.com'
@@ -221,8 +223,8 @@ class TestSpeakerConnectionRefresh:
             # Assert
             assert response['statusCode'] == 403
             body = json.loads(response['body'])
-        assert body['code'] == 'FORBIDDEN'
-        assert 'identity mismatch' in body['message'].lower()
+            assert body['code'] == 'FORBIDDEN'
+            assert 'identity mismatch' in body['message'].lower()
         
         # Verify session NOT updated
         session = dynamodb_tables['sessions'].get_item(

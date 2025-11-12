@@ -208,8 +208,8 @@ def get_cognito_public_keys() -> Dict[str, Any]:
     
     current_time = int(time.time())
     
-    # Check cache
-    if _cognito_keys_cache and (current_time - _cache_timestamp) < CACHE_DURATION:
+    # Check cache (cache can be empty dict if no keys exist, so check timestamp)
+    if _cache_timestamp > 0 and (current_time - _cache_timestamp) < CACHE_DURATION:
         return _cognito_keys_cache
     
     try:

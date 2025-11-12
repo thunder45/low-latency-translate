@@ -386,12 +386,18 @@ class TestLambdaHandler:
 class TestCognitoPublicKeys:
     """Test Cognito public key fetching and caching."""
     
-    def test_public_keys_cached(self):
-        """Test that public keys are cached."""
-        # Clear cache before test
+    @pytest.fixture(autouse=True)
+    def clear_cache(self):
+        """Clear cache before each test."""
         authorizer_handler._cognito_keys_cache = {}
         authorizer_handler._cache_timestamp = 0
-        
+        yield
+        # Clean up after test
+        authorizer_handler._cognito_keys_cache = {}
+        authorizer_handler._cache_timestamp = 0
+    
+    def test_public_keys_cached(self):
+        """Test that public keys are cached."""
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({'keys': [{'kid': 'test-key'}]}).encode()
         mock_response.__enter__.return_value = mock_response

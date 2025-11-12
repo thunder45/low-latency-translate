@@ -61,40 +61,58 @@ def mock_boto3_clients(mock_api_gateway_client):
 
 
 @pytest.fixture
-def setup_handlers(env_vars, aws_credentials):
-    """Set up handler modules with proper environment."""
+def setup_handlers(env_vars, aws_credentials, mock_boto3_clients):
+    """Set up handler modules with proper environment using importlib to avoid module conflicts."""
     import sys
     import os
-    import importlib
+    import importlib.util
     
-    # Clear any cached imports
-    modules_to_remove = [k for k in sys.modules.keys() if 'handler' in k]
+    # Clear any cached handler imports and shared modules
+    modules_to_remove = [k for k in sys.modules.keys() 
+                        if 'handler' in k.lower() or 'language_validator' in k.lower()]
     for mod in modules_to_remove:
         del sys.modules[mod]
     
-    # Import handlers after environment is set
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda', 'connection_handler'))
-    import handler as connection_handler
-    sys.path.pop(0)
+    handlers = {}
     
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda', 'heartbeat_handler'))
-    import handler as heartbeat_handler
-    sys.path.pop(0)
+    # Import each handler with a unique module name to avoid conflicts
+    handler_configs = [
+        ('connection', 'connection_handler'),
+        ('heartbeat', 'heartbeat_handler'),
+        ('disconnect', 'disconnect_handler'),
+        ('refresh', 'refresh_handler')
+    ]
     
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda', 'disconnect_handler'))
-    import handler as disconnect_handler
-    sys.path.pop(0)
+    # Patch boto3.client before importing handlers so language validator gets mocked clients
+    mock_client_factory, _ = mock_boto3_clients
+    with patch('boto3.client', side_effect=mock_client_factory):
+        for handler_key, handler_dir in handler_configs:
+            handler_path = os.path.join(
+                os.path.dirname(__file__), 
+                '..', 
+                'lambda', 
+                handler_dir, 
+                'handler.py'
+            )
+            
+            # Use unique module name to avoid conflicts
+            module_name = f'{handler_dir}_module'
+            spec = importlib.util.spec_from_file_location(module_name, handler_path)
+            handler_module = importlib.util.module_from_spec(spec)
+            
+            # Temporarily add handler directory to sys.path for relative imports
+            handler_parent_dir = os.path.dirname(handler_path)
+            sys.path.insert(0, handler_parent_dir)
+            
+            try:
+                spec.loader.exec_module(handler_module)
+                handlers[handler_key] = handler_module
+            finally:
+                # Remove from sys.path
+                if handler_parent_dir in sys.path:
+                    sys.path.remove(handler_parent_dir)
     
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda', 'refresh_handler'))
-    import handler as refresh_handler
-    sys.path.pop(0)
-    
-    return {
-        'connection': connection_handler,
-        'heartbeat': heartbeat_handler,
-        'disconnect': disconnect_handler,
-        'refresh': refresh_handler
-    }
+    return handlers
 
 
 @pytest.fixture
@@ -227,7 +245,9 @@ class TestSpeakerSessionLifecycle:
         disconnect_event = {
             'requestContext': {
                 'connectionId': connection_id,
-                'eventType': 'DISCONNECT'
+                'eventType': 'DISCONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -334,7 +354,9 @@ class TestListenerLifecycle:
         disconnect_event = {
             'requestContext': {
                 'connectionId': listener_conn_id,
-                'eventType': 'DISCONNECT'
+                'eventType': 'DISCONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -434,7 +456,9 @@ class TestMultiListenerScenario:
         disconnect_event = {
             'requestContext': {
                 'connectionId': speaker_conn_id,
-                'eventType': 'DISCONNECT'
+                'eventType': 'DISCONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -541,6 +565,8 @@ class TestConnectionRefreshLongSessions:
             'requestContext': {
                 'connectionId': new_conn_id,
                 'eventType': 'CONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test',
                 'authorizer': {
                     'userId': user_id
                 }
@@ -548,11 +574,19 @@ class TestConnectionRefreshLongSessions:
             'queryStringParameters': {
                 'action': 'refreshConnection',
                 'sessionId': session_id,
-                'role': 'speaker'
+                'role': 'speaker',
+                'token': 'valid-jwt-token'  # Token required for speaker refresh
             }
         }
         
-        with patch('boto3.client', side_effect=mock_boto3_clients):
+        # Mock the token validation to return valid claims
+        # Patch in the refresh handler module where it's imported
+        with patch('boto3.client', side_effect=mock_boto3_clients), \
+             patch.object(handlers['refresh'], 'validate_speaker_token') as mock_validate:
+            mock_validate.return_value = {
+                'sub': user_id,
+                'email': 'speaker@example.com'
+            }
             refresh_response = handlers['refresh'].lambda_handler(refresh_event, {})
         
         assert refresh_response['statusCode'] == 200
@@ -668,7 +702,9 @@ class TestConnectionRefreshLongSessions:
         disconnect_event = {
             'requestContext': {
                 'connectionId': old_listener_conn,
-                'eventType': 'DISCONNECT'
+                'eventType': 'DISCONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
@@ -745,7 +781,9 @@ class TestSpeakerDisconnectNotifications:
         disconnect_event = {
             'requestContext': {
                 'connectionId': speaker_conn_id,
-                'eventType': 'DISCONNECT'
+                'eventType': 'DISCONNECT',
+                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                'stage': 'test'
             }
         }
         
