@@ -16,6 +16,7 @@ from audio_quality.models.quality_event import QualityEvent
 from audio_quality.models.results import ClippingResult, EchoResult, SilenceResult
 from audio_quality.models.validation_result import ValidationResult
 from audio_quality.validators.format_validator import AudioFormatValidator
+from audio_quality.analyzers.snr_calculator import SNRCalculator
 
 __all__ = [
     'QualityConfig',
@@ -27,4 +28,5 @@ __all__ = [
     'SilenceResult',
     'ValidationResult',
     'AudioFormatValidator',
+    'SNRCalculator',
 ]

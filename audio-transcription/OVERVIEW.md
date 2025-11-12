@@ -138,7 +138,7 @@ Additionally, this component includes audio quality validation to monitor and al
 
 ### In Progress
 
-🔄 **Audio Quality Validation** (Tasks 1-2 of 8)
+🔄 **Audio Quality Validation** (Tasks 1-3 of 8)
 
 ✅ **Task 1: Core Data Models** (Completed)
 - Core data models implemented (QualityConfig, QualityMetrics, AudioFormat, QualityEvent, result types)
@@ -153,16 +153,24 @@ Additionally, this component includes audio quality validation to monitor and al
 - Validates bit depth (16 bits), channels (1 mono), encoding (pcm_s16le)
 - 20 unit tests with 100% coverage for new code
 
+✅ **Task 3: SNR Calculation** (Completed)
+- SNRCalculator class with RMS-based algorithm
+- Rolling window support (5 seconds, 500ms intervals)
+- Noise floor estimation from silent frames (< -40 dB)
+- Signal RMS calculation and SNR in decibels
+- Support for int16 and float audio formats
+- 245 tests passing, 86.17% coverage
+
 ### Planned
 
-- Audio Quality Validation Tasks 3-8 (SNR calculator, clipping detector, echo detector, silence detector, processors, notifiers, integration)
+- Audio Quality Validation Tasks 4-8 (clipping detector, echo detector, silence detector, processors, notifiers, integration)
 
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: 15 of 17 tasks complete (88%)  
-**Test Coverage**: 94.58%  
-**Tests Passing**: 225/225
+**Progress**: 16 of 17 tasks complete (94%)  
+**Test Coverage**: 86.17%  
+**Tests Passing**: 245/245
 
 ## Quick Stats
 

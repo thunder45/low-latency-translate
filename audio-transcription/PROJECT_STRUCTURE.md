@@ -25,14 +25,16 @@ audio-transcription/
 │   │   ├── format_validator.py     # AudioFormatValidator class
 │   │   └── __init__.py
 │   ├── analyzers/                  # Quality analyzers (SNR, clipping, echo, silence)
-│   │   └── __init__.py
+│   │   ├── __init__.py             # Analyzer exports
+│   │   └── snr_calculator.py       # SNRCalculator class (Task 3)
 │   ├── processors/                 # Audio processors (high-pass, noise gate)
 │   │   └── __init__.py
 │   ├── notifiers/                  # Quality notifiers (metrics, events)
 │   │   └── __init__.py
 │   └── docs/                       # Audio quality documentation
 │       ├── TASK_1_SUMMARY.md       # Task 1 implementation summary
-│       └── TASK_2_SUMMARY.md       # Task 2 implementation summary
+│       ├── TASK_2_SUMMARY.md       # Task 2 implementation summary
+│       └── TASK_3_SUMMARY.md       # Task 3 implementation summary
 │
 ├── shared/                          # Shared code within component
 │   ├── models/                      # Data models & types
