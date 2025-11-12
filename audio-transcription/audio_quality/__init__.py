@@ -24,6 +24,14 @@ from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
 from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
 from audio_quality.processors.audio_processor import AudioProcessor
+from audio_quality.exceptions import (
+    AudioQualityError,
+    AudioFormatError,
+    QualityAnalysisError,
+    AudioProcessingError,
+    ConfigurationError
+)
+from audio_quality.utils.graceful_degradation import analyze_with_fallback
 
 __all__ = [
     'QualityConfig',
@@ -43,4 +51,10 @@ __all__ = [
     'QualityMetricsEmitter',
     'SpeakerNotifier',
     'AudioProcessor',
+    'AudioQualityError',
+    'AudioFormatError',
+    'QualityAnalysisError',
+    'AudioProcessingError',
+    'ConfigurationError',
+    'analyze_with_fallback',
 ]

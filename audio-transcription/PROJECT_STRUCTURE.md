@@ -38,6 +38,10 @@ audio-transcription/
 │   │   ├── __init__.py             # Notifier exports
 │   │   ├── metrics_emitter.py      # QualityMetricsEmitter class (Task 8)
 │   │   └── speaker_notifier.py     # SpeakerNotifier class (Task 9)
+│   ├── utils/                      # Utility functions
+│   │   ├── __init__.py             # Utils exports
+│   │   └── graceful_degradation.py # analyze_with_fallback function (Task 12)
+│   ├── exceptions.py               # Custom exception classes (Task 12)
 │   ├── examples/                   # Example scripts
 │   │   ├── demo_quality_analyzer.py # Demo of AudioQualityAnalyzer
 │   │   ├── demo_metrics_emitter.py # Demo of QualityMetricsEmitter
@@ -53,7 +57,8 @@ audio-transcription/
 │       ├── TASK_7_SUMMARY.md       # Task 7 implementation summary
 │       ├── TASK_8_SUMMARY.md       # Task 8 implementation summary
 │       ├── TASK_9_SUMMARY.md       # Task 9 implementation summary
-│       └── TASK_10_SUMMARY.md      # Task 10 implementation summary
+│       ├── TASK_10_SUMMARY.md      # Task 10 implementation summary
+│       └── TASK_12_SUMMARY.md      # Task 12 implementation summary
 │
 ├── shared/                          # Shared code within component
 │
@@ -88,6 +93,7 @@ audio-transcription/
 │   │   ├── test_audio_format_validator.py # 20 tests for audio format validation
 │   │   ├── test_data_models.py     # 30 tests for models
 │   │   ├── test_deduplication_cache.py # 20 tests for cache
+│   │   ├── test_error_handling.py  # 20 tests for error handling (Task 12)
 │   │   ├── test_final_result_handler.py # 15 tests for final handler
 │   │   ├── test_partial_result_handler.py # 17 tests for partial handler
 │   │   ├── test_metrics_emitter.py # 16 tests for QualityMetricsEmitter

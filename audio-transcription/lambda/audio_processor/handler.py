@@ -23,6 +23,13 @@ from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.models.quality_config import QualityConfig
 from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
 from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
+from audio_quality.utils.graceful_degradation import analyze_with_fallback
+from audio_quality.exceptions import (
+    AudioQualityError,
+    AudioFormatError,
+    QualityAnalysisError,
+    ConfigurationError
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -125,8 +132,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 metrics_emitter = QualityMetricsEmitter(cloudwatch, eventbridge)
                 speaker_notifier = SpeakerNotifier(websocket_manager=None)  # WebSocket manager to be injected
                 logger.info("Audio quality components initialized successfully")
+            except ConfigurationError as e:
+                logger.error(
+                    f"Invalid audio quality configuration: {e}. "
+                    f"Audio quality validation will be disabled.",
+                    exc_info=True
+                )
+                # Continue without quality validation if configuration is invalid
+                quality_analyzer = None
+                metrics_emitter = None
+                speaker_notifier = None
             except Exception as e:
-                logger.error(f"Failed to initialize audio quality components: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to initialize audio quality components: {e}. "
+                    f"Audio quality validation will be disabled.",
+                    exc_info=True
+                )
                 # Continue without quality validation if initialization fails
                 quality_analyzer = None
                 metrics_emitter = None
@@ -220,9 +241,15 @@ async def process_audio_async(
                         audio_bytes = base64.b64decode(audio_data_b64)
                         audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
                         
-                        # Analyze audio quality
+                        # Analyze audio quality with graceful degradation
+                        # This will return default metrics if analysis fails
                         logger.debug(f"Analyzing audio quality for session {session_id}")
-                        quality_metrics = quality_analyzer.analyze(audio_array, sample_rate)
+                        quality_metrics = analyze_with_fallback(
+                            analyzer=quality_analyzer,
+                            audio_chunk=audio_array,
+                            sample_rate=sample_rate,
+                            stream_id=session_id
+                        )
                         
                         # Emit metrics to CloudWatch
                         if metrics_emitter is not None:
@@ -233,7 +260,8 @@ async def process_audio_async(
                                 logger.warning(f"Failed to emit quality metrics: {e}")
                         
                         # Send speaker notifications for threshold violations
-                        if speaker_notifier is not None and connection_id:
+                        # Only send notifications if we have real metrics (not fallback defaults)
+                        if speaker_notifier is not None and connection_id and quality_metrics.snr_db > 0:
                             try:
                                 quality_config = quality_analyzer.config
                                 
@@ -284,8 +312,13 @@ async def process_audio_async(
                                 logger.warning(f"Failed to send speaker notifications: {e}")
                         
                     except Exception as e:
-                        logger.warning(f"Audio quality analysis failed: {e}", exc_info=True)
-                        # Continue processing even if quality analysis fails
+                        # Catch any unexpected errors during audio decoding or processing
+                        logger.error(
+                            f"Failed to process audio quality for session {session_id}: {e}",
+                            exc_info=True
+                        )
+                        # Continue processing even if quality analysis completely fails
+                        quality_metrics = None
                 
                 # In a real implementation, this would:
                 # 1. Get audio data from event
@@ -457,7 +490,7 @@ def _load_quality_config_from_environment() -> QualityConfig:
         QualityConfig with values from environment or defaults
     
     Raises:
-        ValueError: If configuration validation fails
+        ConfigurationError: If configuration validation fails
     """
     try:
         config = QualityConfig(
@@ -480,7 +513,10 @@ def _load_quality_config_from_environment() -> QualityConfig:
         # Validate configuration
         errors = config.validate()
         if errors:
-            raise ValueError(f"Invalid quality configuration: {', '.join(errors)}")
+            raise ConfigurationError(
+                "Invalid quality configuration",
+                validation_errors=errors
+            )
         
         logger.info(
             f"Quality configuration loaded: snr_threshold={config.snr_threshold_db}dB, "
@@ -490,12 +526,15 @@ def _load_quality_config_from_environment() -> QualityConfig:
         
         return config
         
-    except ValueError as e:
-        logger.error(f"Invalid quality configuration: {e}")
+    except ConfigurationError:
+        # Re-raise ConfigurationError as-is
         raise
+    except ValueError as e:
+        logger.error(f"Invalid quality configuration value: {e}")
+        raise ConfigurationError(f"Invalid configuration value: {e}")
     except Exception as e:
         logger.error(f"Error loading quality configuration: {e}", exc_info=True)
-        raise ValueError(f"Failed to load quality configuration: {e}")
+        raise ConfigurationError(f"Failed to load quality configuration: {e}")
 
 
 def _enable_fallback_mode(reason: str, session_id: str = "") -> None:
