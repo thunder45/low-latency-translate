@@ -9,21 +9,23 @@ continues to operate even when quality validation encounters issues.
 import logging
 import time
 import numpy as np
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from audio_quality.models.quality_metrics import QualityMetrics
-from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.exceptions import (
     AudioQualityError,
     AudioFormatError,
     QualityAnalysisError
 )
 
+if TYPE_CHECKING:
+    from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
+
 logger = logging.getLogger(__name__)
 
 
 def analyze_with_fallback(
-    analyzer: AudioQualityAnalyzer,
+    analyzer: 'AudioQualityAnalyzer',
     audio_chunk: np.ndarray,
     sample_rate: int,
     stream_id: str = 'unknown',

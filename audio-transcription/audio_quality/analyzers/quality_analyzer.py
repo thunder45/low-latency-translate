@@ -16,6 +16,12 @@ from audio_quality.analyzers.snr_calculator import SNRCalculator
 from audio_quality.analyzers.clipping_detector import ClippingDetector
 from audio_quality.analyzers.echo_detector import EchoDetector
 from audio_quality.analyzers.silence_detector import SilenceDetector
+from audio_quality.utils.structured_logger import (
+    log_analysis_operation,
+    log_quality_metrics,
+    log_quality_issue,
+)
+from audio_quality.utils.xray_tracing import trace_audio_analysis, XRayContext
 
 
 class AudioQualityAnalyzer:
@@ -81,6 +87,7 @@ class AudioQualityAnalyzer:
             duration_threshold_s=self.config.silence_duration_threshold_s
         )
     
+    @trace_audio_analysis
     def analyze(
         self,
         audio_chunk: np.ndarray,
@@ -144,28 +151,47 @@ class AudioQualityAnalyzer:
         if timestamp is None:
             timestamp = time.time()
         
+        # Track overall analysis time
+        start_time = time.perf_counter()
+        
         # Run all detectors
         
         # 1. Calculate SNR
-        snr_db = self.snr_calculator.calculate_snr(audio_chunk)
-        snr_rolling_avg = self.snr_calculator.get_rolling_average()
+        with XRayContext('calculate_snr', {'stream_id': stream_id}):
+            snr_start = time.perf_counter()
+            snr_db = self.snr_calculator.calculate_snr(audio_chunk)
+            snr_rolling_avg = self.snr_calculator.get_rolling_average()
+            snr_duration = (time.perf_counter() - snr_start) * 1000
+            log_analysis_operation(stream_id, 'calculate_snr', snr_duration)
         
         # If no rolling average yet (first call), use current SNR
         if snr_rolling_avg is None:
             snr_rolling_avg = snr_db
         
         # 2. Detect clipping
-        clipping_result = self.clipping_detector.detect_clipping(
-            audio_chunk,
-            bit_depth=16,
-            clipping_threshold_percent=self.config.clipping_threshold_percent
-        )
+        with XRayContext('detect_clipping', {'stream_id': stream_id}):
+            clipping_start = time.perf_counter()
+            clipping_result = self.clipping_detector.detect_clipping(
+                audio_chunk,
+                bit_depth=16,
+                clipping_threshold_percent=self.config.clipping_threshold_percent
+            )
+            clipping_duration = (time.perf_counter() - clipping_start) * 1000
+            log_analysis_operation(stream_id, 'detect_clipping', clipping_duration)
         
         # 3. Detect echo
-        echo_result = self.echo_detector.detect_echo(audio_chunk, sample_rate)
+        with XRayContext('detect_echo', {'stream_id': stream_id}):
+            echo_start = time.perf_counter()
+            echo_result = self.echo_detector.detect_echo(audio_chunk, sample_rate)
+            echo_duration = (time.perf_counter() - echo_start) * 1000
+            log_analysis_operation(stream_id, 'detect_echo', echo_duration)
         
         # 4. Detect silence
-        silence_result = self.silence_detector.detect_silence(audio_chunk, timestamp)
+        with XRayContext('detect_silence', {'stream_id': stream_id}):
+            silence_start = time.perf_counter()
+            silence_result = self.silence_detector.detect_silence(audio_chunk, timestamp)
+            silence_duration = (time.perf_counter() - silence_start) * 1000
+            log_analysis_operation(stream_id, 'detect_silence', silence_duration)
         
         # 5. Aggregate results into QualityMetrics
         metrics = QualityMetrics(
@@ -187,6 +213,56 @@ class AudioQualityAnalyzer:
             silence_duration_s=silence_result.duration_s,
             energy_db=silence_result.energy_db
         )
+        
+        # Log overall analysis time
+        total_duration = (time.perf_counter() - start_time) * 1000
+        log_analysis_operation(stream_id, 'analyze_audio_quality', total_duration)
+        
+        # Log quality metrics
+        log_quality_metrics(stream_id, metrics, level='DEBUG')
+        
+        # Log quality issues if thresholds violated
+        if snr_db < self.config.snr_threshold_db:
+            log_quality_issue(
+                stream_id,
+                'snr_low',
+                {'snr': snr_db, 'threshold': self.config.snr_threshold_db},
+                severity='warning'
+            )
+        
+        if clipping_result.is_clipping:
+            log_quality_issue(
+                stream_id,
+                'clipping',
+                {
+                    'percentage': clipping_result.percentage,
+                    'threshold': self.config.clipping_threshold_percent
+                },
+                severity='warning'
+            )
+        
+        if echo_result.has_echo:
+            log_quality_issue(
+                stream_id,
+                'echo',
+                {
+                    'echo_db': echo_result.echo_level_db,
+                    'delay_ms': echo_result.delay_ms,
+                    'threshold': self.config.echo_threshold_db
+                },
+                severity='warning'
+            )
+        
+        if silence_result.is_silent:
+            log_quality_issue(
+                stream_id,
+                'silence',
+                {
+                    'duration': silence_result.duration_s,
+                    'threshold': self.config.silence_duration_threshold_s
+                },
+                severity='warning'
+            )
         
         return metrics
     

@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 
 from audio_quality.models.quality_metrics import QualityMetrics
 from audio_quality.models.quality_event import QualityEvent
+from audio_quality.utils.structured_logger import log_metrics_emission
 
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,9 @@ class QualityMetricsEmitter:
         if not self.metric_buffer:
             return
         
+        metric_count = len(self.metric_buffer)
+        stream_id = 'batch'  # Multiple streams in batch
+        
         try:
             self.cloudwatch.put_metric_data(
                 Namespace='AudioQuality',
@@ -130,8 +134,11 @@ class QualityMetricsEmitter:
             )
             
             logger.debug(
-                f'Flushed {len(self.metric_buffer)} metrics to CloudWatch'
+                f'Flushed {metric_count} metrics to CloudWatch'
             )
+            
+            # Log successful emission
+            log_metrics_emission(stream_id, metric_count, success=True)
             
             # Clear buffer and update flush time
             self.metric_buffer = []
@@ -142,6 +149,10 @@ class QualityMetricsEmitter:
                 f'Failed to flush metrics to CloudWatch: {e}',
                 exc_info=True
             )
+            
+            # Log failed emission
+            log_metrics_emission(stream_id, metric_count, success=False, error=str(e))
+            
             # Clear buffer to prevent unbounded growth on repeated failures
             self.metric_buffer = []
     

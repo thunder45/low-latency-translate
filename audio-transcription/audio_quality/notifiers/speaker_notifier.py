@@ -10,6 +10,8 @@ import time
 import logging
 from typing import Dict, Any, Optional
 
+from audio_quality.utils.structured_logger import log_notification_sent
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,8 @@ class SpeakerNotifier:
                 f'Skipping notification due to rate limit: {issue_type} '
                 f'for connection {connection_id}'
             )
+            # Log rate-limited notification
+            log_notification_sent(connection_id, issue_type, rate_limited=True)
             return False
         
         # Format warning message
@@ -102,6 +106,9 @@ class SpeakerNotifier:
             logger.info(
                 f'Sent quality warning: {issue_type} to connection {connection_id}'
             )
+            
+            # Log successful notification
+            log_notification_sent(connection_id, issue_type, rate_limited=False)
             
             return True
             
