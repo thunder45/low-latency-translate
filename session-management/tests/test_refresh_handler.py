@@ -13,12 +13,6 @@ import os
 import pytest
 from moto import mock_dynamodb
 
-# Add refresh handler to path with unique name to avoid conflicts
-refresh_handler_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler')
-if refresh_handler_path not in sys.path:
-    sys.path.insert(0, refresh_handler_path)
-
-
 @pytest.fixture
 def mock_api_gateway():
     """Mock API Gateway Management API client."""
@@ -30,13 +24,26 @@ def mock_api_gateway():
 
 @pytest.fixture
 def lambda_handler(env_vars, mock_api_gateway):
-    """Import lambda_handler after environment is set up."""
-    # Clear any previously imported handler module
-    if 'handler' in sys.modules:
-        del sys.modules['handler']
+    """Import lambda_handler after environment is set up using importlib to avoid path pollution."""
+    import importlib.util
     
-    from handler import lambda_handler as handler
-    return handler
+    # Import handler using importlib to avoid adding Lambda dir to sys.path
+    # This prevents importing Linux cryptography binaries that don't work on macOS
+    handler_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler/handler.py')
+    spec = importlib.util.spec_from_file_location('refresh_handler', handler_path)
+    handler_module = importlib.util.module_from_spec(spec)
+    
+    # Temporarily add only the handler's parent dir to sys.path for relative imports
+    refresh_handler_dir = os.path.dirname(handler_path)
+    sys.path.insert(0, refresh_handler_dir)
+    try:
+        spec.loader.exec_module(handler_module)
+    finally:
+        # Remove from sys.path to avoid polluting other tests
+        if refresh_handler_dir in sys.path:
+            sys.path.remove(refresh_handler_dir)
+    
+    return handler_module.lambda_handler
 
 
 @pytest.fixture
@@ -126,47 +133,57 @@ class TestSpeakerConnectionRefresh:
         active_session
     ):
         """Test speaker connection refresh with matching identity."""
-        """Test speaker connection refresh with matching identity."""
         # Arrange
         new_connection_id = 'new-conn-456'
-        event = {
-            'requestContext': {
-                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
-                'stage': 'test',
-                'connectionId': new_connection_id,
-                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
-                'stage': 'test',
-                'authorizer': {
-                    'userId': active_session['speakerUserId']
-                }
-            },
-            'queryStringParameters': {
-                'sessionId': active_session['sessionId'],
-                'role': 'speaker'
+        
+        # Import auth_validator to patch it
+        import importlib.util
+        auth_validator_path = os.path.join(os.path.dirname(__file__), '../lambda/refresh_handler/auth_validator.py')
+        spec = importlib.util.spec_from_file_location('auth_validator', auth_validator_path)
+        auth_validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(auth_validator)
+        
+        # Mock the token validation to return valid claims
+        with patch.object(auth_validator, 'validate_speaker_token') as mock_validate:
+            mock_validate.return_value = {
+                'sub': active_session['speakerUserId'],
+                'email': 'speaker@example.com'
             }
-        }
-        
-        # Act
-        response = lambda_handler(event, None)
-        
-        # Assert
-        assert response['statusCode'] == 200
-        
-        # Verify session updated with new connection ID
-        session = dynamodb_tables['sessions'].get_item(
-            Key={'sessionId': active_session['sessionId']}
-        )['Item']
-        assert session['speakerConnectionId'] == new_connection_id
-        
-        # Verify message sent to new connection
-        mock_api_gateway.post_to_connection.assert_called_once()
-        call_args = mock_api_gateway.post_to_connection.call_args
-        assert call_args[1]['ConnectionId'] == new_connection_id
-        
-        message = json.loads(call_args[1]['Data'])
-        assert message['type'] == 'connectionRefreshComplete'
-        assert message['sessionId'] == active_session['sessionId']
-        assert message['role'] == 'speaker'
+            
+            event = {
+                'requestContext': {
+                    'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                    'stage': 'test',
+                    'connectionId': new_connection_id
+                },
+                'queryStringParameters': {
+                    'sessionId': active_session['sessionId'],
+                    'role': 'speaker',
+                    'token': 'valid-jwt-token'  # Token is required for speaker refresh
+                }
+            }
+            
+            # Act
+            response = lambda_handler(event, None)
+            
+            # Assert
+            assert response['statusCode'] == 200
+            
+            # Verify session updated with new connection ID
+            session = dynamodb_tables['sessions'].get_item(
+                Key={'sessionId': active_session['sessionId']}
+            )['Item']
+            assert session['speakerConnectionId'] == new_connection_id
+            
+            # Verify message sent to new connection
+            mock_api_gateway.post_to_connection.assert_called_once()
+            call_args = mock_api_gateway.post_to_connection.call_args
+            assert call_args[1]['ConnectionId'] == new_connection_id
+            
+            message = json.loads(call_args[1]['Data'])
+            assert message['type'] == 'connectionRefreshComplete'
+            assert message['sessionId'] == active_session['sessionId']
+            assert message['role'] == 'speaker'
     
     def test_speaker_refresh_with_mismatched_identity_fails(
         self,
@@ -177,27 +194,33 @@ class TestSpeakerConnectionRefresh:
     ):
         """Test speaker refresh fails with wrong user ID."""
         # Arrange
-        event = {
-            'requestContext': {
-                'domainName': 'test.execute-api.us-east-1.amazonaws.com',
-                'stage': 'test',
-                'connectionId': 'new-conn-456',
-                'authorizer': {
-                    'userId': 'wrong-user-999'
-                }
-            },
-            'queryStringParameters': {
-                'sessionId': active_session['sessionId'],
-                'role': 'speaker'
+        # Mock the token validation to return claims with wrong user ID
+        # Patch in the refresh_handler module where it's imported
+        with patch('refresh_handler.validate_speaker_token') as mock_validate:
+            mock_validate.return_value = {
+                'sub': 'wrong-user-999',  # Different from session owner
+                'email': 'wrong@example.com'
             }
-        }
-        
-        # Act
-        response = lambda_handler(event, None)
-        
-        # Assert
-        assert response['statusCode'] == 403
-        body = json.loads(response['body'])
+            
+            event = {
+                'requestContext': {
+                    'domainName': 'test.execute-api.us-east-1.amazonaws.com',
+                    'stage': 'test',
+                    'connectionId': 'new-conn-456'
+                },
+                'queryStringParameters': {
+                    'sessionId': active_session['sessionId'],
+                    'role': 'speaker',
+                    'token': 'valid-jwt-token-wrong-user'  # Token with wrong user
+                }
+            }
+            
+            # Act
+            response = lambda_handler(event, None)
+            
+            # Assert
+            assert response['statusCode'] == 403
+            body = json.loads(response['body'])
         assert body['code'] == 'FORBIDDEN'
         assert 'identity mismatch' in body['message'].lower()
         

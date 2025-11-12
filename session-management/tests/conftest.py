@@ -3,6 +3,16 @@ Pytest configuration and fixtures.
 """
 import pytest
 import os
+import sys
+
+# CRITICAL: Ensure system cryptography is used, not Lambda Linux binaries
+# Install system cryptography first before any Lambda paths are added
+try:
+    import cryptography
+    # Force cryptography to be loaded from system site-packages
+    sys.modules['cryptography'] = cryptography
+except ImportError:
+    pass
 
 
 @pytest.fixture(scope="session")
