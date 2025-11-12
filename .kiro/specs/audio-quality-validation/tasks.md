@@ -48,8 +48,8 @@
   - Verify delay accuracy with downsampling
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 6. Implement silence detection
-- [ ] 6.1 Create SilenceDetector class
+- [x] 6. Implement silence detection
+- [x] 6.1 Create SilenceDetector class
   - Implement `analyzers/silence_detector.py` with SilenceDetector class
   - Implement detect_silence method that tracks RMS energy
   - Detect extended silence (>5 seconds below -50 dB)

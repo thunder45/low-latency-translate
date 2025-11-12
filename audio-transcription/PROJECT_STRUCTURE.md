@@ -28,7 +28,8 @@ audio-transcription/
 │   │   ├── __init__.py             # Analyzer exports
 │   │   ├── snr_calculator.py       # SNRCalculator class (Task 3)
 │   │   ├── clipping_detector.py    # ClippingDetector class (Task 4)
-│   │   └── echo_detector.py        # EchoDetector class (Task 5)
+│   │   ├── echo_detector.py        # EchoDetector class (Task 5)
+│   │   └── silence_detector.py     # SilenceDetector class (Task 6)
 │   ├── processors/                 # Audio processors (high-pass, noise gate)
 │   │   └── __init__.py
 │   ├── notifiers/                  # Quality notifiers (metrics, events)
@@ -38,6 +39,8 @@ audio-transcription/
 │       ├── TASK_2_SUMMARY.md       # Task 2 implementation summary
 │       ├── TASK_3_SUMMARY.md       # Task 3 implementation summary
 │       ├── TASK_4_SUMMARY.md       # Task 4 implementation summary
+│       ├── TASK_5_SUMMARY.md       # Task 5 implementation summary
+│       └── TASK_6_SUMMARY.md       # Task 6 implementation summary
 │       └── TASK_5_SUMMARY.md       # Task 5 implementation summary
 │
 ├── shared/                          # Shared code within component

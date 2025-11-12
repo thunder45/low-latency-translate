@@ -281,6 +281,7 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 3: Implement SNR Calculation](audio_quality/docs/TASK_3_SUMMARY.md) - SNRCalculator with rolling window, 245 tests, 86% coverage
 - ✅ [Task 4: Implement Clipping Detection](audio_quality/docs/TASK_4_SUMMARY.md) - ClippingDetector with 98% threshold, 245 tests, 86% coverage
 - ✅ [Task 5: Implement Echo Detection](audio_quality/docs/TASK_5_SUMMARY.md) - EchoDetector with autocorrelation, 245 tests, 86% coverage
+- ✅ [Task 6: Implement Silence Detection](audio_quality/docs/TASK_6_SUMMARY.md) - SilenceDetector with dual-threshold hysteresis, 245 tests, 77% coverage
 
 ### In Progress
 
