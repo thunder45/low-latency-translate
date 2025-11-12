@@ -1,0 +1,4 @@
+# Sensitive configuration files
+session-management/infrastructure/config/dev.json
+session-management/infrastructure/config/staging.json
+session-management/infrastructure/config/prod.json

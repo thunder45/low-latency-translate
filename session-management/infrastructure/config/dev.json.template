@@ -1,8 +1,8 @@
 {
-  "account": "123456789012",
+  "account": "YOUR_AWS_ACCOUNT_ID",
   "region": "us-east-1",
-  "cognitoUserPoolId": "us-east-1_XXXXXXXXX",
-  "cognitoClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "cognitoUserPoolId": "YOUR_COGNITO_USER_POOL_ID",
+  "cognitoClientId": "YOUR_COGNITO_CLIENT_ID",
   "sessionMaxDurationHours": 2,
   "connectionRefreshMinutes": 100,
   "connectionWarningMinutes": 105,
@@ -13,5 +13,5 @@
   "rateLimitHeartbeatsPerMin": 2,
   "dataRetentionHours": 12,
   "maxActiveSessions": 100,
-  "alarmEmail": "your-email@example.com"
+  "alarmEmail": "YOUR_EMAIL@example.com"
 }

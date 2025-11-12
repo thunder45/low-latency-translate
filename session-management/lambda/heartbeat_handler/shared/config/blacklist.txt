@@ -1,0 +1,7 @@
+# Profanity and inappropriate words blacklist
+# This file contains words that should not appear in session IDs
+damn
+damned
+hell
+hellish
+bloody

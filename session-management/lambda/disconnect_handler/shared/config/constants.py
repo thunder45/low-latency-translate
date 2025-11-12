@@ -1,0 +1,33 @@
+"""
+Shared constants and configuration values.
+"""
+
+# Session configuration
+SESSION_MAX_DURATION_HOURS = 2
+CONNECTION_MAX_DURATION_HOURS = 2
+CONNECTION_REFRESH_MINUTES = 100
+CONNECTION_WARNING_MINUTES = 105
+
+# Capacity limits
+MAX_LISTENERS_PER_SESSION = 500
+
+# Heartbeat configuration
+HEARTBEAT_INTERVAL_SECONDS = 30
+HEARTBEAT_TIMEOUT_SECONDS = 90
+
+# Rate limiting
+RATE_LIMIT_SESSIONS_PER_HOUR = 50
+RATE_LIMIT_LISTENER_JOINS_PER_MIN = 10
+RATE_LIMIT_CONNECTION_ATTEMPTS_PER_MIN = 20
+RATE_LIMIT_HEARTBEATS_PER_MIN = 2
+
+# Data retention
+DATA_RETENTION_HOURS = 12
+
+# DynamoDB table names (will be set via environment variables)
+SESSIONS_TABLE = 'Sessions'
+CONNECTIONS_TABLE = 'Connections'
+RATE_LIMITS_TABLE = 'RateLimits'
+
+# AWS Region
+AWS_REGION = 'us-east-1'

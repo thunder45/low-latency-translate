@@ -125,9 +125,9 @@ class SessionManagementStack(Stack):
 
     def _create_authorizer_function(self) -> lambda_.Function:
         """Create Lambda Authorizer function."""
-        # Get log retention from config or default to 12 hours
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
         
         function = lambda_.Function(
             self,
@@ -149,9 +149,9 @@ class SessionManagementStack(Stack):
 
     def _create_connection_handler(self) -> lambda_.Function:
         """Create Connection Handler function."""
-        # Get log retention from config or default to 12 hours
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
         
         function = lambda_.Function(
             self,
@@ -189,9 +189,9 @@ class SessionManagementStack(Stack):
 
     def _create_heartbeat_handler(self) -> lambda_.Function:
         """Create Heartbeat Handler function."""
-        # Get log retention from config or default to 12 hours
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
         
         function = lambda_.Function(
             self,
@@ -217,9 +217,9 @@ class SessionManagementStack(Stack):
 
     def _create_disconnect_handler(self) -> lambda_.Function:
         """Create Disconnect Handler function."""
-        # Get log retention from config or default to 12 hours
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
         
         function = lambda_.Function(
             self,
@@ -245,9 +245,9 @@ class SessionManagementStack(Stack):
 
     def _create_refresh_handler(self) -> lambda_.Function:
         """Create Connection Refresh Handler function."""
-        # Get log retention from config or default to 12 hours
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
         log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.TWELVE_HOURS if log_retention_hours == 12 else logs.RetentionDays.ONE_DAY
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
         
         function = lambda_.Function(
             self,
@@ -353,14 +353,12 @@ class SessionManagementStack(Stack):
             target=f"integrations/{heartbeat_integration.ref}",
         )
 
-        # Create refreshConnection custom route (with authorizer for speakers)
+        # Create refreshConnection custom route (no authorization - WebSocket limitation)
         refresh_route = apigwv2.CfnRoute(
             self,
             "RefreshRoute",
             api_id=api.ref,
             route_key="refreshConnection",
-            authorization_type="CUSTOM",
-            authorizer_id=authorizer.ref,
             target=f"integrations/{refresh_integration.ref}",
         )
 
@@ -439,13 +437,12 @@ class SessionManagementStack(Stack):
         # Add email subscription if configured
         alarm_email = self.config.get("alarmEmail")
         if alarm_email:
-            topic.add_subscription(
-                sns.Subscription(
-                    self,
-                    "AlarmEmailSubscription",
-                    protocol=sns.SubscriptionProtocol.EMAIL,
-                    endpoint=alarm_email
-                )
+            sns.Subscription(
+                self,
+                "AlarmEmailSubscription",
+                topic=topic,
+                protocol=sns.SubscriptionProtocol.EMAIL,
+                endpoint=alarm_email
             )
         
         return topic
