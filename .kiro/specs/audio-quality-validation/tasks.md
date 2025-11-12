@@ -82,8 +82,8 @@
   - Implement _format_warning method with user-friendly messages and remediation steps
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 10. Implement optional audio processing
-- [ ] 10.1 Create AudioProcessor class
+- [x] 10. Implement optional audio processing
+- [x] 10.1 Create AudioProcessor class
   - Implement `processors/audio_processor.py` with AudioProcessor class
   - Implement process method that applies optional enhancements
   - Implement _apply_high_pass method using scipy.signal.butter filter (80 Hz cutoff)

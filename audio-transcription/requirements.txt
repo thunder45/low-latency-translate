@@ -7,6 +7,7 @@ amazon-transcribe>=0.6.0
 librosa>=0.10.0
 numpy>=1.24.0
 soundfile>=0.12.0
+scipy>=1.11.0
 
 # JWT token validation
 PyJWT>=2.8.0

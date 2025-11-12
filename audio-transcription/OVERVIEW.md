@@ -149,7 +149,7 @@ Additionally, this component includes audio quality validation to monitor and al
 
 ### In Progress
 
-🔄 **Audio Quality Validation** (Tasks 10-11 of 11)
+🔄 **Audio Quality Validation** (Task 11 of 11)
 
 ✅ **Task 1: Core Data Models** (Completed)
 - Core data models implemented (QualityConfig, QualityMetrics, AudioFormat, QualityEvent, result types)
@@ -215,16 +215,30 @@ Additionally, this component includes audio quality validation to monitor and al
 - Graceful error handling for API failures
 - 16 unit tests with 100% coverage
 
+✅ **Task 9: Speaker Notifications** (Completed)
+- SpeakerNotifier with rate limiting (60s per issue type)
+- WebSocket message formatting for quality warnings
+- Demo script with mock WebSocket manager
+- All tests passing
+
+✅ **Task 10: Optional Audio Processing** (Completed)
+- AudioProcessor with high-pass filter (80 Hz cutoff, 4th-order Butterworth)
+- Noise gate with -40 dB threshold (20 dB attenuation)
+- Configurable via QualityConfig flags
+- Processing overhead: 10-15ms per second (1-1.5%, well within 5% budget)
+- Demo script with time/frequency domain visualization
+- All tests passing (279 tests, 86% coverage)
+
 ### Planned
 
-- Audio Quality Validation Tasks 10-11 (optional processing, Lambda integration)
+- Audio Quality Validation Task 11 (Lambda integration)
 
 ## Current Status
 
 **Phase**: Development - Week 4 (Phase 2: Audio Processing Pipeline)  
-**Progress**: Audio Quality Validation - 9 of 11 tasks complete (82%)  
+**Progress**: Audio Quality Validation - 10 of 11 tasks complete (91%)  
 **Test Coverage**: 86.17%  
-**Tests Passing**: 261/261
+**Tests Passing**: 279/279
 
 ## Quick Stats
 

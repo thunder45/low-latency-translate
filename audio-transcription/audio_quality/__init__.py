@@ -23,6 +23,7 @@ from audio_quality.analyzers.silence_detector import SilenceDetector
 from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
 from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
+from audio_quality.processors.audio_processor import AudioProcessor
 
 __all__ = [
     'QualityConfig',
@@ -41,4 +42,5 @@ __all__ = [
     'AudioQualityAnalyzer',
     'QualityMetricsEmitter',
     'SpeakerNotifier',
+    'AudioProcessor',
 ]
