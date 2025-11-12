@@ -1,9 +1,10 @@
 """
-Audio Processor Lambda handler with partial results support.
+Audio Processor Lambda handler with partial results support and audio quality validation.
 
 This module provides the Lambda handler for processing audio transcription
 with partial results. It bridges the synchronous Lambda handler interface
-with the asynchronous AWS Transcribe Streaming API.
+with the asynchronous AWS Transcribe Streaming API and includes real-time
+audio quality validation.
 """
 
 import asyncio
@@ -11,9 +12,17 @@ import logging
 import os
 import json
 import boto3
+import numpy as np
+import base64
 from typing import Dict, Any, Optional
 from shared.models.configuration import PartialResultConfig
 from shared.services.partial_result_processor import PartialResultProcessor
+
+# Audio quality imports
+from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
+from audio_quality.models.quality_config import QualityConfig
+from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
+from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,8 +32,14 @@ logger.setLevel(logging.INFO)
 # Initialized on cold start and reused across invocations
 partial_processor: Optional[PartialResultProcessor] = None
 
-# CloudWatch client for metrics
+# Audio quality components (singleton per Lambda container)
+quality_analyzer: Optional[AudioQualityAnalyzer] = None
+metrics_emitter: Optional[QualityMetricsEmitter] = None
+speaker_notifier: Optional[SpeakerNotifier] = None
+
+# CloudWatch and EventBridge clients
 cloudwatch = boto3.client('cloudwatch')
+eventbridge = boto3.client('events')
 
 # Fallback state tracking
 fallback_mode_enabled = False
@@ -40,15 +55,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Synchronous Lambda handler that bridges to async Transcribe processing.
     
     This handler is invoked by AWS Lambda for each audio processing request.
-    It initializes the PartialResultProcessor on cold start (singleton pattern)
-    and bridges the synchronous Lambda interface with the asynchronous
-    Transcribe processing.
+    It initializes the PartialResultProcessor and audio quality components
+    on cold start (singleton pattern) and bridges the synchronous Lambda
+    interface with the asynchronous Transcribe processing.
     
     Args:
         event: Lambda event object containing:
             - sessionId: Session identifier
             - sourceLanguage: Source language code (ISO 639-1)
             - audioData: Base64-encoded audio data (optional)
+            - sampleRate: Audio sample rate in Hz (optional, default: 16000)
+            - connectionId: WebSocket connection ID (optional)
             - action: Action to perform (e.g., 'initialize', 'process')
         context: Lambda context object
     
@@ -69,11 +86,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         >>> event = {
         ...     'action': 'process',
         ...     'sessionId': 'golden-eagle-427',
-        ...     'audioData': 'base64_encoded_audio...'
+        ...     'audioData': 'base64_encoded_audio...',
+        ...     'sampleRate': 16000,
+        ...     'connectionId': 'conn-123'
         ... }
         >>> response = lambda_handler(event, context)
     """
-    global partial_processor
+    global partial_processor, quality_analyzer, metrics_emitter, speaker_notifier
     
     try:
         # Extract session information
@@ -96,6 +115,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 source_language=source_language
             )
             logger.info("PartialResultProcessor initialized successfully")
+        
+        # Initialize audio quality components on cold start
+        if quality_analyzer is None:
+            logger.info("Cold start: Initializing audio quality components")
+            try:
+                quality_config = _load_quality_config_from_environment()
+                quality_analyzer = AudioQualityAnalyzer(quality_config)
+                metrics_emitter = QualityMetricsEmitter(cloudwatch, eventbridge)
+                speaker_notifier = SpeakerNotifier(websocket_manager=None)  # WebSocket manager to be injected
+                logger.info("Audio quality components initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize audio quality components: {e}", exc_info=True)
+                # Continue without quality validation if initialization fails
+                quality_analyzer = None
+                metrics_emitter = None
+                speaker_notifier = None
         
         # Bridge async/sync: Run async processing in event loop
         loop = asyncio.get_event_loop()
@@ -172,6 +207,86 @@ async def process_audio_async(
                 # Check Transcribe service health before processing
                 check_transcribe_health(session_id=session_id)
                 
+                # Extract audio data and parameters
+                audio_data_b64 = event.get('audioData', '')
+                sample_rate = event.get('sampleRate', 16000)
+                connection_id = event.get('connectionId', '')
+                
+                # Analyze audio quality if components are initialized
+                quality_metrics = None
+                if quality_analyzer is not None and audio_data_b64:
+                    try:
+                        # Decode audio data
+                        audio_bytes = base64.b64decode(audio_data_b64)
+                        audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
+                        
+                        # Analyze audio quality
+                        logger.debug(f"Analyzing audio quality for session {session_id}")
+                        quality_metrics = quality_analyzer.analyze(audio_array, sample_rate)
+                        
+                        # Emit metrics to CloudWatch
+                        if metrics_emitter is not None:
+                            try:
+                                metrics_emitter.emit_metrics(session_id, quality_metrics)
+                                logger.debug(f"Quality metrics emitted for session {session_id}")
+                            except Exception as e:
+                                logger.warning(f"Failed to emit quality metrics: {e}")
+                        
+                        # Send speaker notifications for threshold violations
+                        if speaker_notifier is not None and connection_id:
+                            try:
+                                quality_config = quality_analyzer.config
+                                
+                                # Check SNR threshold
+                                if quality_metrics.snr_db < quality_config.snr_threshold_db:
+                                    speaker_notifier.notify_speaker(
+                                        connection_id,
+                                        'snr_low',
+                                        {
+                                            'snr': quality_metrics.snr_db,
+                                            'threshold': quality_config.snr_threshold_db
+                                        }
+                                    )
+                                
+                                # Check clipping threshold
+                                if quality_metrics.is_clipping:
+                                    speaker_notifier.notify_speaker(
+                                        connection_id,
+                                        'clipping',
+                                        {
+                                            'percentage': quality_metrics.clipping_percentage,
+                                            'threshold': quality_config.clipping_threshold_percent
+                                        }
+                                    )
+                                
+                                # Check echo threshold
+                                if quality_metrics.has_echo:
+                                    speaker_notifier.notify_speaker(
+                                        connection_id,
+                                        'echo',
+                                        {
+                                            'echo_db': quality_metrics.echo_level_db,
+                                            'delay_ms': quality_metrics.echo_delay_ms
+                                        }
+                                    )
+                                
+                                # Check silence threshold
+                                if quality_metrics.is_silent:
+                                    speaker_notifier.notify_speaker(
+                                        connection_id,
+                                        'silence',
+                                        {
+                                            'duration': quality_metrics.silence_duration_s
+                                        }
+                                    )
+                                
+                            except Exception as e:
+                                logger.warning(f"Failed to send speaker notifications: {e}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Audio quality analysis failed: {e}", exc_info=True)
+                        # Continue processing even if quality analysis fails
+                
                 # In a real implementation, this would:
                 # 1. Get audio data from event
                 # 2. Stream to AWS Transcribe
@@ -192,13 +307,26 @@ async def process_audio_async(
                 # be called when actual Transcribe results are received)
                 # update_health_status(received_result=True, session_id=session_id)
                 
+                response_body = {
+                    'message': 'Audio processed',
+                    'sessionId': session_id,
+                    'fallbackMode': fallback_mode_enabled
+                }
+                
+                # Include quality metrics in response if available
+                if quality_metrics is not None:
+                    response_body['qualityMetrics'] = {
+                        'snr_db': quality_metrics.snr_db,
+                        'clipping_percentage': quality_metrics.clipping_percentage,
+                        'is_clipping': quality_metrics.is_clipping,
+                        'echo_level_db': quality_metrics.echo_level_db,
+                        'has_echo': quality_metrics.has_echo,
+                        'is_silent': quality_metrics.is_silent
+                    }
+                
                 return {
                     'statusCode': 200,
-                    'body': json.dumps({
-                        'message': 'Audio processed',
-                        'sessionId': session_id,
-                        'fallbackMode': fallback_mode_enabled
-                    })
+                    'body': json.dumps(response_body)
                 }
                 
             except Exception as transcribe_error:
@@ -300,6 +428,74 @@ def _load_config_from_environment() -> PartialResultConfig:
     except Exception as e:
         logger.error(f"Error loading configuration: {e}", exc_info=True)
         raise ValueError(f"Failed to load configuration: {e}")
+
+
+def _load_quality_config_from_environment() -> QualityConfig:
+    """
+    Load audio quality configuration from Lambda environment variables.
+    
+    This function reads audio quality configuration parameters from environment
+    variables, providing sensible defaults for optional parameters.
+    
+    Environment variables:
+    - SNR_THRESHOLD: Minimum acceptable SNR in dB (default: 20.0)
+    - SNR_UPDATE_INTERVAL: SNR update interval in ms (default: 500)
+    - SNR_WINDOW_SIZE: SNR rolling window size in seconds (default: 5.0)
+    - CLIPPING_THRESHOLD: Maximum acceptable clipping percentage (default: 1.0)
+    - CLIPPING_AMPLITUDE: Amplitude threshold percentage (default: 98.0)
+    - CLIPPING_WINDOW: Clipping detection window in ms (default: 100)
+    - ECHO_THRESHOLD: Echo level threshold in dB (default: -15.0)
+    - ECHO_MIN_DELAY: Minimum echo delay in ms (default: 10)
+    - ECHO_MAX_DELAY: Maximum echo delay in ms (default: 500)
+    - ECHO_UPDATE_INTERVAL: Echo update interval in seconds (default: 1.0)
+    - SILENCE_THRESHOLD: Silence threshold in dB (default: -50.0)
+    - SILENCE_DURATION: Silence duration threshold in seconds (default: 5.0)
+    - ENABLE_HIGH_PASS: Enable high-pass filter (default: false)
+    - ENABLE_NOISE_GATE: Enable noise gate (default: false)
+    
+    Returns:
+        QualityConfig with values from environment or defaults
+    
+    Raises:
+        ValueError: If configuration validation fails
+    """
+    try:
+        config = QualityConfig(
+            snr_threshold_db=float(os.getenv('SNR_THRESHOLD', '20.0')),
+            snr_update_interval_ms=int(os.getenv('SNR_UPDATE_INTERVAL', '500')),
+            snr_window_size_s=float(os.getenv('SNR_WINDOW_SIZE', '5.0')),
+            clipping_threshold_percent=float(os.getenv('CLIPPING_THRESHOLD', '1.0')),
+            clipping_amplitude_percent=float(os.getenv('CLIPPING_AMPLITUDE', '98.0')),
+            clipping_window_ms=int(os.getenv('CLIPPING_WINDOW', '100')),
+            echo_threshold_db=float(os.getenv('ECHO_THRESHOLD', '-15.0')),
+            echo_min_delay_ms=int(os.getenv('ECHO_MIN_DELAY', '10')),
+            echo_max_delay_ms=int(os.getenv('ECHO_MAX_DELAY', '500')),
+            echo_update_interval_s=float(os.getenv('ECHO_UPDATE_INTERVAL', '1.0')),
+            silence_threshold_db=float(os.getenv('SILENCE_THRESHOLD', '-50.0')),
+            silence_duration_threshold_s=float(os.getenv('SILENCE_DURATION', '5.0')),
+            enable_high_pass=os.getenv('ENABLE_HIGH_PASS', 'false').lower() == 'true',
+            enable_noise_gate=os.getenv('ENABLE_NOISE_GATE', 'false').lower() == 'true'
+        )
+        
+        # Validate configuration
+        errors = config.validate()
+        if errors:
+            raise ValueError(f"Invalid quality configuration: {', '.join(errors)}")
+        
+        logger.info(
+            f"Quality configuration loaded: snr_threshold={config.snr_threshold_db}dB, "
+            f"clipping_threshold={config.clipping_threshold_percent}%, "
+            f"echo_threshold={config.echo_threshold_db}dB"
+        )
+        
+        return config
+        
+    except ValueError as e:
+        logger.error(f"Invalid quality configuration: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading quality configuration: {e}", exc_info=True)
+        raise ValueError(f"Failed to load quality configuration: {e}")
 
 
 def _enable_fallback_mode(reason: str, session_id: str = "") -> None:

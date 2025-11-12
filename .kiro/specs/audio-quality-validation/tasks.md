@@ -90,8 +90,8 @@
   - Implement _apply_noise_gate method with -40 dB threshold
   - _Requirements: 3.5_
 
-- [ ] 11. Integrate with Lambda function
-- [ ] 11.1 Update audio processor Lambda handler
+- [x] 11. Integrate with Lambda function
+- [x] 11.1 Update audio processor Lambda handler
   - Import audio quality components in existing Lambda function
   - Initialize AudioQualityAnalyzer with configuration from environment variables
   - Add quality analysis step before transcription
@@ -99,7 +99,7 @@
   - Send speaker notifications for threshold violations
   - _Requirements: 6.3, 6.4_
 
-- [ ] 11.2 Add configuration loading
+- [x] 11.2 Add configuration loading
   - Implement load_config_from_env function to read environment variables
   - Validate configuration parameters on Lambda initialization
   - Handle configuration errors gracefully
