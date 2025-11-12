@@ -17,6 +17,7 @@ from audio_quality.models.results import ClippingResult, EchoResult, SilenceResu
 from audio_quality.models.validation_result import ValidationResult
 from audio_quality.validators.format_validator import AudioFormatValidator
 from audio_quality.analyzers.snr_calculator import SNRCalculator
+from audio_quality.analyzers.clipping_detector import ClippingDetector
 
 __all__ = [
     'QualityConfig',
@@ -29,4 +30,5 @@ __all__ = [
     'ValidationResult',
     'AudioFormatValidator',
     'SNRCalculator',
+    'ClippingDetector',
 ]

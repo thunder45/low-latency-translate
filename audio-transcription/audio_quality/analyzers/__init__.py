@@ -6,5 +6,6 @@ including SNR, clipping, echo, and silence detection.
 """
 
 from audio_quality.analyzers.snr_calculator import SNRCalculator
+from audio_quality.analyzers.clipping_detector import ClippingDetector, ClippingResult
 
-__all__ = ['SNRCalculator']
+__all__ = ['SNRCalculator', 'ClippingDetector', 'ClippingResult']

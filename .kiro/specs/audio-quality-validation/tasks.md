@@ -21,16 +21,16 @@
   - Return ValidationResult with success status and error details
   - _Requirements: 6.1, 6.2_
 
-- [ ] 3. Implement SNR calculation
-- [ ] 3.1 Create SNRCalculator class
+- [x] 3. Implement SNR calculation
+- [x] 3.1 Create SNRCalculator class
   - Implement `analyzers/snr_calculator.py` with SNRCalculator class
   - Implement calculate_snr method using RMS-based algorithm
   - Maintain rolling window of SNR values (5 seconds)
   - Update measurements at 500ms intervals
   - _Requirements: 1.1, 1.2, 1.4, 1.5_
 
-- [ ] 4. Implement clipping detection
-- [ ] 4.1 Create ClippingDetector class
+- [x] 4. Implement clipping detection
+- [x] 4.1 Create ClippingDetector class
   - Implement `analyzers/clipping_detector.py` with ClippingDetector class
   - Implement detect_clipping method that identifies samples at 98% of max amplitude
   - Calculate clipping percentage in 100ms windows
