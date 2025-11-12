@@ -35,10 +35,12 @@ audio-transcription/
 │   │   └── __init__.py
 │   ├── notifiers/                  # Quality notifiers (metrics, events)
 │   │   ├── __init__.py             # Notifier exports
-│   │   └── metrics_emitter.py      # QualityMetricsEmitter class (Task 8)
+│   │   ├── metrics_emitter.py      # QualityMetricsEmitter class (Task 8)
+│   │   └── speaker_notifier.py     # SpeakerNotifier class (Task 9)
 │   ├── examples/                   # Example scripts
 │   │   ├── demo_quality_analyzer.py # Demo of AudioQualityAnalyzer
-│   │   └── demo_metrics_emitter.py # Demo of QualityMetricsEmitter
+│   │   ├── demo_metrics_emitter.py # Demo of QualityMetricsEmitter
+│   │   └── demo_speaker_notifier.py # Demo of SpeakerNotifier
 │   └── docs/                       # Audio quality documentation
 │       ├── TASK_1_SUMMARY.md       # Task 1 implementation summary
 │       ├── TASK_2_SUMMARY.md       # Task 2 implementation summary
@@ -47,7 +49,8 @@ audio-transcription/
 │       ├── TASK_5_SUMMARY.md       # Task 5 implementation summary
 │       ├── TASK_6_SUMMARY.md       # Task 6 implementation summary
 │       ├── TASK_7_SUMMARY.md       # Task 7 implementation summary
-│       └── TASK_8_SUMMARY.md       # Task 8 implementation summary
+│       ├── TASK_8_SUMMARY.md       # Task 8 implementation summary
+│       └── TASK_9_SUMMARY.md       # Task 9 implementation summary
 │
 ├── shared/                          # Shared code within component
 │   ├── models/                      # Data models & types

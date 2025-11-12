@@ -74,8 +74,8 @@
   - Implement metric batching to reduce API calls (batch size: 20, flush interval: 5s)
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 9. Implement speaker notifications
-- [ ] 9.1 Create SpeakerNotifier class
+- [x] 9. Implement speaker notifications
+- [x] 9.1 Create SpeakerNotifier class
   - Implement `notifiers/speaker_notifier.py` with SpeakerNotifier class
   - Implement notify_speaker method to send warnings via WebSocket
   - Implement rate limiting (1 notification per issue type per 60 seconds)

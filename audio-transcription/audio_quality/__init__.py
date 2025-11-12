@@ -19,6 +19,10 @@ from audio_quality.validators.format_validator import AudioFormatValidator
 from audio_quality.analyzers.snr_calculator import SNRCalculator
 from audio_quality.analyzers.clipping_detector import ClippingDetector
 from audio_quality.analyzers.echo_detector import EchoDetector
+from audio_quality.analyzers.silence_detector import SilenceDetector
+from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
+from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
+from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
 
 __all__ = [
     'QualityConfig',
@@ -33,4 +37,8 @@ __all__ = [
     'SNRCalculator',
     'ClippingDetector',
     'EchoDetector',
+    'SilenceDetector',
+    'AudioQualityAnalyzer',
+    'QualityMetricsEmitter',
+    'SpeakerNotifier',
 ]

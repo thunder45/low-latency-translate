@@ -292,6 +292,8 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 5: Implement Echo Detection](audio_quality/docs/TASK_5_SUMMARY.md) - EchoDetector with autocorrelation, 245 tests, 86% coverage
 - ✅ [Task 6: Implement Silence Detection](audio_quality/docs/TASK_6_SUMMARY.md) - SilenceDetector with dual-threshold hysteresis, 245 tests, 77% coverage
 - ✅ [Task 7: Implement Quality Metrics Aggregation](audio_quality/docs/TASK_7_SUMMARY.md) - AudioQualityAnalyzer aggregates all detectors, 18 tests, 100% coverage
+- ✅ [Task 8: Implement CloudWatch Metrics Emission](audio_quality/docs/TASK_8_SUMMARY.md) - QualityMetricsEmitter with batching, demo verified
+- ✅ [Task 9: Implement Speaker Notifications](audio_quality/docs/TASK_9_SUMMARY.md) - SpeakerNotifier with rate limiting, demo verified
 
 ### Planned
 
