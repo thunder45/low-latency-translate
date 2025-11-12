@@ -12,7 +12,7 @@ import logging
 import hashlib
 import time
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 
@@ -100,7 +100,7 @@ class StructuredLogger:
             JSON-formatted log entry
         """
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'level': level,
             'component': self.component,
             'message': message

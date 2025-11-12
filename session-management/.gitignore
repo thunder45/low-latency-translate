@@ -32,6 +32,14 @@ wheels/
 .installed.cfg
 *.egg
 
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.hypothesis/
+
 # IDE
 .vscode/
 .idea/

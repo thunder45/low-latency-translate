@@ -9,7 +9,7 @@ Provides methods for emitting:
 import boto3
 import os
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class MetricsPublisher:
@@ -113,7 +113,7 @@ class MetricsPublisher:
                 'MetricName': metric_name,
                 'Value': value,
                 'Unit': unit,
-                'Timestamp': datetime.utcnow()
+                'Timestamp': datetime.now(timezone.utc)
             }
             
             if dimensions:
