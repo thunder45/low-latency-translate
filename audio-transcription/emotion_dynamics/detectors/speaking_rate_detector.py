@@ -14,6 +14,7 @@ import numpy as np
 
 from emotion_dynamics.models.rate_result import RateResult, RateClassification
 from emotion_dynamics.exceptions import RateDetectionError
+from emotion_dynamics.utils.metrics import EmotionDynamicsMetrics
 
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,13 @@ class SpeakingRateDetector:
     DEFAULT_WPM = 145.0
     DEFAULT_ONSET_COUNT = 0
     
-    def __init__(self):
-        """Initialize speaking rate detector."""
+    def __init__(self, metrics: Optional['EmotionDynamicsMetrics'] = None):
+        """
+        Initialize speaking rate detector.
+        
+        Args:
+            metrics: Optional metrics emitter for CloudWatch metrics
+        """
         # Import librosa here to avoid import errors if not installed
         try:
             import librosa
@@ -55,6 +61,9 @@ class SpeakingRateDetector:
         except ImportError as e:
             logger.error("Failed to import librosa: %s", e)
             raise RateDetectionError("librosa is required for rate detection") from e
+        
+        # Initialize metrics emitter
+        self.metrics = metrics or EmotionDynamicsMetrics()
     
     def detect_rate(
         self,
@@ -148,6 +157,17 @@ class SpeakingRateDetector:
                     'sample_rate': sample_rate,
                     'error_type': type(e).__name__
                 }
+            )
+            
+            # Emit error metric
+            self.metrics.emit_error_count(
+                error_type=type(e).__name__,
+                component='SpeakingRateDetector'
+            )
+            
+            # Emit fallback metric
+            self.metrics.emit_fallback_used(
+                fallback_type='DefaultRate'
             )
             
             # Return default medium rate as fallback

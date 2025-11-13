@@ -14,6 +14,7 @@ import numpy as np
 
 from emotion_dynamics.models.volume_result import VolumeResult, VolumeLevel
 from emotion_dynamics.exceptions import VolumeDetectionError
+from emotion_dynamics.utils.metrics import EmotionDynamicsMetrics
 
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,13 @@ class VolumeDetector:
     DEFAULT_VOLUME = 'medium'
     DEFAULT_DB = -15.0
     
-    def __init__(self):
-        """Initialize volume detector."""
+    def __init__(self, metrics: Optional['EmotionDynamicsMetrics'] = None):
+        """
+        Initialize volume detector.
+        
+        Args:
+            metrics: Optional metrics emitter for CloudWatch metrics
+        """
         # Import librosa here to avoid import errors if not installed
         try:
             import librosa
@@ -51,6 +57,9 @@ class VolumeDetector:
         except ImportError as e:
             logger.error("Failed to import librosa: %s", e)
             raise VolumeDetectionError("librosa is required for volume detection") from e
+        
+        # Initialize metrics emitter
+        self.metrics = metrics or EmotionDynamicsMetrics()
     
     def detect_volume(
         self,
@@ -134,6 +143,17 @@ class VolumeDetector:
                     'sample_rate': sample_rate,
                     'error_type': type(e).__name__
                 }
+            )
+            
+            # Emit error metric
+            self.metrics.emit_error_count(
+                error_type=type(e).__name__,
+                component='VolumeDetector'
+            )
+            
+            # Emit fallback metric
+            self.metrics.emit_fallback_used(
+                fallback_type='DefaultVolume'
             )
             
             # Return default medium volume as fallback

@@ -16,6 +16,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from emotion_dynamics.exceptions import SynthesisError
+from emotion_dynamics.utils.metrics import EmotionDynamicsMetrics
 
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,8 @@ class PollyClient:
         region_name: Optional[str] = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         base_delay: float = DEFAULT_BASE_DELAY,
-        max_delay: float = DEFAULT_MAX_DELAY
+        max_delay: float = DEFAULT_MAX_DELAY,
+        metrics: Optional['EmotionDynamicsMetrics'] = None
     ):
         """
         Initialize Polly client.
@@ -72,11 +74,13 @@ class PollyClient:
             max_retries: Maximum number of retry attempts
             base_delay: Base delay for exponential backoff in seconds
             max_delay: Maximum delay for exponential backoff in seconds
+            metrics: Optional metrics emitter for CloudWatch metrics
         """
         self.polly_client = boto3.client('polly', region_name=region_name)
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.metrics = metrics or EmotionDynamicsMetrics()
         
         logger.info(
             f"Initialized PollyClient with max_retries={max_retries}, "
@@ -159,6 +163,12 @@ class PollyClient:
                 
                 # Check if error is retryable
                 if error_code in self.RETRYABLE_ERRORS:
+                    # Emit error metric
+                    self.metrics.emit_error_count(
+                        error_type=error_code,
+                        component='PollyClient'
+                    )
+                    
                     if attempt < self.max_retries:
                         # Calculate delay with exponential backoff and jitter
                         delay = min(
@@ -195,6 +205,17 @@ class PollyClient:
                         f"falling back to plain text"
                     )
                     
+                    # Emit error metric
+                    self.metrics.emit_error_count(
+                        error_type=error_code,
+                        component='PollyClient'
+                    )
+                    
+                    # Emit fallback metric
+                    self.metrics.emit_fallback_used(
+                        fallback_type='PlainTextFromSSMLRejection'
+                    )
+                    
                     # Extract plain text from SSML
                     plain_text = self._extract_text_from_ssml(text)
                     
@@ -213,12 +234,26 @@ class PollyClient:
                     logger.error(
                         f"Polly synthesis failed with non-retryable error: {error_code}"
                     )
+                    
+                    # Emit error metric
+                    self.metrics.emit_error_count(
+                        error_type=error_code,
+                        component='PollyClient'
+                    )
+                    
                     raise SynthesisError(
                         f"Synthesis failed: {error_code}"
                     ) from e
             
             except Exception as e:
                 logger.error(f"Unexpected error during Polly synthesis: {e}")
+                
+                # Emit error metric
+                self.metrics.emit_error_count(
+                    error_type=type(e).__name__,
+                    component='PollyClient'
+                )
+                
                 raise SynthesisError(f"Synthesis failed: {str(e)}") from e
         
         # Should not reach here, but handle just in case

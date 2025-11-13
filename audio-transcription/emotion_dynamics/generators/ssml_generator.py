@@ -12,6 +12,7 @@ from typing import Optional
 
 from emotion_dynamics.models.audio_dynamics import AudioDynamics
 from emotion_dynamics.exceptions import SSMLValidationError
+from emotion_dynamics.utils.metrics import EmotionDynamicsMetrics
 
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,14 @@ class SSMLGenerator:
     VALID_VOLUME_VALUES = {'silent', 'x-soft', 'soft', 'medium', 'loud', 'x-loud'}
     VALID_RATE_VALUES = {'x-slow', 'slow', 'medium', 'fast', 'x-fast'}
     
-    def __init__(self):
-        """Initialize SSML generator."""
-        pass
+    def __init__(self, metrics: Optional['EmotionDynamicsMetrics'] = None):
+        """
+        Initialize SSML generator.
+        
+        Args:
+            metrics: Optional metrics emitter for CloudWatch metrics
+        """
+        self.metrics = metrics or EmotionDynamicsMetrics()
     
     def generate_ssml(
         self,
@@ -107,6 +113,20 @@ class SSMLGenerator:
                 },
                 exc_info=True
             )
+            
+            # Emit error metric
+            self.metrics.emit_error_count(
+                error_type=type(e).__name__,
+                component='SSMLGenerator',
+                correlation_id=dynamics.correlation_id if dynamics else None
+            )
+            
+            # Emit fallback metric
+            self.metrics.emit_fallback_used(
+                fallback_type='PlainText',
+                correlation_id=dynamics.correlation_id if dynamics else None
+            )
+            
             # Fall back to plain text
             return self._generate_plain_ssml(text)
     
