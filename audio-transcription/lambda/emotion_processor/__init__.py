@@ -1,0 +1,1 @@
+"""Emotion Processor Lambda function."""
