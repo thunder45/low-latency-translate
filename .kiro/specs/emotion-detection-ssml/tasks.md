@@ -39,8 +39,8 @@
     - Test handling of continuous and sparse speech
     - _Requirements: 2.1-2.8_
 
-- [ ] 4. Implement SSML generation from audio dynamics
-  - [ ] 4.1 Create SSMLGenerator class with generate_ssml method
+- [x] 4. Implement SSML generation from audio dynamics
+  - [x] 4.1 Create SSMLGenerator class with generate_ssml method
     - Implement volume-to-SSML mapping (loud→x-loud, medium→medium, soft→soft, whisper→x-soft)
     - Implement rate-to-SSML mapping (very slow→x-slow, slow→slow, medium→medium, fast→fast, very fast→x-fast)
     - Generate valid SSML markup with prosody tags for volume and rate
@@ -49,7 +49,7 @@
     - Add error handling with fallback to plain text
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-  - [ ] 4.2 Write unit tests for SSMLGenerator
+  - [x] 4.2 Write unit tests for SSMLGenerator
     - Test prosody mapping for each volume level
     - Test prosody mapping for each rate classification
     - Test SSML XML structure and validity
