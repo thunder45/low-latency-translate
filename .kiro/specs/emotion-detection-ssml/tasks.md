@@ -173,15 +173,15 @@
     - Use default medium values when features are disabled
     - _Requirements: 8.1, 8.2, 8.3_
 
-- [ ] 10. Create deployment package and dependencies
-  - [ ] 10.1 Create requirements.txt with dependencies
+- [x] 10. Create deployment package and dependencies
+  - [x] 10.1 Create requirements.txt with dependencies
     - Add librosa>=0.10.0
     - Add numpy>=1.24.0
     - Add boto3>=1.28.0
     - Add soundfile>=0.12.0
     - _Requirements: 8.4_
 
-  - [ ] 10.2 Create Lambda deployment configuration
+  - [x] 10.2 Create Lambda deployment configuration
     - Configure Lambda runtime (Python 3.11)
     - Set memory to 1024 MB
     - Set timeout to 15 seconds
@@ -190,7 +190,7 @@
     - Document Lambda layer option for librosa/numpy
     - _Requirements: 8.1, 8.2, 8.3, 8.6_
 
-  - [ ] 10.3 Create IAM policy document
+  - [x] 10.3 Create IAM policy document
     - Define Polly permissions (polly:SynthesizeSpeech)
     - Define CloudWatch Logs permissions
     - Define CloudWatch metrics permissions
@@ -212,7 +212,7 @@
     - Return appropriate error messages for invalid inputs
     - _Requirements: 6.1_
 
-  - [ ]* 11.3 Write end-to-end integration tests
+  - [ ] 11.3 Write end-to-end integration tests
     - Test Lambda handler with real audio samples
     - Test with different audio formats and sample rates
     - Test with various audio durations

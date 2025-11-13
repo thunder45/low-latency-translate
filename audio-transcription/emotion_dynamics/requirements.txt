@@ -1,0 +1,17 @@
+# Emotion Dynamics Detection & SSML Generation Dependencies
+# These dependencies are required for audio dynamics extraction and speech synthesis
+
+# Audio analysis library for volume and rate detection
+librosa>=0.10.0
+
+# Numerical computing (required by librosa)
+numpy>=1.24.0
+
+# AWS SDK for Polly speech synthesis
+boto3>=1.28.0
+
+# Audio I/O library (required by librosa)
+soundfile>=0.12.0
+
+# Note: These dependencies are also included in the root requirements.txt
+# This file serves as documentation for the emotion_dynamics module's specific needs

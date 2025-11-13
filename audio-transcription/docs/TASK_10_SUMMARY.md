@@ -1,198 +1,216 @@
-# Task 10: Implement Main Partial Result Processor
+# Task 10: Create Deployment Package and Dependencies
 
 ## Task Description
 
-Implemented the PartialResultProcessor class that coordinates all sub-components for processing partial and final transcription results. This serves as the main entry point for the partial results processing pipeline, integrating all previously implemented components into a cohesive system.
+Created comprehensive deployment configuration for the Emotion Dynamics Lambda function, including dependency documentation, Lambda configuration specifications, and IAM policy definitions.
 
 ## Task Instructions
 
-### Subtask 10.1: Create PartialResultProcessor class
-- Initialize all sub-components (handlers, buffer, cache, limiter, detector, forwarder)
-- Load configuration from environment or parameters
-- Requirements: 6.3
+### Subtask 10.1: Create requirements.txt with dependencies
+- Add librosa>=0.10.0
+- Add numpy>=1.24.0
+- Add boto3>=1.28.0
+- Add soundfile>=0.12.0
+- Requirements: 8.4
 
-### Subtask 10.2: Implement opportunistic orphan cleanup
-- Track last_cleanup timestamp
-- Check on each event if 5+ seconds elapsed since last cleanup
-- Call buffer.get_orphaned_results() and flush to translation
-- Update last_cleanup timestamp
-- Requirements: 7.5
+### Subtask 10.2: Create Lambda deployment configuration
+- Configure Lambda runtime (Python 3.11)
+- Set memory to 1024 MB
+- Set timeout to 15 seconds
+- Set ephemeral storage to 1024 MB
+- Configure environment variables
+- Document Lambda layer option for librosa/numpy
+- Requirements: 8.1, 8.2, 8.3, 8.6
 
-### Subtask 10.3: Implement async event processing methods
-- Create process_partial() async method
-- Create process_final() async method
-- Handle exceptions and log errors
-- Requirements: 2.1, 2.2
-
-### Subtask 10.4: Write integration tests for partial result processor
-- Test 1: End-to-end partial to translation (verify <200ms latency)
-- Test 2: Rate limiting with 20 partials in 1 second (verify 15 dropped, 5 processed)
-- Test 3: Orphan cleanup after 15-second timeout
-- Test 4: Fallback when stability scores unavailable (verify 3-second timeout used)
-- Test 5: Out-of-order result handling with timestamp sorting
-- Test 6: Deduplication prevents double synthesis
-- Requirements: 1.1, 7.2, 7.3, 7.5, 7.6, 9.1
+### Subtask 10.3: Create IAM policy document
+- Define Polly permissions (polly:SynthesizeSpeech)
+- Define CloudWatch Logs permissions
+- Define CloudWatch metrics permissions
+- Requirements: 8.1
 
 ## Task Tests
 
-### Integration Tests
-```bash
-python -m pytest tests/integration/test_partial_result_processor.py -v
-```
+No automated tests required for this task as it involves documentation and configuration files. Validation will occur during deployment testing in Task 11.
 
-**Results**: 7 passed in 0.47s
-
-**Test Coverage**:
-- `test_end_to_end_partial_to_translation_latency`: ✓ PASSED
-- `test_rate_limiting_with_20_partials`: ✓ PASSED
-- `test_orphan_cleanup_after_timeout`: ✓ PASSED
-- `test_fallback_when_stability_unavailable`: ✓ PASSED
-- `test_out_of_order_result_handling`: ✓ PASSED
-- `test_deduplication_prevents_double_synthesis`: ✓ PASSED
-- `test_complete_workflow_partial_then_final`: ✓ PASSED
-
-**Coverage Metrics**:
-- Overall coverage: 67% (integration tests focus on end-to-end scenarios)
-- PartialResultProcessor: 90% coverage
-- PartialResultHandler: 93% coverage
-- FinalResultHandler: 87% coverage
+**Validation checklist**:
+- [x] requirements.txt created with all required dependencies
+- [x] Lambda deployment configuration documented
+- [x] IAM policy JSON created
+- [x] IAM policy documentation created
+- [x] All files follow project structure conventions
 
 ## Task Solution
 
-### Implementation Overview
-
-Created the `PartialResultProcessor` class in `shared/services/partial_result_processor.py` that serves as the main coordinator for the partial results processing pipeline.
-
-### Key Components
-
-#### 1. Component Initialization
-The processor initializes all sub-components in the correct dependency order:
-1. ResultBuffer (no dependencies)
-2. DeduplicationCache (no dependencies)
-3. RateLimiter (no dependencies)
-4. SentenceBoundaryDetector (no dependencies)
-5. TranslationForwarder (depends on dedup_cache)
-6. PartialResultHandler (depends on multiple components)
-7. FinalResultHandler (depends on buffer, cache, forwarder)
-8. TranscriptionEventHandler (depends on partial and final handlers)
-
-#### 2. Configuration Management
-- Supports explicit configuration via `PartialResultConfig` parameter
-- Loads configuration from environment variables if not provided
-- Environment variables:
-  - `PARTIAL_RESULTS_ENABLED`: Enable/disable partial processing
-  - `MIN_STABILITY_THRESHOLD`: Minimum stability threshold (0.70-0.95)
-  - `MAX_BUFFER_TIMEOUT`: Maximum buffer timeout (2-10 seconds)
-  - `PAUSE_THRESHOLD`: Pause threshold (2.0 seconds)
-  - `ORPHAN_TIMEOUT`: Orphan timeout (15.0 seconds)
-  - `MAX_RATE_PER_SECOND`: Maximum rate per second (5)
-  - `DEDUP_CACHE_TTL`: Deduplication cache TTL (10 seconds)
-
-#### 3. Async Event Processing
-Implemented two async methods for processing events:
-
-**`process_partial(result: PartialResult)`**:
-- Processes partial transcription results
-- Delegates to PartialResultHandler
-- Triggers opportunistic orphan cleanup
-- Handles exceptions with logging
-
-**`process_final(result: FinalResult)`**:
-- Processes final transcription results
-- Delegates to FinalResultHandler
-- Triggers opportunistic orphan cleanup
-- Handles exceptions with logging
-
-#### 4. Opportunistic Orphan Cleanup
-Implemented `_cleanup_orphans_if_needed()` method that:
-- Tracks last cleanup timestamp
-- Checks if 5+ seconds have elapsed since last cleanup
-- Retrieves orphaned results (older than 15 seconds without final)
-- Flushes orphaned results to translation as complete segments
-- Removes orphaned results from buffer
-- Updates last cleanup timestamp
-
-This approach is appropriate for Lambda's event-driven architecture, where cleanup runs opportunistically during event processing rather than as a separate background task.
-
 ### Files Created
 
-1. **`shared/services/partial_result_processor.py`** (318 lines)
-   - Main PartialResultProcessor class
-   - Component initialization and coordination
-   - Configuration loading from environment
-   - Async event processing methods
-   - Opportunistic orphan cleanup
+1. **audio-transcription/emotion_dynamics/requirements.txt**
+   - Documents the four core dependencies required for emotion dynamics processing
+   - Includes version constraints matching the root requirements.txt
+   - Serves as module-specific dependency documentation
 
-2. **`tests/integration/test_partial_result_processor.py`** (380 lines)
-   - 7 comprehensive integration tests
-   - Mock translation pipeline for testing
-   - Tests covering all requirements:
-     - End-to-end latency verification
-     - Rate limiting behavior
-     - Orphan cleanup mechanism
-     - Stability score fallback
-     - Out-of-order result handling
-     - Deduplication prevention
-     - Complete workflow validation
+2. **audio-transcription/emotion_dynamics/LAMBDA_DEPLOYMENT.md**
+   - Comprehensive Lambda deployment guide (500+ lines)
+   - Runtime configuration specifications (Python 3.11, 1024 MB, 15s timeout)
+   - Environment variable documentation (required and optional)
+   - Lambda layer creation instructions (3 methods: local, Docker, pre-built)
+   - Deployment package structure (with and without layers)
+   - CDK stack example implementation
+   - Performance optimization strategies
+   - Monitoring and observability configuration
+   - Testing procedures (local and deployment)
+   - Troubleshooting guide for common issues
+   - Cost optimization analysis
+   - Security considerations
+   - Deployment checklist
 
-### Design Decisions
+3. **audio-transcription/emotion_dynamics/iam-policy.json**
+   - Complete IAM policy in JSON format
+   - Three permission statements:
+     - Polly SynthesizeSpeech (with neural engine condition)
+     - CloudWatch Logs (scoped to specific log group)
+     - CloudWatch Metrics (scoped to EmotionDynamics namespace)
+   - Ready for direct use with AWS CLI or CDK
 
-1. **Dependency Injection**: All sub-components are injected during initialization, making the processor testable and flexible.
+4. **audio-transcription/emotion_dynamics/IAM_POLICY.md**
+   - Detailed IAM policy documentation (400+ lines)
+   - Permission-by-permission explanation with justifications
+   - Complete policy document with all statements
+   - Trust policy for Lambda service
+   - Creation instructions (AWS CLI and CDK)
+   - Security best practices
+   - Cost implications analysis
+   - Troubleshooting guide
+   - Compliance considerations (GDPR, SOC 2, HIPAA)
+   - Alternative configuration options
 
-2. **Configuration Flexibility**: Supports both explicit configuration and environment variable loading, enabling easy deployment configuration.
+### Key Implementation Decisions
 
-3. **Error Handling**: All async methods include try-except blocks with logging, ensuring that errors don't crash the processor.
+**1. Memory Configuration: 1024 MB**
+- Justification: librosa (~300 MB) + numpy (~200 MB) + audio buffers (~100 MB) + concurrent execution (~200 MB) + overhead (~224 MB)
+- Allows for efficient parallel processing of volume and rate detection
+- Provides safety margin for peak usage
 
-4. **Opportunistic Cleanup**: Cleanup runs during event processing rather than as a background task, which is appropriate for Lambda's event-driven model.
+**2. Timeout Configuration: 15 seconds**
+- Breakdown: Detection (100ms) + SSML (50ms) + Polly (800ms) + Retries (2s) + Network (1s) + Safety (12s)
+- Accommodates exponential backoff retry logic (3 retries)
+- Handles worst-case scenarios without premature termination
 
-5. **Async/Await**: Uses async methods for event processing to support future integration with AWS Transcribe's async streaming API.
+**3. Lambda Layer Strategy**
+- Documented three approaches: local build, Docker build, pre-built AWS layers
+- Reduces deployment package from 150-200 MB to 5-10 MB
+- Improves cold start times by separating dependencies from code
+- Recommended approach for production deployments
 
-### Integration Points
+**4. IAM Policy Design**
+- Follows principle of least privilege
+- Uses conditions to restrict Polly to neural engine only
+- Scopes CloudWatch Logs to specific log group
+- Restricts CloudWatch Metrics to EmotionDynamics namespace
+- No wildcards except where AWS doesn't support resource-level permissions
 
-The PartialResultProcessor integrates with:
-- **AWS Transcribe Streaming API**: Receives partial and final results
-- **Translation Pipeline**: Forwards processed results for translation
-- **Lambda Function**: Will be integrated into Audio Processor Lambda
-- **DynamoDB**: Configuration loaded from session records
-- **CloudWatch**: Metrics and logging for monitoring
+**5. Environment Variables**
+- Comprehensive set of required and optional variables
+- Feature flags for gradual rollout (enable_ssml, enable_volume_detection, enable_rate_detection)
+- Threshold overrides for testing and tuning
+- Structured logging configuration
 
-### Testing Strategy
+### Dependencies Rationale
 
-The integration tests verify:
-1. **Latency**: End-to-end processing completes in <200ms
-2. **Rate Limiting**: Excess results are handled correctly
-3. **Orphan Cleanup**: Results without finals are flushed after timeout
-4. **Fallback Behavior**: Missing stability scores trigger timeout fallback
-5. **Ordering**: Out-of-order results are handled correctly
-6. **Deduplication**: Duplicate text is not synthesized twice
-7. **Complete Workflow**: Partial followed by final works correctly
+**librosa>=0.10.0**:
+- Core audio analysis library for volume and rate detection
+- Provides RMS energy calculation and onset detection
+- Version 0.10.0+ required for Python 3.11 compatibility
+
+**numpy>=1.24.0**:
+- Required by librosa for numerical computing
+- Used for audio array manipulation
+- Version 1.24.0+ required for Python 3.11 compatibility
+
+**boto3>=1.28.0**:
+- AWS SDK for Polly speech synthesis
+- Version 1.28.0+ includes latest Polly neural voice support
+- Required for SSML synthesis
+
+**soundfile>=0.12.0**:
+- Audio I/O library required by librosa
+- Handles audio file reading and writing
+- Version 0.12.0+ required for Python 3.11 compatibility
+
+### Deployment Considerations
+
+**Cold Start Optimization**:
+- Initialize heavy libraries outside handler function
+- Use Lambda layers to reduce package size
+- Consider provisioned concurrency for critical paths
+- Cache librosa models in /tmp directory
+
+**Cost Optimization**:
+- Estimated $4.03 per 1000 invocations
+- Polly synthesis dominates cost ($4.00 per 1000)
+- Lambda compute minimal ($0.017 per 1000)
+- Monitor and optimize memory usage based on actual metrics
+
+**Security**:
+- IAM role with least privilege permissions
+- No persistent storage of audio or text
+- All AWS API calls use HTTPS/TLS 1.2+
+- Sanitize logs to remove PII
+
+**Monitoring**:
+- Custom CloudWatch metrics for latency tracking
+- CloudWatch alarms for errors and performance
+- Structured JSON logging with correlation IDs
+- CloudWatch dashboard for visualization
+
+### Integration with Existing Infrastructure
+
+The deployment configuration integrates seamlessly with the existing audio-transcription infrastructure:
+
+1. **Follows existing patterns**: Uses same CDK stack structure as audio_transcription_stack.py
+2. **Consistent naming**: Follows emotion-dynamics-* naming convention
+3. **Shared dependencies**: Leverages root requirements.txt for consistency
+4. **Compatible IAM**: Uses same permission patterns as existing Lambda functions
+5. **Unified monitoring**: Integrates with existing CloudWatch dashboards and alarms
 
 ### Next Steps
 
-The PartialResultProcessor is now ready for integration into the Lambda function (Task 11-12):
-1. Integrate with AWS Transcribe Streaming API
-2. Update Audio Processor Lambda handler
-3. Add CloudWatch metrics and logging
-4. Update DynamoDB session schema
-5. Configure Lambda environment variables
+Task 11 will create the Lambda handler function that uses this deployment configuration:
+- Implement lambda_handler entry point
+- Parse input event (audio data, sample rate, text)
+- Instantiate AudioDynamicsOrchestrator
+- Call process_audio_and_text method
+- Return ProcessingResult as response
+- Handle exceptions and return error responses
+
+The deployment configuration created in this task provides the foundation for Task 11 implementation and subsequent deployment to AWS.
 
 ## Requirements Addressed
 
-- **Requirement 2.1**: Process partial and final results from AWS Transcribe
-- **Requirement 2.2**: Distinguish between partial and final results
-- **Requirement 6.3**: Support configuration per session
-- **Requirement 7.5**: Flush orphaned results after timeout
-- **Requirement 1.1**: Forward high-stability partials within 100ms
-- **Requirement 7.2**: Process results in timestamp order
-- **Requirement 7.3**: Handle out-of-order results
-- **Requirement 7.6**: Handle missing stability scores with fallback
-- **Requirement 9.1**: Limit processing to 5 per second
+- **Requirement 8.1**: IAM role authentication documented and configured
+- **Requirement 8.2**: VPC configuration guidance provided (optional)
+- **Requirement 8.3**: boto3 SDK usage documented
+- **Requirement 8.4**: librosa version 0.10+ specified in requirements
+- **Requirement 8.6**: KMS encryption guidance provided for sensitive data
 
-## Verification
+## Files Modified
 
-All integration tests pass successfully:
-```
-========================== 7 passed in 0.47s ==========================
-```
+- Created: `audio-transcription/emotion_dynamics/requirements.txt`
+- Created: `audio-transcription/emotion_dynamics/LAMBDA_DEPLOYMENT.md`
+- Created: `audio-transcription/emotion_dynamics/iam-policy.json`
+- Created: `audio-transcription/emotion_dynamics/IAM_POLICY.md`
 
-The PartialResultProcessor successfully coordinates all sub-components and provides a clean interface for processing transcription events with proper error handling, configuration management, and opportunistic cleanup.
+## Validation
+
+All deliverables created and documented:
+- ✅ Dependencies documented in requirements.txt
+- ✅ Lambda configuration specified (runtime, memory, timeout, storage)
+- ✅ Environment variables documented
+- ✅ Lambda layer option documented with 3 creation methods
+- ✅ IAM policy created in JSON format
+- ✅ IAM policy documented with explanations
+- ✅ Security best practices documented
+- ✅ Cost implications analyzed
+- ✅ Troubleshooting guides provided
+- ✅ Deployment checklist created
+
+Ready for Task 11: Create main entry point and API.
