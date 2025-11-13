@@ -23,15 +23,15 @@
     - Test handling of silent and clipped audio
     - _Requirements: 1.1-1.7_
 
-- [ ] 3. Implement speaking rate detection using librosa
-  - [ ] 3.1 Create SpeakingRateDetector class with detect_rate method
+- [x] 3. Implement speaking rate detection using librosa
+  - [x] 3.1 Create SpeakingRateDetector class with detect_rate method
     - Implement onset detection using librosa.onset.onset_detect
     - Calculate WPM from onset count and audio duration
     - Implement rate classification based on WPM thresholds (very slow < 100, slow 100-130, medium 130-160, fast 160-190, very fast > 190)
     - Add error handling with fallback to medium rate
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
 
-  - [ ] 3.2 Write unit tests for SpeakingRateDetector
+  - [x] 3.2 Write unit tests for SpeakingRateDetector
     - Test onset detection with known speech patterns
     - Test WPM calculation accuracy
     - Test rate classification for each threshold range
