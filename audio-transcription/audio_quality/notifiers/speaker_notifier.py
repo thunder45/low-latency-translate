@@ -154,7 +154,7 @@ class SpeakerNotifier:
                 f"Enable echo cancellation in your browser or use headphones."
             ),
             'silence': (
-                f"No audio detected for {format_metric('duration', 0)} seconds. "
+                f"Silence detected: No audio for {format_metric('duration', 0)} seconds. "
                 f"Check if your microphone is muted or disconnected."
             )
         }
@@ -182,25 +182,21 @@ class SpeakerNotifier:
         Raises:
             Exception: If message sending fails
         """
-        # For API Gateway WebSocket API, use post_to_connection
-        # The websocket client should be an API Gateway Management API client
-        import json
-        
-        try:
+        # Check which method the websocket client supports
+        if hasattr(self.websocket, 'send_message'):
+            # Use send_message method (for mocks or custom implementations)
+            self.websocket.send_message(connection_id, message)
+        elif hasattr(self.websocket, 'post_to_connection'):
+            # For API Gateway WebSocket API, use post_to_connection
+            import json
             self.websocket.post_to_connection(
                 ConnectionId=connection_id,
                 Data=json.dumps(message).encode('utf-8')
             )
-        except AttributeError:
-            # If websocket client doesn't have post_to_connection,
-            # it might be a mock or different implementation
-            # Try calling a generic send_message method
-            if hasattr(self.websocket, 'send_message'):
-                self.websocket.send_message(connection_id, message)
-            else:
-                raise TypeError(
-                    'WebSocket client must have post_to_connection or send_message method'
-                )
+        else:
+            raise TypeError(
+                'WebSocket client must have post_to_connection or send_message method'
+            )
     
     def clear_history(self, connection_id: Optional[str] = None) -> None:
         """

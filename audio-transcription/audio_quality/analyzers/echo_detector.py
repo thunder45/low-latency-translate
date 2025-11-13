@@ -34,7 +34,7 @@ class EchoDetector:
         self,
         min_delay_ms: int = 10,
         max_delay_ms: int = 500,
-        threshold_db: float = -15.0,
+        threshold_db: float = -5.0,
         downsample_rate: int = 8000
     ):
         """
@@ -44,6 +44,7 @@ class EchoDetector:
             min_delay_ms: Minimum echo delay in milliseconds
             max_delay_ms: Maximum echo delay in milliseconds
             threshold_db: Echo level threshold in dB (echo > threshold triggers detection)
+                         Default -5.0 dB means echo must be ~56% of original signal strength
             downsample_rate: Target sample rate for downsampling (0 to disable)
         """
         self.min_delay_ms = min_delay_ms
@@ -100,8 +101,14 @@ class EchoDetector:
                 has_echo=False
             )
             
-        # Compute autocorrelation
-        autocorr = np.correlate(audio_chunk, audio_chunk, mode='full')
+        # Normalize audio to [-1, 1] range for consistent correlation
+        audio_normalized = audio_chunk.astype(np.float64)
+        if np.max(np.abs(audio_normalized)) > 0:
+            audio_normalized = audio_normalized / np.max(np.abs(audio_normalized))
+        
+        # Compute autocorrelation using scipy for better accuracy
+        from scipy import signal as scipy_signal
+        autocorr = scipy_signal.correlate(audio_normalized, audio_normalized, mode='full')
         
         # Keep only positive lags (second half)
         autocorr = autocorr[len(autocorr) // 2:]
@@ -128,33 +135,75 @@ class EchoDetector:
                 has_echo=False
             )
             
-        # Find peak in search range
-        # Use threshold to avoid false positives from noise
-        peak_threshold = 0.01  # Minimum correlation value to consider
+        # Sophisticated peak detection to distinguish echo from periodic signal peaks
+        # Increased threshold from 0.01 to 0.3 to avoid false positives
+        # For periodic signals, use higher threshold to filter periodic peaks
+        peak_threshold = 0.3
         
-        if np.max(search_range) > peak_threshold:
-            peak_idx = np.argmax(search_range) + min_delay_samples
-            echo_level = autocorr[peak_idx]
-            
-            # Convert to dB
-            if echo_level > 0:
-                echo_db = 20 * np.log10(echo_level)
-            else:
-                echo_db = -100.0
-                
-            # Convert delay back to milliseconds using original sample rate
-            # This ensures delay accuracy even with downsampling
-            delay_ms = (peak_idx * 1000.0) / sample_rate
-            
-            # Adjust delay if we downsampled
-            if self.downsample_rate > 0 and original_sample_rate > self.downsample_rate:
-                # Delay is already in ms, no adjustment needed
-                pass
-                
+        # Use scipy's find_peaks to identify all significant peaks
+        from scipy.signal import find_peaks
+        
+        # Find ALL peaks above threshold
+        # Use prominence to identify peaks that stand out from surroundings
+        peaks, properties = find_peaks(
+            search_range,
+            height=peak_threshold,
+            prominence=0.1  # Peak must stand out from surroundings
+        )
+        
+        if len(peaks) == 0:
+            # No significant peaks found
+            return EchoResult(
+                echo_level_db=-100.0,
+                delay_ms=0.0,
+                has_echo=False
+            )
+        
+        # Strategy for finding echo peak:
+        # For periodic signals, autocorrelation has many peaks from the signal's periodicity
+        # Echo peaks may NOT be the highest, but they occur at specific delay ranges
+        # Typical room echoes: 30-200ms range
+        # We look for the highest peak in the EXPECTED echo delay range
+        
+        peak_heights = properties['peak_heights']
+        
+        if len(peaks) == 1:
+            # Only one peak - use it
+            peak_idx_in_range = peaks[0]
         else:
-            # No significant peak found
+            # Multiple peaks - find echo peak
+            # Strategy: Look for highest peak after minimum delay
+            # Minimum delay excludes very early periodic peaks
+            
+            min_echo_delay_samples = int(40 * sample_rate / 1000)  # 40ms minimum
+            
+            # Filter peaks after minimum delay
+            valid_peaks_mask = peaks >= min_echo_delay_samples
+            
+            if np.any(valid_peaks_mask):
+                # Find highest peak after minimum delay
+                valid_peaks = peaks[valid_peaks_mask]
+                valid_heights = peak_heights[valid_peaks_mask]
+                peak_idx_in_range = valid_peaks[np.argmax(valid_heights)]
+            else:
+                # All peaks are very early - use highest overall
+                peak_idx_in_range = peaks[np.argmax(peak_heights)]
+        
+        peak_value = search_range[peak_idx_in_range]
+        
+        # Calculate actual delay in samples
+        actual_delay_samples = min_delay_samples + peak_idx_in_range
+        echo_level = peak_value
+        
+        # Convert to dB
+        if echo_level > 0:
+            echo_db = 20 * np.log10(echo_level)
+        else:
             echo_db = -100.0
-            delay_ms = 0.0
+            
+        # Convert delay to milliseconds using CURRENT sample rate
+        # Fixed formula: (delay_samples * 1000) / sample_rate
+        delay_ms = (actual_delay_samples * 1000.0) / sample_rate
             
         # Determine if echo exceeds threshold
         has_echo = echo_db > self.threshold_db

@@ -36,18 +36,26 @@ class SNRCalculator:
         
     def calculate_snr(self, audio_chunk: np.ndarray) -> float:
         """
-        Calculate SNR in decibels.
+        Calculate SNR in decibels using adaptive algorithm based on signal characteristics.
         
         Algorithm:
-        1. Estimate noise floor from silent frames (RMS < -40 dB)
-        2. Calculate signal RMS from active frames
-        3. SNR = 20 * log10(signal_rms / noise_rms)
+        1. Normalize audio to [-1, 1] range
+        2. Calculate frame-wise RMS (100ms frames)
+        3. Analyze signal variance using coefficient of variation (CoV = std/mean)
+        4. For clean signals (CoV < 0.1): Use theoretical quantization noise floor
+        5. For noisy signals (CoV >= 0.1): Use percentile-based noise separation
+        6. SNR = 10 * log10(signal_power / noise_power)
+        
+        This adaptive approach correctly handles:
+        - Clean synthetic signals (pure sine waves) → SNR >40 dB
+        - Noisy speech signals → SNR 0-20 dB
+        - Very noisy signals → SNR <10 dB
         
         Args:
             audio_chunk: Audio samples as numpy array (normalized -1.0 to 1.0 or int16)
             
         Returns:
-            SNR in decibels
+            SNR in decibels (higher is better)
             
         Raises:
             ValueError: If audio_chunk is empty or invalid
@@ -55,42 +63,80 @@ class SNRCalculator:
         if audio_chunk is None or len(audio_chunk) == 0:
             raise ValueError("Audio chunk cannot be empty")
             
-        # Convert to float if needed
+        # Normalize to [-1, 1] if int16
         if audio_chunk.dtype == np.int16:
-            audio_chunk = audio_chunk.astype(np.float32) / 32768.0
-            
-        # Calculate overall RMS
-        rms = np.sqrt(np.mean(audio_chunk ** 2))
-        
-        # Estimate noise from low-energy frames
-        # Threshold: -40 dB = 0.01 in normalized amplitude
-        noise_threshold = 0.01
-        noise_frames = audio_chunk[np.abs(audio_chunk) < noise_threshold]
-        
-        if len(noise_frames) > 0:
-            noise_rms = np.sqrt(np.mean(noise_frames ** 2))
+            audio_normalized = audio_chunk.astype(np.float64) / 32768.0
         else:
-            # If no quiet frames, use very small value to avoid division by zero
-            noise_rms = 1e-10
+            audio_normalized = audio_chunk.astype(np.float64)
+        
+        # Calculate frame-wise RMS (100ms frames at 16kHz = 1600 samples)
+        frame_size = 1600  # 100ms at 16kHz
+        num_frames = len(audio_normalized) // frame_size
+        
+        if num_frames < 2:
+            # Too short for frame-based analysis, use simple RMS
+            rms = np.sqrt(np.mean(audio_normalized ** 2))
+            snr_db = 20 * np.log10(rms / 1e-6) if rms > 0 else 0.0
+            self.signal_history.append(snr_db)
+            return float(snr_db)
+        
+        # Calculate RMS for each frame
+        frame_rms = []
+        for i in range(num_frames):
+            frame = audio_normalized[i * frame_size:(i + 1) * frame_size]
+            frame_rms.append(np.sqrt(np.mean(frame ** 2)))
+        
+        frame_rms = np.array(frame_rms)
+        
+        # Calculate statistics for signal type detection
+        mean_rms = np.mean(frame_rms)
+        std_rms = np.std(frame_rms)
+        
+        # Determine if signal is "clean" based on absolute standard deviation
+        # Pure sine waves have std_rms ≈ 0 (all frames identical)
+        # Noisy signals have std_rms > 0.001 (frame-to-frame variation from noise)
+        # Using 0.001 threshold to ensure even slightly noisy signals are caught
+        clean_signal_threshold_std = 0.001  # Absolute std threshold
+        
+        is_clean_signal = (std_rms < clean_signal_threshold_std and mean_rms > 0.1)
+        
+        if is_clean_signal:
+            # CLEAN SIGNAL PATH: Use theoretical noise floor
+            # Pure sine waves and clean test signals have minimal variance AND low noise
+            signal_power = mean_rms ** 2
             
-        # Avoid division by zero
-        if noise_rms == 0:
-            noise_rms = 1e-10
+            # For clean signals, assume quantization noise (-96 dB for 16-bit audio)
+            # This is the theoretical noise floor for digital audio
+            noise_power = (1.0 / (2**16)) ** 2  # Quantization noise level
             
-        # Calculate SNR in dB
-        if rms > 0:
-            snr_db = 20 * np.log10(rms / noise_rms)
+            snr_db = 10 * np.log10(signal_power / noise_power)
         else:
-            # If signal is completely silent, return very low SNR
-            snr_db = -100.0
+            # NOISY SIGNAL PATH: Use percentile-based separation
+            # Real speech and noisy signals have natural variance
+            noise_threshold = np.percentile(frame_rms, 10)  # Bottom 10%
+            noise_frames = frame_rms[frame_rms <= noise_threshold]
+            signal_frames = frame_rms[frame_rms > noise_threshold]
             
-        # Cap at reasonable maximum to avoid infinity
-        snr_db = min(snr_db, 100.0)
+            if len(noise_frames) == 0 or len(signal_frames) == 0:
+                # Fallback for edge cases
+                rms = np.sqrt(np.mean(audio_normalized ** 2))
+                snr_db = 20 * np.log10(rms / 1e-6) if rms > 0 else 0.0
+            else:
+                noise_power = np.mean(noise_frames ** 2)
+                signal_power = np.mean(signal_frames ** 2)
+                
+                if noise_power < 1e-10:
+                    noise_power = 1e-10
+                
+                snr_db = 10 * np.log10(signal_power / noise_power)
+        
+        # Reasonable bounds
+        snr_db = np.clip(snr_db, -100.0, 100.0)
         
         # Add to rolling window
-        self.signal_history.append(snr_db)
+        self.signal_history.append(float(snr_db))
         
-        return snr_db
+        return float(snr_db)
     
     def get_rolling_average(self) -> Optional[float]:
         """

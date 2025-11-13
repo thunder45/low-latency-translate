@@ -142,50 +142,50 @@
   - Configure SNS topic for alarm notifications
   - _Requirements: 5.3_
 
-- [ ]* 15. Write unit tests
-- [ ]* 15.1 Write SNR calculator tests
+- [x] 15. Write unit tests
+- [x] 15.1 Write SNR calculator tests
   - Test SNR calculation with clean signal (expected: >40 dB)
   - Test SNR calculation with noisy signal (expected: 0-20 dB)
   - _Requirements: 1.1, 1.2_
 
-- [ ]* 15.2 Write clipping detector tests
+- [x] 15.2 Write clipping detector tests
   - Test clipping detection with clipped signal
   - Verify clipped sample count and percentage calculation
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ]* 15.3 Write echo detector tests
+- [x] 15.3 Write echo detector tests
   - Test echo detection with signal containing 100ms echo
   - Verify echo delay measurement accuracy
   - Test edge case with zero autocorrelation values
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ]* 15.4 Write silence detector tests
+- [x] 15.4 Write silence detector tests
   - Test silence detection with extended silence (>5 seconds)
   - Test differentiation between speech pauses and technical issues
   - Verify silence duration tracking
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ]* 15.5 Write configuration validation tests
+- [x] 15.5 Write configuration validation tests
   - Test rejection of invalid SNR thresholds (<10 dB or >40 dB)
   - Test rejection of invalid clipping thresholds (>10%)
   - Test acceptance of valid configuration
   - _Requirements: 4.3, 4.4, 4.5_
 
-- [ ]* 15.6 Write speaker notifier tests
+- [x] 15.6 Write speaker notifier tests
   - Test notification message sending via WebSocket
   - Test rate limiting effectiveness (1 per minute per issue type)
   - Verify notification format and content
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ]* 16. Write integration tests
-- [ ]* 16.1 Write quality validation pipeline test
+- [x] 16. Write integration tests
+- [x] 16.1 Write quality validation pipeline test
   - Load test audio file with known quality issues
   - Run complete analysis pipeline
   - Verify all metrics are calculated correctly
   - Verify quality issues are detected
   - _Requirements: 1.1, 2.1, 3.1, 8.1_
 
-- [ ]* 16.2 Write Lambda integration test
+- [x] 16.2 Write Lambda integration test
   - Mock WebSocket and AWS clients
   - Send audio chunk through Lambda handler
   - Verify quality analysis runs

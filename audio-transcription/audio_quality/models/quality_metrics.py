@@ -35,6 +35,16 @@ class QualityMetrics:
     silence_duration_s: float
     energy_db: float
     
+    @property
+    def duration_s(self) -> float:
+        """
+        Alias for silence_duration_s for backward compatibility.
+        
+        Returns:
+            Silence duration in seconds.
+        """
+        return self.silence_duration_s
+    
     def to_dict(self) -> Dict[str, Any]:
         """
         Converts metrics to dictionary for serialization.
