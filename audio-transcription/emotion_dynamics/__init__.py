@@ -10,6 +10,7 @@ from .detectors.volume_detector import VolumeDetector
 from .detectors.speaking_rate_detector import SpeakingRateDetector
 from .generators.ssml_generator import SSMLGenerator
 from .clients.polly_client import PollyClient
+from .config.settings import Settings, get_settings
 
 __version__ = "1.0.0"
 
@@ -19,4 +20,6 @@ __all__ = [
     'SpeakingRateDetector',
     'SSMLGenerator',
     'PollyClient',
+    'Settings',
+    'get_settings',
 ]

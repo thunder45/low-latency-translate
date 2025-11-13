@@ -24,6 +24,8 @@ from emotion_dynamics.models.processing_result import ProcessingResult
 from emotion_dynamics.models.volume_result import VolumeResult
 from emotion_dynamics.models.rate_result import RateResult
 from emotion_dynamics.exceptions import EmotionDynamicsError
+from emotion_dynamics.utils.metrics import EmotionDynamicsMetrics
+from emotion_dynamics.config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,9 @@ class AudioDynamicsOrchestrator:
         volume_detector: Optional[VolumeDetector] = None,
         rate_detector: Optional[SpeakingRateDetector] = None,
         ssml_generator: Optional[SSMLGenerator] = None,
-        polly_client: Optional[PollyClient] = None
+        polly_client: Optional[PollyClient] = None,
+        metrics: Optional[EmotionDynamicsMetrics] = None,
+        settings: Optional['Settings'] = None
     ):
         """
         Initialize audio dynamics orchestrator.
@@ -65,13 +69,27 @@ class AudioDynamicsOrchestrator:
             rate_detector: Speaking rate detector instance (creates new if None)
             ssml_generator: SSML generator instance (creates new if None)
             polly_client: Polly client instance (creates new if None)
+            metrics: Metrics emitter instance (creates new if None)
+            settings: Configuration settings (uses global settings if None)
         """
+        self.settings = settings or get_settings()
         self.volume_detector = volume_detector or VolumeDetector()
         self.rate_detector = rate_detector or SpeakingRateDetector()
         self.ssml_generator = ssml_generator or SSMLGenerator()
-        self.polly_client = polly_client or PollyClient()
+        self.polly_client = polly_client or PollyClient(
+            region_name=self.settings.aws_region,
+            max_retries=self.settings.max_retries,
+            base_delay=self.settings.retry_base_delay,
+            max_delay=self.settings.retry_max_delay
+        )
+        self.metrics = metrics or EmotionDynamicsMetrics()
         
-        logger.info("Initialized AudioDynamicsOrchestrator")
+        logger.info(
+            "Initialized AudioDynamicsOrchestrator with settings: "
+            f"enable_volume={self.settings.enable_volume_detection}, "
+            f"enable_rate={self.settings.enable_rate_detection}, "
+            f"enable_ssml={self.settings.enable_ssml}"
+        )
     
     def detect_audio_dynamics(
         self,
@@ -107,9 +125,16 @@ class AudioDynamicsOrchestrator:
         if correlation_id is None:
             correlation_id = str(uuid.uuid4())
         
-        # Use default options if not provided
+        # Use default options if not provided, populated from settings
         if options is None:
-            options = ProcessingOptions()
+            options = ProcessingOptions(
+                voice_id=self.settings.voice_id,
+                enable_ssml=self.settings.enable_ssml,
+                sample_rate=self.settings.sample_rate,
+                output_format=self.settings.output_format,
+                enable_volume_detection=self.settings.enable_volume_detection,
+                enable_rate_detection=self.settings.enable_rate_detection
+            )
         
         logger.debug(
             f"Starting parallel audio dynamics detection",
@@ -166,6 +191,10 @@ class AudioDynamicsOrchestrator:
                         extra={'correlation_id': correlation_id},
                         exc_info=True
                     )
+                    # Emit error metric
+                    error_type = type(e).__name__
+                    component = f"{future_name.capitalize()}Detector"
+                    self.metrics.emit_error_count(error_type, component, correlation_id)
         
         # Calculate combined latency
         end_time = time.time()
@@ -182,6 +211,8 @@ class AudioDynamicsOrchestrator:
                 db_value=-15.0,
                 timestamp=None
             )
+            # Emit fallback metric
+            self.metrics.emit_fallback_used('DefaultVolume', correlation_id)
         
         if rate_result is None:
             logger.warning(
@@ -194,12 +225,28 @@ class AudioDynamicsOrchestrator:
                 onset_count=0,
                 timestamp=None
             )
+            # Emit fallback metric
+            self.metrics.emit_fallback_used('DefaultRate', correlation_id)
         
         # Combine results into AudioDynamics
         dynamics = AudioDynamics(
             volume=volume_result,
             rate=rate_result,
             correlation_id=correlation_id
+        )
+        
+        # Emit CloudWatch metrics
+        self.metrics.emit_volume_detection_latency(volume_ms, correlation_id)
+        self.metrics.emit_rate_detection_latency(rate_ms, correlation_id)
+        self.metrics.emit_detected_volume(
+            volume_result.level,
+            volume_result.db_value,
+            correlation_id
+        )
+        self.metrics.emit_detected_rate(
+            rate_result.classification,
+            rate_result.wpm,
+            correlation_id
         )
         
         # Log timing metrics
@@ -302,9 +349,16 @@ class AudioDynamicsOrchestrator:
         Raises:
             EmotionDynamicsError: When processing fails completely
         """
-        # Use default options if not provided
+        # Use default options if not provided, populated from settings
         if options is None:
-            options = ProcessingOptions()
+            options = ProcessingOptions(
+                voice_id=self.settings.voice_id,
+                enable_ssml=self.settings.enable_ssml,
+                sample_rate=self.settings.sample_rate,
+                output_format=self.settings.output_format,
+                enable_volume_detection=self.settings.enable_volume_detection,
+                enable_rate_detection=self.settings.enable_rate_detection
+            )
         
         # Generate correlation ID for this processing request
         correlation_id = str(uuid.uuid4())
@@ -360,6 +414,10 @@ class AudioDynamicsOrchestrator:
                         extra={'correlation_id': correlation_id},
                         exc_info=True
                     )
+                    # Emit error metric
+                    error_type = type(e).__name__
+                    self.metrics.emit_error_count(error_type, 'SSMLGenerator', correlation_id)
+                    
                     ssml_text = self.ssml_generator.generate_ssml(
                         text=translated_text,
                         dynamics=None  # Generate plain SSML
@@ -397,6 +455,10 @@ class AudioDynamicsOrchestrator:
                     extra={'correlation_id': correlation_id},
                     exc_info=True
                 )
+                # Emit error metric
+                error_type = type(e).__name__
+                self.metrics.emit_error_count(error_type, 'PollyClient', correlation_id)
+                
                 raise EmotionDynamicsError(f"Speech synthesis failed: {e}") from e
             
             polly_end_time = time.time()
@@ -419,6 +481,15 @@ class AudioDynamicsOrchestrator:
                 ssml_generation_ms=ssml_generation_ms,
                 polly_synthesis_ms=polly_synthesis_ms
             )
+            
+            # Emit CloudWatch metrics for latencies
+            self.metrics.emit_ssml_generation_latency(ssml_generation_ms, correlation_id)
+            self.metrics.emit_polly_synthesis_latency(polly_synthesis_ms, correlation_id)
+            self.metrics.emit_end_to_end_latency(processing_time_ms, correlation_id)
+            
+            # Emit fallback metric if used
+            if fallback_used:
+                self.metrics.emit_fallback_used('PlainText', correlation_id)
             
             # Log success with timing breakdown
             logger.info(
@@ -470,6 +541,10 @@ class AudioDynamicsOrchestrator:
                 extra={'correlation_id': correlation_id},
                 exc_info=True
             )
+            # Emit error metric
+            error_type = type(e).__name__
+            self.metrics.emit_error_count(error_type, 'Orchestrator', correlation_id)
+            
             raise EmotionDynamicsError(
                 f"Processing pipeline failed: {e}"
             ) from e

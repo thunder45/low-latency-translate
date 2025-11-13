@@ -6,7 +6,15 @@ to track emotion dynamics detection performance, errors, and fallback usage.
 """
 
 import logging
-from typing import Optional, Dict, Any
+import os
+from typing import Optional, Dict, Any, List
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    BOTO3_AVAILABLE = True
+except ImportError:
+    BOTO3_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +23,47 @@ class EmotionDynamicsMetrics:
     """
     Emits CloudWatch metrics for emotion dynamics detection.
     
-    In production, this would use boto3 CloudWatch client. For now,
-    it logs metrics that can be parsed by CloudWatch Logs Insights.
+    Uses boto3 CloudWatch client when available, otherwise logs metrics
+    in structured format for CloudWatch Logs Insights parsing.
     """
     
-    def __init__(self, namespace: str = 'AudioTranscription/EmotionDynamics'):
+    def __init__(
+        self,
+        namespace: str = 'AudioTranscription/EmotionDynamics',
+        use_cloudwatch: Optional[bool] = None
+    ):
         """
         Initialize metrics emitter.
         
         Args:
             namespace: CloudWatch namespace for metrics
+            use_cloudwatch: Whether to use CloudWatch client (auto-detects if None)
         """
         self.namespace = namespace
-        self.metrics_buffer = []
+        self.metrics_buffer: List[Dict[str, Any]] = []
+        
+        # Auto-detect CloudWatch usage if not specified
+        if use_cloudwatch is None:
+            # Use CloudWatch if boto3 available and not in test environment
+            use_cloudwatch = BOTO3_AVAILABLE and os.getenv('PYTEST_CURRENT_TEST') is None
+        
+        self.use_cloudwatch = use_cloudwatch
+        
+        # Initialize CloudWatch client if enabled
+        if self.use_cloudwatch and BOTO3_AVAILABLE:
+            try:
+                self.cloudwatch = boto3.client('cloudwatch')
+                logger.info(f"Initialized CloudWatch metrics client for namespace: {namespace}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize CloudWatch client: {e}, falling back to logging")
+                self.use_cloudwatch = False
+                self.cloudwatch = None
+        else:
+            self.cloudwatch = None
+            if not BOTO3_AVAILABLE:
+                logger.info("boto3 not available, using log-based metrics")
+            else:
+                logger.info("CloudWatch metrics disabled, using log-based metrics")
     
     def emit_volume_detection_latency(
         self,
@@ -271,49 +307,94 @@ class EmotionDynamicsMetrics:
     
     def _emit_metric(self, metric: dict) -> None:
         """
-        Emit metric to CloudWatch.
+        Emit metric to CloudWatch or log.
         
-        In production, this would use boto3 CloudWatch client:
-        
-        cloudwatch = boto3.client('cloudwatch')
-        cloudwatch.put_metric_data(
-            Namespace=metric['namespace'],
-            MetricData=[{
-                'MetricName': metric['metric_name'],
-                'Value': metric['value'],
-                'Unit': metric['unit'],
-                'Dimensions': [
-                    {'Name': k, 'Value': v}
-                    for k, v in metric['dimensions'].items()
-                ]
-            }]
-        )
-        
-        For now, log in structured format for CloudWatch Logs Insights parsing.
+        If CloudWatch client is available and enabled, emits directly to CloudWatch.
+        Otherwise, logs in structured format for CloudWatch Logs Insights parsing.
         
         Args:
-            metric: Metric dictionary
+            metric: Metric dictionary with keys: namespace, metric_name, value, unit, dimensions
         """
+        # Always log for debugging
         logger.info(
             f"METRIC {metric['metric_name']}={metric['value']} "
             f"unit={metric['unit']} "
             f"dimensions={metric['dimensions']}"
         )
         
-        # Buffer for batch emission (optional optimization)
+        # Buffer for batch emission
         self.metrics_buffer.append(metric)
+        
+        # Emit immediately if CloudWatch is enabled (can be optimized to batch)
+        if self.use_cloudwatch and self.cloudwatch:
+            try:
+                self._emit_to_cloudwatch([metric])
+            except Exception as e:
+                logger.error(f"Failed to emit metric to CloudWatch: {e}", exc_info=True)
+    
+    def _emit_to_cloudwatch(self, metrics: List[Dict[str, Any]]) -> None:
+        """
+        Emit metrics to CloudWatch using boto3 client.
+        
+        Args:
+            metrics: List of metric dictionaries
+        """
+        if not self.cloudwatch:
+            return
+        
+        try:
+            # Convert metrics to CloudWatch format
+            metric_data = []
+            for metric in metrics:
+                metric_datum = {
+                    'MetricName': metric['metric_name'],
+                    'Value': metric['value'],
+                    'Unit': metric['unit']
+                }
+                
+                # Add dimensions if present
+                if metric['dimensions']:
+                    metric_datum['Dimensions'] = [
+                        {'Name': k, 'Value': str(v)}
+                        for k, v in metric['dimensions'].items()
+                    ]
+                
+                metric_data.append(metric_datum)
+            
+            # Emit to CloudWatch (max 20 metrics per call)
+            for i in range(0, len(metric_data), 20):
+                batch = metric_data[i:i+20]
+                self.cloudwatch.put_metric_data(
+                    Namespace=self.namespace,
+                    MetricData=batch
+                )
+            
+            logger.debug(f"Emitted {len(metric_data)} metrics to CloudWatch")
+            
+        except ClientError as e:
+            logger.error(f"CloudWatch API error: {e}", exc_info=True)
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error emitting to CloudWatch: {e}", exc_info=True)
+            raise
     
     def flush_metrics(self) -> None:
         """
         Flush buffered metrics to CloudWatch.
         
         This can be called periodically to batch emit metrics for efficiency.
+        Useful for reducing API calls when emitting many metrics.
         """
         if not self.metrics_buffer:
             return
         
-        # In production, batch emit all buffered metrics
-        logger.debug(f"Flushing {len(self.metrics_buffer)} metrics")
+        logger.debug(f"Flushing {len(self.metrics_buffer)} buffered metrics")
+        
+        if self.use_cloudwatch and self.cloudwatch:
+            try:
+                self._emit_to_cloudwatch(self.metrics_buffer)
+            except Exception as e:
+                logger.error(f"Failed to flush metrics to CloudWatch: {e}", exc_info=True)
         
         # Clear buffer
         self.metrics_buffer = []
