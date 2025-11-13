@@ -58,8 +58,8 @@
     - Test handling of None or empty dynamics
     - _Requirements: 3.1-3.7_
 
-- [ ] 5. Implement Amazon Polly client for speech synthesis
-  - [ ] 5.1 Create PollyClient class with synthesize_speech method
+- [x] 5. Implement Amazon Polly client for speech synthesis
+  - [x] 5.1 Create PollyClient class with synthesize_speech method
     - Configure boto3 Polly client with IAM role authentication
     - Implement SSML synthesis with neural voices
     - Configure MP3 output format at 24000 Hz sample rate
@@ -68,7 +68,7 @@
     - Handle audio stream response
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.3, 5.4, 5.5_
 
-  - [ ]* 5.2 Write unit tests for PollyClient
+  - [x] 5.2 Write unit tests for PollyClient
     - Test successful SSML synthesis with mocked Polly
     - Test fallback to plain text on SSML rejection
     - Test retry logic with mocked throttling errors
