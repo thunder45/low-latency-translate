@@ -124,19 +124,19 @@
   - Add subsegments for each detector (SNR, clipping, echo, silence)
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 14. Create infrastructure configuration
-- [ ] 14.1 Add Lambda environment variables
+- [x] 14. Create infrastructure configuration
+- [x] 14.1 Add Lambda environment variables
   - Define environment variables in IaC (Terraform/CloudFormation)
   - Set default values for quality thresholds
   - Configure CloudWatch and EventBridge integration flags
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 14.2 Create CloudWatch dashboard
+- [x] 14.2 Create CloudWatch dashboard
   - Define dashboard JSON with widgets for SNR, clipping, echo, silence
   - Add processing latency histogram
   - _Requirements: 5.1, 5.2_
 
-- [ ] 14.3 Create CloudWatch alarms
+- [x] 14.3 Create CloudWatch alarms
   - Create alarm for low SNR (threshold: 15 dB, 2 evaluation periods)
   - Create alarm for high clipping (threshold: 5%, 3 evaluation periods)
   - Configure SNS topic for alarm notifications

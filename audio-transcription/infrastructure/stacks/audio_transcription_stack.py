@@ -54,6 +54,9 @@ class AudioTranscriptionStack(Stack):
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms(audio_processor, alarm_topic)
 
+        # Create CloudWatch dashboard
+        self._create_cloudwatch_dashboard(audio_processor)
+
     def _create_feature_flag_parameter(self) -> ssm.StringParameter:
         """
         Create SSM parameter for feature flag configuration.
@@ -127,9 +130,25 @@ class AudioTranscriptionStack(Stack):
                 resources=['*'],
                 conditions={
                     'StringEquals': {
-                        'cloudwatch:namespace': 'AudioTranscription/PartialResults'
+                        'cloudwatch:namespace': [
+                            'AudioTranscription/PartialResults',
+                            'AudioQuality'
+                        ]
                     }
                 }
+            )
+        )
+
+        # EventBridge permissions for audio quality events
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'events:PutEvents'
+                ],
+                resources=[
+                    f'arn:aws:events:{self.region}:{self.account}:event-bus/default'
+                ]
             )
         )
 
@@ -198,6 +217,25 @@ class AudioTranscriptionStack(Stack):
                 'ORPHAN_TIMEOUT': '15.0',
                 'MAX_RATE_PER_SECOND': '5',
                 'DEDUP_CACHE_TTL': '10',
+                
+                # Audio quality validation configuration
+                'AUDIO_QUALITY_ENABLED': 'true',
+                'SNR_THRESHOLD_DB': '20.0',
+                'SNR_UPDATE_INTERVAL_MS': '500',
+                'SNR_WINDOW_SIZE_S': '5.0',
+                'CLIPPING_THRESHOLD_PERCENT': '1.0',
+                'CLIPPING_AMPLITUDE_PERCENT': '98.0',
+                'CLIPPING_WINDOW_MS': '100',
+                'ECHO_THRESHOLD_DB': '-15.0',
+                'ECHO_MIN_DELAY_MS': '10',
+                'ECHO_MAX_DELAY_MS': '500',
+                'ECHO_UPDATE_INTERVAL_S': '1.0',
+                'SILENCE_THRESHOLD_DB': '-50.0',
+                'SILENCE_DURATION_THRESHOLD_S': '5.0',
+                'ENABLE_HIGH_PASS': 'false',
+                'ENABLE_NOISE_GATE': 'false',
+                'CLOUDWATCH_METRICS_ENABLED': 'true',
+                'EVENTBRIDGE_EVENTS_ENABLED': 'true',
                 
                 # AWS service configuration
                 'AWS_REGION': self.region,
@@ -339,3 +377,299 @@ class AudioTranscriptionStack(Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
         )
         throttle_alarm.add_alarm_action(cw_actions.SnsAction(alarm_topic))
+
+        # Audio Quality Alarms
+
+        # Alarm 5: Low SNR (threshold: 15 dB, 2 evaluation periods)
+        snr_alarm = cloudwatch.Alarm(
+            self,
+            'AudioQualitySNRAlarm',
+            alarm_name='audio-quality-snr-low',
+            alarm_description='Audio SNR below 15 dB threshold',
+            metric=cloudwatch.Metric(
+                namespace='AudioQuality',
+                metric_name='SNR',
+                statistic='Average',
+                period=Duration.minutes(5)
+            ),
+            threshold=15.0,
+            evaluation_periods=2,
+            datapoints_to_alarm=2,
+            comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        snr_alarm.add_alarm_action(cw_actions.SnsAction(alarm_topic))
+
+        # Alarm 6: High clipping (threshold: 5%, 3 evaluation periods)
+        clipping_alarm = cloudwatch.Alarm(
+            self,
+            'AudioQualityClippingAlarm',
+            alarm_name='audio-quality-clipping-high',
+            alarm_description='Audio clipping exceeds 5% threshold',
+            metric=cloudwatch.Metric(
+                namespace='AudioQuality',
+                metric_name='ClippingPercentage',
+                statistic='Average',
+                period=Duration.minutes(5)
+            ),
+            threshold=5.0,
+            evaluation_periods=3,
+            datapoints_to_alarm=3,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        clipping_alarm.add_alarm_action(cw_actions.SnsAction(alarm_topic))
+
+    def _create_cloudwatch_dashboard(self, lambda_function: lambda_.Function) -> None:
+        """
+        Create CloudWatch dashboard for audio quality monitoring.
+        
+        Dashboard includes widgets for:
+        - SNR (Signal-to-Noise Ratio)
+        - Clipping percentage
+        - Echo level
+        - Silence duration
+        - Processing latency histogram
+        
+        Args:
+            lambda_function: Lambda function to monitor
+        """
+        dashboard = cloudwatch.Dashboard(
+            self,
+            'AudioQualityDashboard',
+            dashboard_name='audio-quality-monitoring'
+        )
+
+        # SNR widget
+        snr_widget = cloudwatch.GraphWidget(
+            title='Signal-to-Noise Ratio (SNR)',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SNR',
+                    statistic='Average',
+                    period=Duration.minutes(1),
+                    label='Average SNR'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SNR',
+                    statistic='Minimum',
+                    period=Duration.minutes(1),
+                    label='Minimum SNR'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='SNR (dB)',
+                min=0,
+                max=50
+            ),
+            width=12,
+            height=6
+        )
+
+        # Clipping widget
+        clipping_widget = cloudwatch.GraphWidget(
+            title='Audio Clipping',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ClippingPercentage',
+                    statistic='Average',
+                    period=Duration.minutes(1),
+                    label='Average Clipping %'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ClippingPercentage',
+                    statistic='Maximum',
+                    period=Duration.minutes(1),
+                    label='Maximum Clipping %'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Clipping (%)',
+                min=0,
+                max=10
+            ),
+            width=12,
+            height=6
+        )
+
+        # Echo level widget
+        echo_widget = cloudwatch.GraphWidget(
+            title='Echo Detection',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='EchoLevel',
+                    statistic='Average',
+                    period=Duration.minutes(1),
+                    label='Average Echo Level'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='EchoLevel',
+                    statistic='Maximum',
+                    period=Duration.minutes(1),
+                    label='Maximum Echo Level'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Echo Level (dB)',
+                min=-100,
+                max=0
+            ),
+            width=12,
+            height=6
+        )
+
+        # Silence duration widget
+        silence_widget = cloudwatch.GraphWidget(
+            title='Silence Detection',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SilenceDuration',
+                    statistic='Average',
+                    period=Duration.minutes(1),
+                    label='Average Silence Duration'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SilenceDuration',
+                    statistic='Maximum',
+                    period=Duration.minutes(1),
+                    label='Maximum Silence Duration'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Duration (seconds)',
+                min=0
+            ),
+            width=12,
+            height=6
+        )
+
+        # Processing latency histogram
+        latency_widget = cloudwatch.GraphWidget(
+            title='Audio Quality Processing Latency',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ProcessingLatency',
+                    statistic='Average',
+                    period=Duration.minutes(1),
+                    label='Average Latency'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ProcessingLatency',
+                    statistic='p50',
+                    period=Duration.minutes(1),
+                    label='p50 Latency'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ProcessingLatency',
+                    statistic='p95',
+                    period=Duration.minutes(1),
+                    label='p95 Latency'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ProcessingLatency',
+                    statistic='p99',
+                    period=Duration.minutes(1),
+                    label='p99 Latency'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Latency (ms)',
+                min=0
+            ),
+            width=12,
+            height=6
+        )
+
+        # Quality events widget
+        events_widget = cloudwatch.GraphWidget(
+            title='Quality Events',
+            left=[
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='QualityWarnings',
+                    statistic='Sum',
+                    period=Duration.minutes(5),
+                    label='Total Warnings'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SNRLowEvents',
+                    statistic='Sum',
+                    period=Duration.minutes(5),
+                    label='SNR Low Events'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='ClippingEvents',
+                    statistic='Sum',
+                    period=Duration.minutes(5),
+                    label='Clipping Events'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='EchoEvents',
+                    statistic='Sum',
+                    period=Duration.minutes(5),
+                    label='Echo Events'
+                ),
+                cloudwatch.Metric(
+                    namespace='AudioQuality',
+                    metric_name='SilenceEvents',
+                    statistic='Sum',
+                    period=Duration.minutes(5),
+                    label='Silence Events'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Event Count',
+                min=0
+            ),
+            width=12,
+            height=6
+        )
+
+        # Lambda function metrics
+        lambda_widget = cloudwatch.GraphWidget(
+            title='Lambda Function Metrics',
+            left=[
+                lambda_function.metric_invocations(
+                    statistic='Sum',
+                    period=Duration.minutes(1),
+                    label='Invocations'
+                ),
+                lambda_function.metric_errors(
+                    statistic='Sum',
+                    period=Duration.minutes(1),
+                    label='Errors'
+                ),
+                lambda_function.metric_throttles(
+                    statistic='Sum',
+                    period=Duration.minutes(1),
+                    label='Throttles'
+                )
+            ],
+            left_y_axis=cloudwatch.YAxisProps(
+                label='Count',
+                min=0
+            ),
+            width=12,
+            height=6
+        )
+
+        # Add widgets to dashboard
+        dashboard.add_widgets(snr_widget, clipping_widget)
+        dashboard.add_widgets(echo_widget, silence_widget)
+        dashboard.add_widgets(latency_widget, events_widget)
+        dashboard.add_widgets(lambda_widget)

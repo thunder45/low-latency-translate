@@ -298,6 +298,7 @@ Internal use only - Low Latency Translate Platform
 - ✅ [Task 11: Lambda Function Integration](docs/TASK_11_SUMMARY.md) - Integrated audio quality validation with Lambda handler, 279 tests passing
 - ✅ [Task 12: Error Handling and Graceful Degradation](audio_quality/docs/TASK_12_SUMMARY.md) - Custom exceptions and analyze_with_fallback, 38 tests passing
 - ✅ [Task 13: Monitoring and Observability](audio_quality/docs/TASK_13_SUMMARY.md) - Structured JSON logging and AWS X-Ray tracing, 18 tests passing
+- ✅ [Task 14: Infrastructure Configuration](docs/TASK_14_SUMMARY.md) - Lambda environment variables, CloudWatch dashboard, and alarms
 
 ## References
 
