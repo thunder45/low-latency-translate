@@ -121,15 +121,15 @@
     - Emit CloudWatch metrics
     - _Requirements: 5.4_
 
-- [ ] 7. Implement Audio Buffer Manager
-  - [ ] 7.1 Create buffer management logic
+- [x] 7. Implement Audio Buffer Manager
+  - [x] 7.1 Create buffer management logic
     - Initialize per-listener buffers with deque
     - Implement add_audio() with overflow detection
     - Check buffer duration against 10-second limit
     - Drop oldest packets when buffer exceeds capacity
     - _Requirements: 10.1, 10.2_
 
-  - [ ] 7.2 Add buffer monitoring
+  - [x] 7.2 Add buffer monitoring
     - Emit CloudWatch metric for buffer overflow events
     - Log buffer overflow with sessionId and listener count
     - Track buffer utilization percentage
