@@ -1,0 +1,30 @@
+{
+  "name": "frontend-client-apps",
+  "version": "1.0.0",
+  "description": "Frontend applications for real-time emotion-aware speech translation",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "speaker-app",
+    "listener-app"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm install --workspace=shared && npm install --workspace=speaker-app && npm install --workspace=listener-app",
+    "build:shared": "npm run build --workspace=shared",
+    "build:speaker": "npm run build --workspace=speaker-app",
+    "build:listener": "npm run build --workspace=listener-app",
+    "build:all": "npm run build:shared && npm run build:speaker && npm run build:listener",
+    "dev:speaker": "npm run dev --workspace=speaker-app",
+    "dev:listener": "npm run dev --workspace=listener-app",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
