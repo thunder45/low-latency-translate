@@ -9,21 +9,30 @@ import sys
 import os
 
 # Add lambda directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lambda', 'timeout_handler'))
+timeout_handler_path = os.path.join(os.path.dirname(__file__), '..', '..', 'lambda', 'timeout_handler')
+sys.path.insert(0, timeout_handler_path)
 
-from handler import (
-    send_timeout_message,
-    close_connection,
-    trigger_disconnect_handler,
-    check_and_close_idle_connections,
-    lambda_handler
+# Import with explicit module name to avoid conflicts
+import importlib.util
+spec = importlib.util.spec_from_file_location(
+    "timeout_handler",
+    os.path.join(timeout_handler_path, "handler.py")
 )
+timeout_handler = importlib.util.module_from_spec(spec)
+sys.modules['timeout_handler'] = timeout_handler  # Add to sys.modules for patch to work
+spec.loader.exec_module(timeout_handler)
+
+send_timeout_message = timeout_handler.send_timeout_message
+close_connection = timeout_handler.close_connection
+trigger_disconnect_handler = timeout_handler.trigger_disconnect_handler
+check_and_close_idle_connections = timeout_handler.check_and_close_idle_connections
+lambda_handler = timeout_handler.lambda_handler
 
 
 class TestSendTimeoutMessage:
     """Test suite for send_timeout_message function."""
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_send_timeout_message_success(self, mock_boto_client):
         """Test successful timeout message send."""
         mock_client = Mock()
@@ -43,7 +52,7 @@ class TestSendTimeoutMessage:
         assert 'idleSeconds' in data
         assert 'timestamp' in data
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_send_timeout_message_gone_exception(self, mock_boto_client):
         """Test timeout message send with GoneException."""
         mock_client = Mock()
@@ -59,7 +68,7 @@ class TestSendTimeoutMessage:
         
         assert result is False
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_send_timeout_message_other_error(self, mock_boto_client):
         """Test timeout message send with other error."""
         mock_client = Mock()
@@ -74,7 +83,7 @@ class TestSendTimeoutMessage:
 class TestCloseConnection:
     """Test suite for close_connection function."""
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_close_connection_success(self, mock_boto_client):
         """Test successful connection close."""
         mock_client = Mock()
@@ -85,7 +94,7 @@ class TestCloseConnection:
         assert result is True
         mock_client.delete_connection.assert_called_once_with(ConnectionId='conn-123')
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_close_connection_already_gone(self, mock_boto_client):
         """Test close connection when already gone."""
         mock_client = Mock()
@@ -100,7 +109,7 @@ class TestCloseConnection:
         
         assert result is True  # Already closed is considered success
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     def test_close_connection_error(self, mock_boto_client):
         """Test close connection with error."""
         mock_client = Mock()
@@ -115,7 +124,7 @@ class TestCloseConnection:
 class TestTriggerDisconnectHandler:
     """Test suite for trigger_disconnect_handler function."""
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     @patch.dict(os.environ, {'DISCONNECT_HANDLER_FUNCTION': 'DisconnectHandler'})
     def test_trigger_disconnect_handler_success(self, mock_boto_client):
         """Test successful disconnect handler trigger."""
@@ -135,7 +144,7 @@ class TestTriggerDisconnectHandler:
         assert payload['sessionId'] == 'session-456'
         assert payload['role'] == 'speaker'
     
-    @patch('handler.boto3.client')
+    @patch('timeout_handler.boto3.client')
     @patch.dict(os.environ, {'DISCONNECT_HANDLER_FUNCTION': 'DisconnectHandler'})
     def test_trigger_disconnect_handler_error(self, mock_boto_client):
         """Test disconnect handler trigger with error."""
@@ -150,11 +159,11 @@ class TestTriggerDisconnectHandler:
 class TestCheckAndCloseIdleConnections:
     """Test suite for check_and_close_idle_connections function."""
     
-    @patch('handler.connections_repo')
-    @patch('handler.send_timeout_message')
-    @patch('handler.close_connection')
-    @patch('handler.trigger_disconnect_handler')
-    @patch('handler.metrics_publisher')
+    @patch('timeout_handler.connections_repo')
+    @patch('timeout_handler.send_timeout_message')
+    @patch('timeout_handler.close_connection')
+    @patch('timeout_handler.trigger_disconnect_handler')
+    @patch('timeout_handler.metrics_publisher')
     @patch.dict(os.environ, {'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'})
     def test_check_no_idle_connections(
         self,
@@ -192,11 +201,11 @@ class TestCheckAndCloseIdleConnections:
         mock_close.assert_not_called()
         mock_trigger.assert_not_called()
     
-    @patch('handler.connections_repo')
-    @patch('handler.send_timeout_message')
-    @patch('handler.close_connection')
-    @patch('handler.trigger_disconnect_handler')
-    @patch('handler.metrics_publisher')
+    @patch('timeout_handler.connections_repo')
+    @patch('timeout_handler.send_timeout_message')
+    @patch('timeout_handler.close_connection')
+    @patch('timeout_handler.trigger_disconnect_handler')
+    @patch('timeout_handler.metrics_publisher')
     @patch.dict(os.environ, {'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'})
     def test_check_with_idle_connections(
         self,
@@ -239,11 +248,11 @@ class TestCheckAndCloseIdleConnections:
         mock_close.assert_called_once_with('conn-1', 'https://api.example.com/prod')
         mock_trigger.assert_called_once_with('conn-1', 'session-1', 'speaker')
     
-    @patch('handler.connections_repo')
-    @patch('handler.send_timeout_message')
-    @patch('handler.close_connection')
-    @patch('handler.trigger_disconnect_handler')
-    @patch('handler.metrics_publisher')
+    @patch('timeout_handler.connections_repo')
+    @patch('timeout_handler.send_timeout_message')
+    @patch('timeout_handler.close_connection')
+    @patch('timeout_handler.trigger_disconnect_handler')
+    @patch('timeout_handler.metrics_publisher')
     @patch.dict(os.environ, {'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'})
     def test_check_with_multiple_idle_connections(
         self,
@@ -288,11 +297,11 @@ class TestCheckAndCloseIdleConnections:
         assert stats['speaker_timeouts'] == 1
         assert stats['listener_timeouts'] == 2
     
-    @patch('handler.connections_repo')
-    @patch('handler.send_timeout_message')
-    @patch('handler.close_connection')
-    @patch('handler.trigger_disconnect_handler')
-    @patch('handler.metrics_publisher')
+    @patch('timeout_handler.connections_repo')
+    @patch('timeout_handler.send_timeout_message')
+    @patch('timeout_handler.close_connection')
+    @patch('timeout_handler.trigger_disconnect_handler')
+    @patch('timeout_handler.metrics_publisher')
     @patch.dict(os.environ, {'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'})
     def test_check_uses_connected_at_fallback(
         self,
@@ -327,9 +336,9 @@ class TestCheckAndCloseIdleConnections:
 class TestLambdaHandler:
     """Test suite for lambda_handler function."""
     
-    @patch('handler.check_and_close_idle_connections')
-    @patch('handler.metrics_publisher')
-    @patch('handler.API_GATEWAY_ENDPOINT', 'https://api.example.com/prod')
+    @patch('timeout_handler.check_and_close_idle_connections')
+    @patch('timeout_handler.metrics_publisher')
+    @patch('timeout_handler.API_GATEWAY_ENDPOINT', 'https://api.example.com/prod')
     def test_lambda_handler_success(self, mock_metrics, mock_check):
         """Test successful lambda handler execution."""
         mock_check.return_value = {
@@ -355,7 +364,7 @@ class TestLambdaHandler:
         # Verify metrics were emitted
         assert mock_metrics.emit_metric.call_count == 3
     
-    @patch('handler.check_and_close_idle_connections')
+    @patch('timeout_handler.check_and_close_idle_connections')
     @patch.dict(os.environ, {'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'})
     def test_lambda_handler_missing_endpoint(self, mock_check):
         """Test lambda handler with missing API Gateway endpoint."""
@@ -369,8 +378,8 @@ class TestLambdaHandler:
         assert 'endpoint not configured' in body['error']
         mock_check.assert_not_called()
     
-    @patch('handler.check_and_close_idle_connections')
-    @patch('handler.metrics_publisher')
+    @patch('timeout_handler.check_and_close_idle_connections')
+    @patch('timeout_handler.metrics_publisher')
     @patch.dict(os.environ, {
         'API_GATEWAY_ENDPOINT': 'https://api.example.com/prod',
         'CONNECTION_IDLE_TIMEOUT_SECONDS': '120'
