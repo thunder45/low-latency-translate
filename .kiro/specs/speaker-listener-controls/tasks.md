@@ -1,12 +1,12 @@
 # Implementation Plan: Speaker & Listener Controls
 
-- [ ] 1. Set up core data models and types
+- [x] 1. Set up core data models and types
   - Create TypeScript interfaces for AudioState, ControlState, SessionState, and BufferStatus
   - Define error types and ControlError interface
   - Create Language, SpeakerState, and ListenerState interfaces
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 6.1, 7.1, 9.1_
 
-- [ ] 2. Implement CircularAudioBuffer class
+- [x] 2. Implement CircularAudioBuffer class
   - Create CircularAudioBuffer class with constructor accepting sampleRate and maxDuration
   - Implement write() method with overflow handling
   - Implement read() method for retrieving buffered audio
@@ -14,7 +14,7 @@
   - Implement getBufferedDuration() and getBufferStatus() methods
   - _Requirements: 2.3, 2.4_
 
-- [ ] 3. Implement PreferenceStore service
+- [x] 3. Implement PreferenceStore service
   - Create PreferenceStore class with local storage backend
   - Implement saveVolume() and getVolume() methods
   - Implement saveLanguage() and getLanguage() methods
@@ -154,7 +154,7 @@
   - Implement error logging with context details
   - _Requirements: All requirements (monitoring support)_
 
-- [ ]* 17. Create integration tests
+- [ ] 17. Create integration tests
   - Write tests for speaker control flow (pause → notify → audio stops)
   - Write tests for listener control flow (pause → buffer → resume)
   - Write tests for multi-user scenarios with different states
@@ -163,7 +163,7 @@
   - Write tests for error scenarios (network interruption, buffer overflow)
   - _Requirements: All requirements_
 
-- [ ]* 18. Create end-to-end tests
+- [ ] 18. Create end-to-end tests
   - Write E2E test for complete speaker session flow
   - Write E2E test for complete listener session flow
   - Write E2E test for preference save and reload
