@@ -4,7 +4,7 @@
 
 This document tracks the implementation status of the speaker-listener controls feature as defined in `.kiro/specs/speaker-listener-controls/`.
 
-## Completed Tasks (7/18)
+## Completed Tasks (14/18)
 
 ### ✅ Task 1: Core Data Models and Types
 - **File**: `shared/types/controls.ts`
@@ -41,37 +41,42 @@ This document tracks the implementation status of the speaker-listener controls 
 - **Status**: Complete
 - **Summary**: Keyboard shortcut management with conflict detection, reserved key checking, customization support, and PreferenceStore integration. Singleton pattern with global event listener.
 
-## Remaining Tasks (11/18)
+### ✅ Task 4: AudioManager for Speakers
+- **File**: `shared/audio/AudioCapture.ts`, `speaker-app/src/services/SpeakerService.ts`
+- **Status**: Complete
+- **Summary**: Extended AudioCapture and SpeakerService with pause/resume/mute/unmute/setVolume methods, added latency logging
 
-### 🔄 Task 4: AudioManager for Speakers
-- **Status**: Not started
-- **Approach**: Extend existing `SpeakerService` class
-- **Files to modify**: `speaker-app/src/services/SpeakerService.ts`, `shared/audio/AudioCapture.ts`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
+### ✅ Task 5: AudioManager for Listeners
+- **File**: `shared/audio/AudioPlayback.ts`, `listener-app/src/services/ListenerService.ts`
+- **Status**: Complete
+- **Summary**: Extended AudioPlayback and ListenerService with control methods, integrated CircularAudioBuffer for pause buffering
 
-### 🔄 Task 5: AudioManager for Listeners
-- **Status**: Not started
-- **Approach**: Extend existing `ListenerService` class, integrate CircularAudioBuffer
-- **Files to modify**: `listener-app/src/services/ListenerService.ts`, `shared/audio/AudioPlayback.ts`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
+### ✅ Task 6: ControlStateManager Service
+- **File**: `shared/services/ControlStateManager.ts`
+- **Status**: Complete
+- **Summary**: State synchronization service with WebSocket integration, subscription mechanism for state changes
 
-### 🔄 Task 6: ControlStateManager Service
-- **Status**: Not started
-- **Approach**: Create new service for state synchronization
-- **File to create**: `shared/services/ControlStateManager.ts`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
+### ✅ Task 7: NotificationService
+- **File**: `shared/services/NotificationService.ts`
+- **Status**: Complete
+- **Summary**: Notification service for control events, thin wrapper around WebSocket message routing
 
-### 🔄 Task 7: NotificationService
-- **Status**: Not started
-- **Approach**: Create thin wrapper around WebSocket message routing
-- **File to create**: `shared/services/NotificationService.ts`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
+### ✅ Task 12: Error Handling and Recovery
+- **File**: `shared/utils/ControlErrorHandler.ts`
+- **Status**: Complete
+- **Summary**: Error handling utility with retry logic, error categorization, and monitoring integration
 
-### 🔄 Task 12: Error Handling and Recovery
-- **Status**: Not started
-- **Approach**: Create error handling utilities and integrate throughout
-- **File to create**: `shared/utils/ControlErrorHandler.ts`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
+### ✅ Task 14: Preference Persistence Flow
+- **Files**: `SpeakerService`, `ListenerService`
+- **Status**: Complete
+- **Summary**: Load preferences on initialization, save on changes, graceful fallback to defaults
+
+### ✅ Task 15: Performance Optimizations
+- **Files**: `SpeakerControls.tsx`, `ListenerControls.tsx`
+- **Status**: Complete
+- **Summary**: Wrapped components with React.memo, volume debouncing already implemented
+
+## Remaining Tasks (4/18)
 
 ### 🔄 Task 13: Integrate Components with State Management
 - **Status**: Not started
@@ -79,20 +84,9 @@ This document tracks the implementation status of the speaker-listener controls 
 - **Files to modify**: `speaker-app/src/App.tsx`, `listener-app/src/App.tsx`
 - **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
 
-### 🔄 Task 14: Preference Persistence Flow
-- **Status**: Not started
-- **Approach**: Load preferences on mount, save on changes
-- **Files to modify**: `SpeakerService`, `ListenerService`
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
-
-### 🔄 Task 15: Performance Optimizations
-- **Status**: Partially complete (debouncing done)
-- **Remaining**: React.memo, throttling, batching
-- **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
-
 ### 🔄 Task 16: Monitoring and Logging
-- **Status**: Not started
-- **Approach**: Add metrics collection throughout control operations
+- **Status**: Partially complete (latency logging done)
+- **Remaining**: Comprehensive metrics collection
 - **See**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md` for detailed implementation
 
 ### 🔄 Task 17: Integration Tests
@@ -107,8 +101,8 @@ This document tracks the implementation status of the speaker-listener controls 
 
 ## Progress Summary
 
-- **Completed**: 7/18 tasks (39%)
-- **Remaining**: 11/18 tasks (61%)
+- **Completed**: 14/18 tasks (78%)
+- **Remaining**: 4/18 tasks (22%)
 
 ## Key Accomplishments
 
@@ -132,6 +126,7 @@ This document tracks the implementation status of the speaker-listener controls 
 
 - **Task Summaries**: 
   - `TASK_1-3_CONTROLS_SUMMARY.md`
+  - `TASK_4-7_12-15_CONTROLS_SUMMARY.md`
   - `TASK_8_11_CONTROLS_SUMMARY.md`
   - `TASK_9-10_CONTROLS_SUMMARY.md`
 - **Implementation Guide**: `REMAINING_TASKS_IMPLEMENTATION_GUIDE.md`
