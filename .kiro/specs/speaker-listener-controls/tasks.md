@@ -154,7 +154,7 @@
   - Implement error logging with context details
   - _Requirements: All requirements (monitoring support)_
 
-- [ ] 17. Create integration tests
+- [x] 17. Create integration tests
   - Write tests for speaker control flow (pause → notify → audio stops)
   - Write tests for listener control flow (pause → buffer → resume)
   - Write tests for multi-user scenarios with different states
