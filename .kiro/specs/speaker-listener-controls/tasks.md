@@ -65,7 +65,7 @@
   - Add notification queuing and delivery confirmation
   - _Requirements: 1.5, 3.4, 8.2_
 
-- [ ] 8. Implement LanguageSelector service
+- [x] 8. Implement LanguageSelector service
   - Create LanguageSelector class
   - Implement getAvailableLanguages() method
   - Implement switchLanguage() method with stream reconnection logic
@@ -98,7 +98,7 @@
   - Add visual feedback for all control states
   - _Requirements: 2.5, 4.4, 6.3, 7.1, 7.4_
 
-- [ ] 11. Implement keyboard shortcuts system
+- [x] 11. Implement keyboard shortcuts system
   - Create KeyboardShortcutManager class
   - Implement shortcut registration for mute toggle
   - Implement shortcut registration for pause toggle
