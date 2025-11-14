@@ -76,7 +76,7 @@
   - Ensure language switch completes within 500ms
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 9. Create SpeakerControlsUI component
+- [x] 9. Create SpeakerControlsUI component
   - Create React component accepting SpeakerControlsProps
   - Implement pause/resume toggle button with visual state
   - Implement mute/unmute toggle button with visual state
@@ -87,7 +87,7 @@
   - Add visual feedback for all control states
   - _Requirements: 1.4, 3.4, 5.3, 8.1, 8.3, 8.4_
 
-- [ ] 10. Create ListenerControlsUI component
+- [x] 10. Create ListenerControlsUI component
   - Create React component accepting ListenerControlsProps
   - Implement pause/resume toggle button with visual state
   - Implement mute/unmute toggle button with visual state
