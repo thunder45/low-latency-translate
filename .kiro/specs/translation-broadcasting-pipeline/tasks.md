@@ -235,7 +235,7 @@
   - Set up alarm for failed languages > 10%
   - _Requirements: 9.8, 10.3, 10.4_
 
-- [ ] 12. Create integration tests
+- [x] 12. Create integration tests
   - Write end-to-end translation pipeline test
   - Write cache performance test (hit vs miss)
   - Write GSI query performance test
