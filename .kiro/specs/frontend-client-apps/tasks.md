@@ -473,7 +473,7 @@
     - Prevent XSS attacks with proper escaping
     - _Requirements: 2.1, 8.1, 11.1_
 
-- [ ]* 23. Write unit tests for core functionality
+- [x]* 23. Write unit tests for core functionality
   - Write tests for WebSocket client message handling
   - Write tests for audio processing utilities (PCM conversion, base64 encoding/decoding)
   - Write tests for state management actions and selectors
@@ -482,7 +482,7 @@
   - Write tests for component rendering and user interactions
   - _Requirements: All requirements_
 
-- [ ]* 24. Write integration tests for user flows
+- [x]* 24. Write integration tests for user flows
   - Write test for complete speaker flow (login → create → broadcast → end)
   - Write test for complete listener flow (join → listen → controls → leave)
   - Write test for connection refresh flow
@@ -490,7 +490,7 @@
   - Write test for multi-tab testing (multiple listeners)
   - _Requirements: All requirements_
 
-- [ ]* 25. Write end-to-end tests with Playwright
+- [x]* 25. Write end-to-end tests with Playwright
   - Write test for speaker and listener communication
   - Write test for cross-browser compatibility (Chrome, Firefox, Safari, Edge)
   - Write test for mobile responsiveness
@@ -498,7 +498,7 @@
   - Write test for concurrent user testing
   - _Requirements: All requirements_
 
-- [ ]* 26. Perform performance optimization
+- [x] 26. Perform performance optimization
   - Run Lighthouse audits and achieve target scores (Performance, Accessibility, Best Practices, SEO)
   - Verify Core Web Vitals (LCP < 2.5s, FID < 100ms, CLS < 0.1)
   - Verify bundle size < 500KB (gzipped)
