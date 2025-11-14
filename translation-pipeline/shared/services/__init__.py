@@ -6,8 +6,10 @@ This module contains business logic services for the translation pipeline.
 
 from .translation_cache_manager import TranslationCacheManager
 from .parallel_translation_service import ParallelTranslationService
+from .ssml_generator import SSMLGenerator
 
 __all__ = [
     'TranslationCacheManager',
     'ParallelTranslationService',
+    'SSMLGenerator',
 ]
