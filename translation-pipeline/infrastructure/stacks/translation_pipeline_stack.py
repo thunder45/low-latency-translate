@@ -67,6 +67,9 @@ class TranslationPipelineStack(Stack):
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms()
 
+        # Create CloudWatch dashboard
+        self.dashboard = self._create_cloudwatch_dashboard()
+
         # Outputs
         self._create_outputs()
 
@@ -446,6 +449,266 @@ class TranslationPipelineStack(Stack):
         )
         failed_languages_alarm.add_alarm_action(alarm_action)
 
+    def _create_cloudwatch_dashboard(self) -> cloudwatch.Dashboard:
+        """
+        Create CloudWatch dashboard for translation pipeline metrics.
+        
+        Dashboard includes:
+        - Cache performance metrics (hit rate, size, evictions)
+        - Translation metrics (languages processed, failed)
+        - Synthesis metrics (duration, success rate)
+        - Broadcast metrics (success rate, latency)
+        - Buffer metrics (overflow rate, utilization)
+        - Lambda metrics (invocations, errors, duration)
+        """
+        dashboard = cloudwatch.Dashboard(
+            self,
+            "TranslationPipelineDashboard",
+            dashboard_name=f"TranslationPipeline-{self.env_name}"
+        )
+        
+        # Row 1: Cache Performance
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="Cache Hit Rate",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="CacheHitRate",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Hit Rate (%)"
+                    )
+                ],
+                width=8,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Cache Size",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="CacheSize",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Entries"
+                    )
+                ],
+                width=8,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Cache Evictions",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="CacheEvictions",
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Evictions"
+                    )
+                ],
+                width=8,
+                height=6
+            )
+        )
+        
+        # Row 2: Translation & Synthesis
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="Languages Processed",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="LanguagesProcessed",
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Processed"
+                    ),
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="FailedLanguagesCount",
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Failed"
+                    )
+                ],
+                width=12,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Processing Duration",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="ProcessingDuration",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Avg (ms)"
+                    ),
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="ProcessingDuration",
+                        statistic="p99",
+                        period=Duration.minutes(5),
+                        label="P99 (ms)"
+                    )
+                ],
+                width=12,
+                height=6
+            )
+        )
+        
+        # Row 3: Broadcast Performance
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="Broadcast Success Rate",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="BroadcastSuccessRate",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Success Rate (%)"
+                    )
+                ],
+                width=12,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Buffer Overflow Rate",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="BufferOverflowRate",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Overflow Rate (%)"
+                    )
+                ],
+                width=12,
+                height=6
+            )
+        )
+        
+        # Row 4: Listener Metrics
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="Active Listeners",
+                left=[
+                    cloudwatch.Metric(
+                        namespace="TranslationPipeline",
+                        metric_name="ListenerCount",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Listeners"
+                    )
+                ],
+                width=24,
+                height=6
+            )
+        )
+        
+        # Row 5: Lambda Performance
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="Lambda Invocations",
+                left=[
+                    self.translation_processor_function.metric_invocations(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Invocations"
+                    ),
+                    self.translation_processor_function.metric_errors(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Errors"
+                    )
+                ],
+                width=8,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Lambda Duration",
+                left=[
+                    self.translation_processor_function.metric_duration(
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        label="Avg (ms)"
+                    ),
+                    self.translation_processor_function.metric_duration(
+                        statistic="p99",
+                        period=Duration.minutes(5),
+                        label="P99 (ms)"
+                    )
+                ],
+                width=8,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="Lambda Throttles",
+                left=[
+                    self.translation_processor_function.metric_throttles(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Throttles"
+                    )
+                ],
+                width=8,
+                height=6
+            )
+        )
+        
+        # Row 6: DynamoDB Performance
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(
+                title="DynamoDB Read Capacity",
+                left=[
+                    self.sessions_table.metric_consumed_read_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Sessions"
+                    ),
+                    self.connections_table.metric_consumed_read_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Connections"
+                    ),
+                    self.cached_translations_table.metric_consumed_read_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Cache"
+                    )
+                ],
+                width=12,
+                height=6
+            ),
+            cloudwatch.GraphWidget(
+                title="DynamoDB Write Capacity",
+                left=[
+                    self.sessions_table.metric_consumed_write_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Sessions"
+                    ),
+                    self.connections_table.metric_consumed_write_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Connections"
+                    ),
+                    self.cached_translations_table.metric_consumed_write_capacity_units(
+                        statistic="Sum",
+                        period=Duration.minutes(5),
+                        label="Cache"
+                    )
+                ],
+                width=12,
+                height=6
+            )
+        )
+        
+        return dashboard
+
     def _create_outputs(self):
         """Create CloudFormation outputs."""
         CfnOutput(
@@ -523,4 +786,11 @@ class TranslationPipelineStack(Stack):
             "SharedLayerArn",
             value=self.shared_layer.layer_version_arn,
             description="Shared code Lambda layer ARN"
+        )
+        
+        CfnOutput(
+            self,
+            "DashboardName",
+            value=self.dashboard.dashboard_name,
+            description="CloudWatch dashboard name"
         )

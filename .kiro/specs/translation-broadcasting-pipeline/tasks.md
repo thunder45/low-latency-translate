@@ -227,7 +227,7 @@
     - Create deployment ZIP or container image
     - _Requirements: All_
 
-- [ ] 11. Set up monitoring and alerting
+- [x] 11. Set up monitoring and alerting
   - Create CloudWatch dashboard for pipeline metrics
   - Set up alarm for cache hit rate < 30%
   - Set up alarm for broadcast success rate < 95%
