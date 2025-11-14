@@ -94,27 +94,27 @@
     - Verify 500ms target for synthesis completion
     - _Requirements: 4.3_
 
-- [ ] 6. Implement Broadcast Handler
-  - [ ] 6.1 Create listener query logic
+- [x] 6. Implement Broadcast Handler
+  - [x] 6.1 Create listener query logic
     - Query Connections table using sessionId-targetLanguage GSI
     - Extract connectionId list for target language
     - Handle empty results gracefully
     - _Requirements: 5.1, 2.3, 2.4_
 
-  - [ ] 6.2 Implement parallel broadcasting with concurrency control
+  - [x] 6.2 Implement parallel broadcasting with concurrency control
     - Use asyncio.Semaphore to limit concurrent broadcasts to 100
     - Send audio to all listeners in parallel using asyncio.gather()
     - Use API Gateway Management API PostToConnection
     - _Requirements: 5.2, 5.5, 5.7_
 
-  - [ ] 6.3 Implement retry logic for broadcast failures
+  - [x] 6.3 Implement retry logic for broadcast failures
     - Catch GoneException and remove stale connections
     - Catch throttling and 500 errors for retry
     - Retry up to 2 times with 100ms exponential backoff
     - Log retry attempts and final failures
     - _Requirements: 5.3, 5.6_
 
-  - [ ] 6.4 Add broadcast metrics and monitoring
+  - [x] 6.4 Add broadcast metrics and monitoring
     - Track successful vs failed broadcasts
     - Calculate broadcast success rate
     - Measure broadcast latency
@@ -135,77 +135,77 @@
     - Track buffer utilization percentage
     - _Requirements: 10.3, 10.4, 10.5_
 
-- [ ] 8. Implement Translation Pipeline Orchestrator
+- [x] 8. Implement Translation Pipeline Orchestrator
   - **Depends on**: Tasks 2-7 must be completed first
-  - [ ] 8.1 Create listener count check
+  - [x] 8.1 Create listener count check
     - Query Sessions table for listenerCount
     - Return early if listenerCount == 0 (cost optimization)
     - Log skip events for monitoring
     - _Requirements: 6.5_
 
-  - [ ] 8.2 Implement target language discovery
+  - [x] 8.2 Implement target language discovery
     - Query Connections table using GSI
     - Filter by sessionId and role="listener"
     - Extract unique set of target languages
     - _Requirements: 2.3, 2.4, 2.5_
 
-  - [ ] 8.3 Orchestrate parallel translation
+  - [x] 8.3 Orchestrate parallel translation
     - Call ParallelTranslationService with target languages
     - Wait for all translations to complete
     - Handle partial failures (some languages succeed)
     - _Requirements: 1.2, 8.1, 8.3_
 
-  - [ ] 8.4 Generate SSML for all translations
+  - [x] 8.4 Generate SSML for all translations
     - Call SSMLGenerator for each translated text
     - Apply emotion dynamics to all languages
     - _Requirements: 3.1_
 
-  - [ ] 8.5 Orchestrate parallel synthesis
+  - [x] 8.5 Orchestrate parallel synthesis
     - Call ParallelSynthesisService with SSML texts
     - Wait for all synthesis operations to complete
     - Handle partial failures
     - _Requirements: 8.2, 8.4_
 
-  - [ ] 8.6 Orchestrate broadcasting per language
+  - [x] 8.6 Orchestrate broadcasting per language
     - For each language with synthesized audio
     - Call BroadcastHandler to fan out to listeners
     - Track overall success metrics
     - _Requirements: 8.4_
 
-  - [ ] 8.7 Implement DynamoDB retry logic
+  - [x] 8.7 Implement DynamoDB retry logic
     - Add exponential backoff for throttled queries
     - Retry up to 3 times with 1-10 second delays
     - Log retry attempts and final failures
     - _Requirements: 7.3, 7.4_
 
-- [ ] 9. Implement atomic listener count updates
-  - [ ] 9.1 Create increment operation
+- [x] 9. Implement atomic listener count updates
+  - [x] 9.1 Create increment operation
     - Use DynamoDB UpdateItem with ADD operation
     - Increment listenerCount by 1 atomically
     - Handle update failures with retry
     - _Requirements: 6.1_
 
-  - [ ] 9.2 Create decrement operation
+  - [x] 9.2 Create decrement operation
     - Use DynamoDB UpdateItem with ADD operation
     - Decrement listenerCount by -1 atomically
     - Ensure count never goes negative
     - _Requirements: 6.2, 6.4_
 
-  - [ ] 9.3 Integrate with connection lifecycle
+  - [x] 9.3 Integrate with connection lifecycle
     - Call increment when listener joins session
     - Call decrement when listener disconnects
     - Use atomic operations to prevent race conditions
     - _Requirements: 6.3_
 
-- [ ] 10. Create Lambda function and deployment configuration
-  - [ ] 10.1 Set up Lambda function structure
+- [x] 10. Create Lambda function and deployment configuration
+  - [x] 10.1 Set up Lambda function structure
     - Create main handler function
     - Configure runtime (Python 3.11)
     - Set memory to 1024 MB
     - Set timeout to 30 seconds
     - _Requirements: All_
 
-  - [ ] 10.2 Configure environment variables
+  - [x] 10.2 Configure environment variables
     - Add SESSIONS_TABLE_NAME
     - Add CONNECTIONS_TABLE_NAME
     - Add CACHED_TRANSLATIONS_TABLE_NAME
@@ -214,20 +214,20 @@
     - Add MAX_CACHE_ENTRIES (10000)
     - _Requirements: All_
 
-  - [ ] 10.3 Set up IAM permissions
+  - [x] 10.3 Set up IAM permissions
     - Grant DynamoDB permissions (GetItem, PutItem, Query, UpdateItem, DeleteItem)
     - Grant AWS Translate permissions (TranslateText)
     - Grant AWS Polly permissions (SynthesizeSpeech)
     - Grant API Gateway permissions (ManageConnections)
     - _Requirements: All_
 
-  - [ ]* 10.4 Create deployment package
+  - [x] 10.4 Create deployment package
     - Package Lambda code with dependencies
     - Include boto3, asyncio, hashlib libraries
     - Create deployment ZIP or container image
     - _Requirements: All_
 
-- [ ]* 11. Set up monitoring and alerting
+- [ ] 11. Set up monitoring and alerting
   - Create CloudWatch dashboard for pipeline metrics
   - Set up alarm for cache hit rate < 30%
   - Set up alarm for broadcast success rate < 95%
@@ -235,7 +235,7 @@
   - Set up alarm for failed languages > 10%
   - _Requirements: 9.8, 10.3, 10.4_
 
-- [ ]* 12. Create integration tests
+- [ ] 12. Create integration tests
   - Write end-to-end translation pipeline test
   - Write cache performance test (hit vs miss)
   - Write GSI query performance test

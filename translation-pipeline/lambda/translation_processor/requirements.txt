@@ -1,0 +1,7 @@
+# Lambda function dependencies
+# Note: boto3 and botocore are provided by Lambda runtime
+
+# No additional dependencies needed - all required libraries are:
+# 1. Python standard library (json, logging, os, sys, asyncio, hashlib, time)
+# 2. boto3 (provided by Lambda runtime)
+# 3. Shared code from /opt/python layer

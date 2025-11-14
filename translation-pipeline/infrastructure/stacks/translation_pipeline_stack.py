@@ -7,6 +7,8 @@ This stack defines the infrastructure for the translation and broadcasting pipel
 - IAM roles and permissions
 - CloudWatch alarms and monitoring
 """
+import os
+
 from aws_cdk import (
     Stack,
     Duration,
@@ -55,6 +57,12 @@ class TranslationPipelineStack(Stack):
 
         # Create SNS topic for alarms
         self.alarm_topic = self._create_alarm_topic()
+
+        # Create Lambda layer for shared code
+        self.shared_layer = self._create_shared_layer()
+
+        # Create Lambda function
+        self.translation_processor_function = self._create_translation_processor_function()
 
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms()
@@ -170,6 +178,162 @@ class TranslationPipelineStack(Stack):
         )
 
         return table
+
+    def _create_shared_layer(self) -> lambda_.LayerVersion:
+        """
+        Create Lambda layer with shared code.
+        
+        The layer includes all shared modules from the shared/ directory.
+        """
+        # Determine the correct path to shared code
+        # When running from infrastructure directory, use ../shared
+        # When running tests, the path is relative to the test location
+        shared_path = os.path.join(os.path.dirname(__file__), "..", "..", "shared")
+        
+        layer = lambda_.LayerVersion(
+            self,
+            "SharedLayer",
+            layer_version_name=f"translation-pipeline-shared-{self.env_name}",
+            code=lambda_.Code.from_asset(shared_path),
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_11],
+            description="Shared code for translation pipeline Lambda functions"
+        )
+        
+        return layer
+
+    def _create_translation_processor_function(self) -> lambda_.Function:
+        """
+        Create Lambda function for translation processing.
+        
+        Configuration:
+        - Runtime: Python 3.11
+        - Memory: 1024 MB
+        - Timeout: 30 seconds
+        - Environment variables for DynamoDB tables and configuration
+        - IAM permissions for DynamoDB, Translate, Polly, API Gateway
+        
+        Requirements: 10.1, 10.2, 10.3
+        """
+        # Create IAM role for Lambda
+        lambda_role = iam.Role(
+            self,
+            "TranslationProcessorRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Role for translation processor Lambda function"
+        )
+        
+        # Add basic Lambda execution permissions
+        lambda_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "service-role/AWSLambdaBasicExecutionRole"
+            )
+        )
+        
+        # Grant DynamoDB permissions
+        self.sessions_table.grant_read_write_data(lambda_role)
+        self.connections_table.grant_read_write_data(lambda_role)
+        self.cached_translations_table.grant_read_write_data(lambda_role)
+        
+        # Grant permissions for GSI queries
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "dynamodb:Query"
+                ],
+                resources=[
+                    f"{self.connections_table.table_arn}/index/*"
+                ]
+            )
+        )
+        
+        # Grant AWS Translate permissions
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "translate:TranslateText"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # Grant AWS Polly permissions
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "polly:SynthesizeSpeech"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # Grant API Gateway Management API permissions
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "execute-api:ManageConnections"
+                ],
+                resources=[
+                    f"arn:aws:execute-api:{self.region}:{self.account}:*/@connections/*"
+                ]
+            )
+        )
+        
+        # Grant CloudWatch metrics permissions
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "cloudwatch:PutMetricData"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # Get API Gateway endpoint from config
+        api_gateway_endpoint = self.config.get(
+            "apiGatewayEndpoint",
+            f"https://{{api-id}}.execute-api.{self.region}.amazonaws.com/{self.env_name}"
+        )
+        
+        # Determine the correct path to Lambda function code
+        lambda_path = os.path.join(os.path.dirname(__file__), "..", "..", "lambda", "translation_processor")
+        
+        # Create Lambda function
+        function = lambda_.Function(
+            self,
+            "TranslationProcessorFunction",
+            function_name=f"translation-processor-{self.env_name}",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="handler.lambda_handler",
+            code=lambda_.Code.from_asset(lambda_path),
+            role=lambda_role,
+            memory_size=1024,
+            timeout=Duration.seconds(30),
+            layers=[self.shared_layer],
+            environment={
+                "SESSIONS_TABLE_NAME": self.sessions_table.table_name,
+                "CONNECTIONS_TABLE_NAME": self.connections_table.table_name,
+                "CACHED_TRANSLATIONS_TABLE_NAME": self.cached_translations_table.table_name,
+                "MAX_CONCURRENT_BROADCASTS": str(
+                    self.config.get("maxConcurrentBroadcasts", 100)
+                ),
+                "CACHE_TTL_SECONDS": str(
+                    self.config.get("cacheTtlSeconds", 3600)
+                ),
+                "MAX_CACHE_ENTRIES": str(
+                    self.config.get("maxCacheEntries", 10000)
+                ),
+                "API_GATEWAY_ENDPOINT": api_gateway_endpoint
+            },
+            log_retention=logs.RetentionDays.ONE_WEEK if self.env_name == "dev" else logs.RetentionDays.ONE_MONTH,
+            tracing=lambda_.Tracing.ACTIVE if self.env_name == "prod" else lambda_.Tracing.DISABLED
+        )
+        
+        return function
 
     def _create_alarm_topic(self) -> sns.Topic:
         """Create SNS topic for CloudWatch alarms."""
@@ -338,4 +502,25 @@ class TranslationPipelineStack(Stack):
             "AlarmTopicArn",
             value=self.alarm_topic.topic_arn,
             description="SNS topic ARN for CloudWatch alarms"
+        )
+        
+        CfnOutput(
+            self,
+            "TranslationProcessorFunctionName",
+            value=self.translation_processor_function.function_name,
+            description="Translation processor Lambda function name"
+        )
+        
+        CfnOutput(
+            self,
+            "TranslationProcessorFunctionArn",
+            value=self.translation_processor_function.function_arn,
+            description="Translation processor Lambda function ARN"
+        )
+        
+        CfnOutput(
+            self,
+            "SharedLayerArn",
+            value=self.shared_layer.layer_version_arn,
+            description="Shared code Lambda layer ARN"
         )
