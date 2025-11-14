@@ -261,7 +261,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Add backward compatibility for existing sessions
   - _Requirements: 6-10_
 
-- [ ] 6. Implement message size validation
+- [-] 6. Implement message size validation
   - Add validation to all Lambda handlers
   - Check total message size <128 KB
   - Check audio chunk size <32 KB
