@@ -54,6 +54,9 @@ export class ListenerService {
    */
   async initialize(): Promise<void> {
     try {
+      // Load saved preferences
+      await this.loadPreferences();
+      
       // Connect WebSocket
       await this.wsClient.connect({
         sessionId: this.config.sessionId,
@@ -71,6 +74,35 @@ export class ListenerService {
     } catch (error) {
       const appError = ErrorHandler.handle(error as Error, ErrorType.WEBSOCKET_ERROR);
       throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Load saved preferences
+   */
+  private async loadPreferences(): Promise<void> {
+    try {
+      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
+      const preferenceStore = PreferenceStore.getInstance();
+      
+      // Use a default user ID or get from session
+      const userId = `listener-${this.config.sessionId}`;
+      
+      // Load saved volume
+      const savedVolume = await preferenceStore.getVolume(userId);
+      if (savedVolume !== null) {
+        await this.setVolume(savedVolume);
+      }
+      
+      // Load saved language (if different from config)
+      const savedLanguage = await preferenceStore.getLanguage(userId);
+      if (savedLanguage !== null && savedLanguage !== this.config.targetLanguage) {
+        // Update config but don't switch yet (will switch after connection)
+        this.config.targetLanguage = savedLanguage;
+      }
+    } catch (error) {
+      console.warn('Failed to load preferences:', error);
+      // Continue with defaults
     }
   }
 
@@ -188,6 +220,16 @@ export class ListenerService {
     }
     
     useListenerStore.getState().setPlaybackVolume(clampedVolume);
+    
+    // Save preference
+    try {
+      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
+      const preferenceStore = PreferenceStore.getInstance();
+      const userId = `listener-${this.config.sessionId}`;
+      await preferenceStore.saveVolume(userId, clampedVolume);
+    } catch (error) {
+      console.warn('Failed to save volume preference:', error);
+    }
   }
 
   /**
@@ -235,6 +277,7 @@ export class ListenerService {
    */
   async switchLanguage(newLanguage: string): Promise<void> {
     const previousLanguage = useListenerStore.getState().targetLanguage;
+    const startTime = Date.now();
     
     try {
       // Update UI to show switching state
@@ -248,8 +291,21 @@ export class ListenerService {
         this.wsClient.send({
           action: 'switchLanguage',
           targetLanguage: newLanguage,
+          timestamp: Date.now(),
         });
       }
+      
+      // Save preference
+      try {
+        const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
+        const preferenceStore = PreferenceStore.getInstance();
+        const userId = `listener-${this.config.sessionId}`;
+        await preferenceStore.saveLanguage(userId, newLanguage);
+      } catch (error) {
+        console.warn('Failed to save language preference:', error);
+      }
+      
+      this.logControlLatency('switchLanguage', startTime);
     } catch (error) {
       // Revert to previous language on failure
       useListenerStore.getState().setTargetLanguage(previousLanguage);

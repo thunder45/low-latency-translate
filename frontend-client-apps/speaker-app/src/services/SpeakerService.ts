@@ -65,6 +65,9 @@ export class SpeakerService {
    */
   async initialize(): Promise<void> {
     try {
+      // Load saved preferences
+      await this.loadPreferences();
+      
       // Connect WebSocket
       await this.wsClient.connect({
         sourceLanguage: this.config.sourceLanguage,
@@ -82,6 +85,28 @@ export class SpeakerService {
     } catch (error) {
       const appError = ErrorHandler.handle(error as Error, ErrorType.WEBSOCKET_ERROR);
       throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Load saved preferences
+   */
+  private async loadPreferences(): Promise<void> {
+    try {
+      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
+      const preferenceStore = PreferenceStore.getInstance();
+      
+      // Use a default user ID or get from auth
+      const userId = 'speaker-user'; // TODO: Get from auth service
+      
+      // Load saved volume
+      const savedVolume = await preferenceStore.getVolume(userId);
+      if (savedVolume !== null) {
+        await this.setVolume(savedVolume);
+      }
+    } catch (error) {
+      console.warn('Failed to load preferences:', error);
+      // Continue with defaults
     }
   }
 
@@ -252,6 +277,16 @@ export class SpeakerService {
     
     // Update store
     useSpeakerStore.getState().setInputVolume(clampedVolume);
+    
+    // Save preference
+    try {
+      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
+      const preferenceStore = PreferenceStore.getInstance();
+      const userId = 'speaker-user'; // TODO: Get from auth service
+      await preferenceStore.saveVolume(userId, clampedVolume);
+    } catch (error) {
+      console.warn('Failed to save volume preference:', error);
+    }
   }
 
   /**
