@@ -27,8 +27,9 @@ export interface ListenerControlsProps {
 
 /**
  * Listener Controls Component
+ * Memoized for performance optimization
  */
-export const ListenerControls: React.FC<ListenerControlsProps> = ({
+export const ListenerControls: React.FC<ListenerControlsProps> = React.memo(({
   sessionId,
   onPauseToggle,
   onMuteToggle,
@@ -242,6 +243,6 @@ export const ListenerControls: React.FC<ListenerControlsProps> = ({
       </div>
     </div>
   );
-};
+}));
 
 export default ListenerControls;

@@ -25,8 +25,9 @@ export interface SpeakerControlsProps {
 
 /**
  * Speaker Controls Component
+ * Memoized for performance optimization
  */
-export const SpeakerControls: React.FC<SpeakerControlsProps> = ({
+export const SpeakerControls: React.FC<SpeakerControlsProps> = React.memo(({
   sessionId,
   onPauseToggle,
   onMuteToggle,
@@ -218,6 +219,6 @@ export const SpeakerControls: React.FC<SpeakerControlsProps> = ({
       </div>
     </div>
   );
-};
+}));
 
 export default SpeakerControls;
