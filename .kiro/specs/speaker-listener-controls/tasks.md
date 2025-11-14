@@ -163,7 +163,7 @@
   - Write tests for error scenarios (network interruption, buffer overflow)
   - _Requirements: All requirements_
 
-- [ ] 18. Create end-to-end tests
+- [x] 18. Create end-to-end tests
   - Write E2E test for complete speaker session flow
   - Write E2E test for complete listener session flow
   - Write E2E test for preference save and reload
