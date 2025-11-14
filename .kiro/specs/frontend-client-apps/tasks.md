@@ -33,51 +33,51 @@
     - Define interfaces for server messages (sessionCreated, sessionJoined, audio, qualityWarning, sessionStatus, speakerState, connectionRefresh, sessionEnded, error)
     - _Requirements: 2.1, 8.1, 11.1_
 
-- [ ] 3. Implement audio capture service for speaker
-  - [ ] 3.1 Create AudioCapture class with microphone access
+- [x] 3. Implement audio capture service for speaker
+  - [x] 3.1 Create AudioCapture class with microphone access
     - Request microphone permission with getUserMedia
     - Configure audio constraints (16kHz, mono, echo cancellation, noise suppression, auto gain)
     - Handle permission denial with user-friendly error
     - _Requirements: 3.1, 3.5_
   
-  - [ ] 3.2 Implement audio processing pipeline
+  - [x] 3.2 Implement audio processing pipeline
     - Create AudioContext with 16kHz sample rate
     - Set up ScriptProcessorNode for audio chunk processing
     - Process audio in 1-3 second chunks
     - _Requirements: 3.2_
   
-  - [ ] 3.3 Add PCM conversion and base64 encoding
+  - [x] 3.3 Add PCM conversion and base64 encoding
     - Convert Float32 audio samples to PCM 16-bit format
     - Encode PCM data as base64 string
     - Generate chunk metadata (timestamp, chunkId, duration)
     - _Requirements: 3.3_
   
-  - [ ] 3.4 Implement input level monitoring
+  - [x] 3.4 Implement input level monitoring
     - Calculate real-time audio input level (0-100)
     - Provide getInputLevel() method for visualization
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.5_
 
-- [ ] 4. Implement audio playback service for listener
-  - [ ] 4.1 Create AudioPlayback class with buffer queue
+- [x] 4. Implement audio playback service for listener
+  - [x] 4.1 Create AudioPlayback class with buffer queue
     - Initialize AudioContext and GainNode
     - Implement audio buffer queue for incoming chunks
     - Track playback state (playing, paused, muted)
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
   
-  - [ ] 4.2 Implement audio decoding and playback
+  - [x] 4.2 Implement audio decoding and playback
     - Decode base64 audio data to PCM samples
     - Convert PCM to Float32 and create AudioBuffer
     - Schedule playback with automatic queue processing
     - Handle buffer underruns with buffering indicator
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
   
-  - [ ] 4.3 Add playback controls (pause, mute, volume)
+  - [x] 4.3 Add playback controls (pause, mute, volume)
     - Implement pause() and resume() methods
     - Implement setMuted() with gain node control
     - Implement setVolume() with range 0-1
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
   
-  - [ ] 4.4 Implement buffer management with 30-second limit
+  - [x] 4.4 Implement buffer management with 30-second limit
     - Track buffered duration with getBufferDuration()
     - Discard oldest chunks when buffer exceeds 30 seconds
     - Emit buffer overflow warning
