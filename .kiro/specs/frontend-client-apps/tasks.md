@@ -215,125 +215,125 @@
     - Clear warnings automatically when quality returns to normal (within 2 seconds)
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 12. Implement listener application components
-  - [ ] 12.1 Create SessionJoiner component
+- [x] 12. Implement listener application components
+  - [x] 12.1 Create SessionJoiner component
     - Build form with session ID input and target language selection
     - Validate session ID format before submission
     - Send joinSession request via WebSocket
     - Handle join errors (404, 503) with user-friendly messages
     - _Requirements: 8.1, 8.2, 8.4, 8.5_
   
-  - [ ] 12.2 Create PlaybackControls component
+  - [x] 12.2 Create PlaybackControls component
     - Build pause button with toggle state and Ctrl+P shortcut
     - Build mute button with toggle state and Ctrl+M shortcut
     - Build volume slider with debounced updates (50ms)
     - Update button states within 50ms of user interaction
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 17.3, 17.4_
   
-  - [ ] 12.3 Create LanguageSelector component
+  - [x] 12.3 Create LanguageSelector component
     - Build dropdown with available target languages
     - Send switchLanguage action on selection change
     - Display "Switching to {languageName}..." indicator during switch
     - Handle language switch failure with revert to previous language
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
   
-  - [ ] 12.4 Create BufferIndicator component
+  - [x] 12.4 Create BufferIndicator component
     - Display buffered audio duration (0-30 seconds)
     - Show "Buffering..." indicator when buffer is empty
     - Show "Buffer full - audio being skipped" warning when buffer overflows
     - _Requirements: 9.5, 10.5_
   
-  - [ ] 12.5 Create SpeakerStatus component
+  - [x] 12.5 Create SpeakerStatus component
     - Display "Speaker paused" indicator when speaker pauses
     - Display "Speaker muted" indicator when speaker mutes
     - Clear indicators within 500ms when speaker resumes/unmutes
     - Use distinct visual styling for each state
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-- [ ] 13. Implement speaker application integration
-  - [ ] 13.1 Create SpeakerService to orchestrate WebSocket and audio
+- [x] 13. Implement speaker application integration
+  - [x] 13.1 Create SpeakerService to orchestrate WebSocket and audio
     - Initialize WebSocket client with speaker configuration
     - Initialize AudioCapture service
     - Connect WebSocket with JWT token and session parameters
     - Handle sessionCreated message and update store
     - _Requirements: 2.1, 2.3, 3.1_
   
-  - [ ] 13.2 Implement audio transmission flow
+  - [x] 13.2 Implement audio transmission flow
     - Start audio capture on session creation
     - Send audio chunks via WebSocket with sendAudio action
     - Handle pause/mute by stopping audio transmission
     - Handle resume/unmute by restarting audio transmission
     - _Requirements: 3.2, 3.3, 6.1, 6.2, 6.4_
   
-  - [ ] 13.3 Implement session status polling
+  - [x] 13.3 Implement session status polling
     - Request session status every 5 seconds while session is active
     - Update listener count and language distribution in store
     - Update display within 1 second when listener count changes >10%
     - _Requirements: 5.1, 5.4, 5.5_
   
-  - [ ] 13.4 Handle quality warnings from server
+  - [x] 13.4 Handle quality warnings from server
     - Register handler for audio_quality_warning messages
     - Add warnings to store with addQualityWarning action
     - Clear warnings when quality returns to normal
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
   
-  - [ ] 13.5 Implement session end flow
+  - [x] 13.5 Implement session end flow
     - Send endSession action on user request
     - Stop audio capture and close WebSocket within 1 second
     - Clear session state and redirect to session creation
     - Retry endSession with exponential backoff on failure (up to 3 attempts)
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 14. Implement listener application integration
-  - [ ] 14.1 Create ListenerService to orchestrate WebSocket and audio
+- [x] 14. Implement listener application integration
+  - [x] 14.1 Create ListenerService to orchestrate WebSocket and audio
     - Initialize WebSocket client with listener configuration
     - Initialize AudioPlayback service
     - Connect WebSocket with session ID and target language
     - Handle sessionJoined message and update store
     - _Requirements: 8.1, 8.2, 8.3_
   
-  - [ ] 14.2 Implement audio reception and playback flow
+  - [x] 14.2 Implement audio reception and playback flow
     - Register handler for audio messages
     - Decode and queue audio for playback
     - Handle pause by buffering audio (up to 30 seconds)
     - Handle resume by playing buffered audio
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 10.1, 10.4_
   
-  - [ ] 14.3 Implement language switching flow
+  - [x] 14.3 Implement language switching flow
     - Send switchLanguage action on user request
     - Clear audio buffer and reset playback state
     - Display switching indicator during transition
     - Handle switch failure with revert to previous language
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
   
-  - [ ] 14.4 Handle speaker state messages
+  - [x] 14.4 Handle speaker state messages
     - Register handlers for speakerPaused, speakerMuted, speakerResumed, speakerUnmuted
     - Update store with speaker state changes
     - Display appropriate indicators in UI
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
   
-  - [ ] 14.5 Handle session ended message
+  - [x] 14.5 Handle session ended message
     - Display "Session ended by speaker" message
     - Provide "Join Another Session" button
     - Clear session state and stop audio playback
     - _Requirements: 15.5_
 
-- [ ] 15. Implement connection refresh mechanism
-  - [ ] 15.1 Handle connectionRefreshRequired message in speaker app
+- [x] 15. Implement connection refresh mechanism
+  - [x] 15.1 Handle connectionRefreshRequired message in speaker app
     - Display "Connection refresh required in 20 minutes" warning at 100 minutes
     - Initiate refresh at 115 minutes by establishing new WebSocket connection
     - Send refreshConnection action with JWT token and session ID
     - Close old connection after receiving connectionRefreshComplete
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
   
-  - [ ] 15.2 Handle connectionRefreshRequired message in listener app
+  - [x] 15.2 Handle connectionRefreshRequired message in listener app
     - Display "Connection refresh required in 20 minutes" warning at 100 minutes
     - Initiate refresh at 115 minutes by establishing new WebSocket connection
     - Send refreshConnection action with session ID and target language
     - Close old connection after receiving connectionRefreshComplete
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
   
-  - [ ] 15.3 Implement refresh retry logic
+  - [x] 15.3 Implement refresh retry logic
     - Retry refresh with exponential backoff on failure (1s, 2s, 4s)
     - Allow up to 5 retry attempts
     - Display "Session will expire soon. Please create new session" after max retries

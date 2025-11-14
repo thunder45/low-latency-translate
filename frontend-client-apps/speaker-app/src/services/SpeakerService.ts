@@ -1,0 +1,331 @@
+import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
+import { AudioCapture } from '../../../shared/audio/AudioCapture';
+import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
+import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
+import { RetryHandler } from '../../../shared/utils/RetryHandler';
+
+/**
+ * Configuration for SpeakerService
+ */
+export interface SpeakerServiceConfig {
+  wsUrl: string;
+  jwtToken: string;
+  sourceLanguage: string;
+  qualityTier: 'standard' | 'premium';
+}
+
+/**
+ * Speaker service orchestrates WebSocket and audio capture
+ * Handles session lifecycle, audio transmission, and quality monitoring
+ */
+export class SpeakerService {
+  private wsClient: WebSocketClient;
+  private audioCapture: AudioCapture;
+  private config: SpeakerServiceConfig;
+  private statusPollInterval: NodeJS.Timeout | null = null;
+  private retryHandler: RetryHandler;
+
+  constructor(config: SpeakerServiceConfig) {
+    this.config = config;
+
+    // Initialize WebSocket client
+    this.wsClient = new WebSocketClient({
+      url: config.wsUrl,
+      token: config.jwtToken,
+      heartbeatInterval: 30000,
+      reconnect: true,
+      reconnectDelay: 1000,
+      maxReconnectAttempts: 5,
+    });
+
+    // Initialize audio capture
+    this.audioCapture = new AudioCapture({
+      sampleRate: 16000,
+      channelCount: 1,
+      chunkDuration: 2, // 2 seconds
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    });
+
+    // Initialize retry handler
+    this.retryHandler = new RetryHandler({
+      maxAttempts: 3,
+      initialDelay: 1000,
+      maxDelay: 4000,
+      backoffMultiplier: 2,
+    });
+
+    this.setupEventHandlers();
+  }
+
+  /**
+   * Initialize session and start broadcasting
+   */
+  async initialize(): Promise<void> {
+    try {
+      // Connect WebSocket
+      await this.wsClient.connect({
+        sourceLanguage: this.config.sourceLanguage,
+        qualityTier: this.config.qualityTier,
+      });
+
+      useSpeakerStore.getState().setConnected(true);
+
+      // Send session creation request
+      this.wsClient.send({
+        action: 'createSession',
+        sourceLanguage: this.config.sourceLanguage,
+        qualityTier: this.config.qualityTier,
+      });
+    } catch (error) {
+      const appError = ErrorHandler.handle(error as Error, ErrorType.WEBSOCKET_ERROR);
+      throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Start audio capture and transmission
+   */
+  async startBroadcast(): Promise<void> {
+    try {
+      await this.audioCapture.start();
+
+      // Register audio chunk handler
+      this.audioCapture.onChunk((chunk) => {
+        const state = useSpeakerStore.getState();
+        
+        // Only send if not paused or muted
+        if (!state.isPaused && !state.isMuted && this.wsClient.isConnected()) {
+          this.wsClient.send({
+            action: 'sendAudio',
+            audioData: chunk.data,
+            timestamp: chunk.timestamp,
+            chunkId: chunk.chunkId,
+            duration: chunk.duration,
+          });
+          
+          useSpeakerStore.getState().setTransmitting(true);
+        }
+      });
+
+      // Start session status polling
+      this.startStatusPolling();
+    } catch (error) {
+      const appError = ErrorHandler.handle(error as Error, ErrorType.AUDIO_ERROR);
+      throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Pause broadcast
+   */
+  pause(): void {
+    useSpeakerStore.getState().setPaused(true);
+    useSpeakerStore.getState().setTransmitting(false);
+    
+    if (this.wsClient.isConnected()) {
+      this.wsClient.send({
+        action: 'pauseBroadcast',
+      });
+    }
+  }
+
+  /**
+   * Resume broadcast
+   */
+  resume(): void {
+    useSpeakerStore.getState().setPaused(false);
+    
+    if (this.wsClient.isConnected()) {
+      this.wsClient.send({
+        action: 'resumeBroadcast',
+      });
+    }
+  }
+
+  /**
+   * Mute audio
+   */
+  mute(): void {
+    useSpeakerStore.getState().setMuted(true);
+    useSpeakerStore.getState().setTransmitting(false);
+    
+    if (this.wsClient.isConnected()) {
+      this.wsClient.send({
+        action: 'muteBroadcast',
+      });
+    }
+  }
+
+  /**
+   * Unmute audio
+   */
+  unmute(): void {
+    useSpeakerStore.getState().setMuted(false);
+    
+    if (this.wsClient.isConnected()) {
+      this.wsClient.send({
+        action: 'unmuteBroadcast',
+      });
+    }
+  }
+
+  /**
+   * End session
+   */
+  async endSession(): Promise<void> {
+    try {
+      await this.retryHandler.execute(async () => {
+        if (this.wsClient.isConnected()) {
+          this.wsClient.send({
+            action: 'endSession',
+            sessionId: useSpeakerStore.getState().sessionId,
+            reason: 'Speaker ended session',
+          });
+        }
+      });
+
+      // Stop audio capture
+      this.audioCapture.stop();
+
+      // Stop status polling
+      this.stopStatusPolling();
+
+      // Close WebSocket within 1 second
+      setTimeout(() => {
+        this.wsClient.disconnect();
+      }, 1000);
+
+      // Clear session state
+      useSpeakerStore.getState().reset();
+    } catch (error) {
+      const appError = ErrorHandler.handle(error as Error, ErrorType.NETWORK_ERROR);
+      throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Get current audio input level
+   */
+  getInputLevel(): number {
+    return this.audioCapture.getInputLevel();
+  }
+
+  /**
+   * Get average audio input level
+   */
+  getAverageInputLevel(): number {
+    return this.audioCapture.getAverageInputLevel();
+  }
+
+  /**
+   * Cleanup resources
+   */
+  cleanup(): void {
+    this.stopStatusPolling();
+    this.audioCapture.stop();
+    this.wsClient.disconnect();
+  }
+
+  /**
+   * Setup WebSocket event handlers
+   */
+  private setupEventHandlers(): void {
+    // Handle session created
+    this.wsClient.on('sessionCreated', (message: any) => {
+      useSpeakerStore.getState().setSession(
+        message.sessionId,
+        message.sourceLanguage,
+        message.qualityTier
+      );
+    });
+
+    // Handle quality warnings
+    this.wsClient.on('audio_quality_warning', (message: any) => {
+      const warning: QualityWarning = {
+        type: message.issue,
+        message: this.getQualityWarningMessage(message.issue, message.value),
+        timestamp: Date.now(),
+      };
+      
+      useSpeakerStore.getState().addQualityWarning(warning);
+
+      // Auto-clear warning after 2 seconds if quality returns to normal
+      setTimeout(() => {
+        const warnings = useSpeakerStore.getState().qualityWarnings;
+        const updatedWarnings = warnings.filter(w => w.timestamp !== warning.timestamp);
+        if (updatedWarnings.length < warnings.length) {
+          useSpeakerStore.getState().clearQualityWarnings();
+        }
+      }, 2000);
+    });
+
+    // Handle session status
+    this.wsClient.on('sessionStatus', (message: any) => {
+      useSpeakerStore.getState().updateListenerStats(
+        message.listenerCount,
+        message.languageDistribution
+      );
+    });
+
+    // Handle connection state changes
+    this.wsClient.onStateChange((state) => {
+      useSpeakerStore.getState().setConnected(state.status === 'connected');
+    });
+
+    // Handle disconnection
+    this.wsClient.onDisconnect(() => {
+      useSpeakerStore.getState().setConnected(false);
+      useSpeakerStore.getState().setTransmitting(false);
+    });
+
+    // Handle errors
+    this.wsClient.onError((error) => {
+      console.error('WebSocket error:', error);
+      const appError = ErrorHandler.handle(error, ErrorType.WEBSOCKET_ERROR);
+      // Error will be displayed by UI components
+    });
+  }
+
+  /**
+   * Start polling session status every 5 seconds
+   */
+  private startStatusPolling(): void {
+    this.statusPollInterval = setInterval(() => {
+      if (this.wsClient.isConnected()) {
+        this.wsClient.send({
+          action: 'getSessionStatus',
+        });
+      }
+    }, 5000);
+  }
+
+  /**
+   * Stop polling session status
+   */
+  private stopStatusPolling(): void {
+    if (this.statusPollInterval) {
+      clearInterval(this.statusPollInterval);
+      this.statusPollInterval = null;
+    }
+  }
+
+  /**
+   * Get user-friendly quality warning message
+   */
+  private getQualityWarningMessage(issue: string, value?: number): string {
+    switch (issue) {
+      case 'snr_low':
+        return `Background noise detected. Move to quieter location${value ? ` (SNR: ${value.toFixed(1)} dB)` : ''}`;
+      case 'clipping':
+        return 'Audio distortion detected. Reduce microphone volume';
+      case 'echo':
+        return 'Echo detected. Enable echo cancellation or use headphones';
+      case 'silence':
+        return 'No audio detected. Check if microphone is muted';
+      default:
+        return 'Audio quality issue detected';
+    }
+  }
+}
