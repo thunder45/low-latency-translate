@@ -2,7 +2,7 @@
 
 **Note**: Tasks 2-7 can be implemented in parallel as they are independent components.
 
-- [ ] 1. Set up DynamoDB tables and indexes
+- [x] 1. Set up DynamoDB tables and indexes
   - Create Sessions table with listenerCount atomic counter
   - Create Connections table with sessionId-targetLanguage GSI
   - Create CachedTranslations table with TTL enabled
@@ -28,7 +28,7 @@
     - Evict entries with lowest accessCount (oldest lastAccessedAt on tie)
     - _Requirements: 9.5_
 
-  - [ ]* 2.4 Add cache metrics emission
+  - [ ] 2.4 Add cache metrics emission
     - Emit CloudWatch metric for cache hit rate
     - Emit CloudWatch metric for cache size
     - Emit CloudWatch metric for cache evictions

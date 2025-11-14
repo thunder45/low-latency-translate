@@ -1,0 +1,8 @@
+{
+  "account": null,
+  "region": "us-east-1",
+  "alarmEmail": null,
+  "maxConcurrentBroadcasts": 100,
+  "cacheTTLSeconds": 3600,
+  "maxCacheEntries": 10000
+}

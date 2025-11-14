@@ -1,0 +1,3 @@
+"""
+Translation Broadcasting Pipeline Component.
+"""
