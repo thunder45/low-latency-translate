@@ -32,6 +32,71 @@ export class AudioPlayback {
   }
 
   /**
+   * Queue audio chunk for playback
+   */
+  queueAudio(chunk: {
+    data: string;
+    timestamp: number;
+    chunkId: string;
+    duration: number;
+  }): void {
+    this.playAudio({
+      audioData: chunk.data,
+      sampleRate: this.config.sampleRate || 16000,
+      channels: 1,
+    }).catch(error => {
+      console.error('Failed to queue audio:', error);
+    });
+  }
+
+  /**
+   * Play buffered audio data
+   */
+  async playBuffer(audioData: Float32Array): Promise<void> {
+    if (!this.audioContext || !this.gainNode) {
+      throw new Error('AudioPlayback not initialized');
+    }
+
+    try {
+      // Create AudioBuffer from Float32Array
+      const audioBuffer = this.audioContext.createBuffer(
+        1,
+        audioData.length,
+        this.config.sampleRate || 16000
+      );
+
+      // Copy data to buffer
+      const channelData = audioBuffer.getChannelData(0);
+      channelData.set(audioData);
+
+      // Queue for playback
+      this.audioQueue.push(audioBuffer);
+
+      if (!this.isPaused) {
+        this.schedulePlayback();
+      }
+    } catch (error) {
+      console.error('Failed to play buffer:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if currently playing
+   */
+  isPlaying(): boolean {
+    return this.isPlaying;
+  }
+
+  /**
+   * Stop playback
+   */
+  stop(): void {
+    this.pause();
+    this.clearBuffer();
+  }
+
+  /**
    * Play audio from base64-encoded PCM data
    */
   async playAudio(audioMessage: {

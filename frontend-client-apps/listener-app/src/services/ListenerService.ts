@@ -1,5 +1,6 @@
 import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
 import { AudioPlayback } from '../../../shared/audio/AudioPlayback';
+import { CircularAudioBuffer } from '../../../shared/audio/CircularAudioBuffer';
 import { useListenerStore } from '../../../shared/store/listenerStore';
 import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
 
@@ -19,10 +20,16 @@ export interface ListenerServiceConfig {
 export class ListenerService {
   private wsClient: WebSocketClient;
   private audioPlayback: AudioPlayback;
+  private audioBuffer: CircularAudioBuffer;
   private config: ListenerServiceConfig;
+  private playbackVolume: number = 75;
+  private onAudioChunk: ((chunk: Float32Array) => void) | null = null;
 
   constructor(config: ListenerServiceConfig) {
     this.config = config;
+    
+    // Initialize circular buffer (16kHz sample rate, 30 seconds)
+    this.audioBuffer = new CircularAudioBuffer(16000, 30000);
 
     // Initialize WebSocket client
     this.wsClient = new WebSocketClient({
@@ -70,41 +77,157 @@ export class ListenerService {
   /**
    * Pause playback
    */
-  pause(): void {
-    this.audioPlayback.pause();
-    useListenerStore.getState().setPaused(true);
+  async pause(): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      this.audioPlayback.pause();
+      useListenerStore.getState().setPaused(true);
+      
+      // Start buffering incoming audio
+      this.startBuffering();
+      
+      this.logControlLatency('pause', startTime);
+    } catch (error) {
+      console.error('Failed to pause playback:', error);
+      throw error;
+    }
   }
 
   /**
    * Resume playback
    */
-  resume(): void {
-    this.audioPlayback.resume();
-    useListenerStore.getState().setPaused(false);
+  async resume(): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      // Play buffered audio first
+      await this.playBufferedAudio();
+      
+      this.audioPlayback.resume();
+      useListenerStore.getState().setPaused(false);
+      
+      // Stop buffering
+      this.stopBuffering();
+      
+      this.logControlLatency('resume', startTime);
+    } catch (error) {
+      console.error('Failed to resume playback:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle pause/resume
+   */
+  async togglePause(): Promise<void> {
+    const isPaused = useListenerStore.getState().isPaused;
+    if (isPaused) {
+      await this.resume();
+    } else {
+      await this.pause();
+    }
   }
 
   /**
    * Mute audio
    */
-  mute(): void {
-    this.audioPlayback.setMuted(true);
-    useListenerStore.getState().setMuted(true);
+  async mute(): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      this.audioPlayback.setMuted(true);
+      useListenerStore.getState().setMuted(true);
+      
+      this.logControlLatency('mute', startTime);
+    } catch (error) {
+      console.error('Failed to mute playback:', error);
+      throw error;
+    }
   }
 
   /**
    * Unmute audio
    */
-  unmute(): void {
-    this.audioPlayback.setMuted(false);
-    useListenerStore.getState().setMuted(false);
+  async unmute(): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      this.audioPlayback.setMuted(false);
+      useListenerStore.getState().setMuted(false);
+      
+      this.logControlLatency('unmute', startTime);
+    } catch (error) {
+      console.error('Failed to unmute playback:', error);
+      throw error;
+    }
   }
 
   /**
-   * Set playback volume
+   * Toggle mute/unmute
    */
-  setVolume(volume: number): void {
-    this.audioPlayback.setVolume(volume / 100);
-    useListenerStore.getState().setPlaybackVolume(volume);
+  async toggleMute(): Promise<void> {
+    const isMuted = useListenerStore.getState().isMuted;
+    if (isMuted) {
+      await this.unmute();
+    } else {
+      await this.mute();
+    }
+  }
+
+  /**
+   * Set playback volume (0-100)
+   */
+  async setVolume(volume: number): Promise<void> {
+    const clampedVolume = Math.max(0, Math.min(100, volume));
+    this.playbackVolume = clampedVolume;
+    
+    const isMuted = useListenerStore.getState().isMuted;
+    if (!isMuted) {
+      this.audioPlayback.setVolume(clampedVolume / 100);
+    }
+    
+    useListenerStore.getState().setPlaybackVolume(clampedVolume);
+  }
+
+  /**
+   * Start buffering incoming audio
+   */
+  private startBuffering(): void {
+    this.onAudioChunk = (chunk: Float32Array) => {
+      const isNearCapacity = this.audioBuffer.write(chunk);
+      
+      if (isNearCapacity) {
+        console.warn('Audio buffer near capacity');
+        useListenerStore.getState().setBufferOverflow(true);
+      }
+      
+      // Update buffer status
+      const bufferedDuration = this.audioBuffer.getBufferedDuration();
+      useListenerStore.getState().setBufferedDuration(bufferedDuration);
+    };
+  }
+
+  /**
+   * Stop buffering
+   */
+  private stopBuffering(): void {
+    this.onAudioChunk = null;
+    this.audioBuffer.clear();
+    useListenerStore.getState().setBufferedDuration(0);
+    useListenerStore.getState().setBufferOverflow(false);
+  }
+
+  /**
+   * Play buffered audio
+   */
+  private async playBufferedAudio(): Promise<void> {
+    const bufferedDuration = this.audioBuffer.getBufferedDuration();
+    
+    if (bufferedDuration > 0) {
+      const audioData = this.audioBuffer.read(bufferedDuration);
+      await this.audioPlayback.playBuffer(audioData);
+    }
   }
 
   /**
@@ -163,6 +286,30 @@ export class ListenerService {
   cleanup(): void {
     this.audioPlayback.stop();
     this.wsClient.disconnect();
+  }
+
+  /**
+   * Log control operation latency
+   */
+  private logControlLatency(operation: string, startTime: number): void {
+    const latency = Date.now() - startTime;
+    console.log(`Control latency [${operation}]: ${latency}ms`);
+    
+    // Warn if latency exceeds target
+    const target = operation === 'pause' || operation === 'resume' ? 100 : 50;
+    if (latency > target) {
+      console.warn(`Control latency exceeded target: ${latency}ms for ${operation}`);
+    }
+    
+    // Send to monitoring service if available
+    if (typeof window !== 'undefined' && (window as any).monitoring) {
+      (window as any).monitoring.logMetric({
+        name: `control.${operation}.latency`,
+        value: latency,
+        unit: 'ms',
+        timestamp: Date.now(),
+      });
+    }
   }
 
   /**

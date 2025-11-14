@@ -25,6 +25,7 @@ export interface AudioChunk {
  */
 export interface AudioPlaybackConfig {
   maxBufferDuration: number; // Maximum buffer duration in seconds (default 30)
+  sampleRate?: number; // Sample rate (default 16000)
 }
 
 /**

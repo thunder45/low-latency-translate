@@ -16,6 +16,9 @@ export class AudioCapture {
   private currentInputLevel: number = 0;
   private levelHistory: number[] = [];
   private readonly LEVEL_HISTORY_SIZE = 30; // 1 second at 30 FPS
+  private isPaused: boolean = false;
+  private isMuted: boolean = false;
+  private volumeGain: GainNode | null = null;
 
   constructor(config: AudioCaptureConfig) {
     this.config = config;
@@ -46,23 +49,31 @@ export class AudioCapture {
       this.analyser.fftSize = 256;
       this.source.connect(this.analyser);
 
+      // Create gain node for volume control
+      this.volumeGain = this.audioContext.createGain();
+      this.volumeGain.gain.value = 1.0;
+      this.source.connect(this.volumeGain);
+
       // Calculate buffer size for chunk duration
       const bufferSize = Math.pow(2, Math.ceil(Math.log2(this.config.sampleRate * this.config.chunkDuration)));
       this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
       this.processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
-        const chunk = this.processAudioChunk(audioData);
-
+        
         // Update input level
         this.updateInputLevel(audioData);
 
-        if (this.onChunkCallback) {
-          this.onChunkCallback(chunk);
+        // Only process and send chunks if not paused or muted
+        if (!this.isPaused && !this.isMuted) {
+          const chunk = this.processAudioChunk(audioData);
+          if (this.onChunkCallback) {
+            this.onChunkCallback(chunk);
+          }
         }
       };
 
-      this.source.connect(this.processor);
+      this.volumeGain.connect(this.processor);
       this.processor.connect(this.audioContext.destination);
     } catch (error) {
       if (error instanceof Error) {
@@ -133,6 +144,51 @@ export class AudioCapture {
    */
   isActive(): boolean {
     return this.audioContext !== null && this.audioContext.state === 'running';
+  }
+
+  /**
+   * Pause audio capture (stops sending chunks)
+   */
+  pause(): void {
+    this.isPaused = true;
+  }
+
+  /**
+   * Resume audio capture
+   */
+  resume(): void {
+    this.isPaused = false;
+  }
+
+  /**
+   * Mute audio (stops sending chunks)
+   */
+  mute(): void {
+    this.isMuted = true;
+    if (this.volumeGain) {
+      this.volumeGain.gain.value = 0;
+    }
+  }
+
+  /**
+   * Unmute audio
+   */
+  unmute(): void {
+    this.isMuted = false;
+    if (this.volumeGain) {
+      // Restore previous volume (stored in config or default to 1.0)
+      this.volumeGain.gain.value = 1.0;
+    }
+  }
+
+  /**
+   * Set input volume (0-1)
+   */
+  setVolume(volume: number): void {
+    const clampedVolume = Math.max(0, Math.min(1, volume));
+    if (this.volumeGain && !this.isMuted) {
+      this.volumeGain.gain.value = clampedVolume;
+    }
   }
 
   /**

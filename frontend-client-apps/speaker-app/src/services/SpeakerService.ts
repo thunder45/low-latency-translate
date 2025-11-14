@@ -24,6 +24,7 @@ export class SpeakerService {
   private config: SpeakerServiceConfig;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
+  private inputVolume: number = 75;
 
   constructor(config: SpeakerServiceConfig) {
     this.config = config;
@@ -120,55 +121,137 @@ export class SpeakerService {
   /**
    * Pause broadcast
    */
-  pause(): void {
-    useSpeakerStore.getState().setPaused(true);
-    useSpeakerStore.getState().setTransmitting(false);
+  async pause(): Promise<void> {
+    const startTime = Date.now();
     
-    if (this.wsClient.isConnected()) {
-      this.wsClient.send({
-        action: 'pauseBroadcast',
-      });
+    try {
+      this.audioCapture.pause();
+      useSpeakerStore.getState().setPaused(true);
+      useSpeakerStore.getState().setTransmitting(false);
+      
+      if (this.wsClient.isConnected()) {
+        this.wsClient.send({
+          action: 'pauseBroadcast',
+          timestamp: Date.now(),
+        });
+      }
+      
+      this.logControlLatency('pause', startTime);
+    } catch (error) {
+      console.error('Failed to pause broadcast:', error);
+      throw error;
     }
   }
 
   /**
    * Resume broadcast
    */
-  resume(): void {
-    useSpeakerStore.getState().setPaused(false);
+  async resume(): Promise<void> {
+    const startTime = Date.now();
     
-    if (this.wsClient.isConnected()) {
-      this.wsClient.send({
-        action: 'resumeBroadcast',
-      });
+    try {
+      this.audioCapture.resume();
+      useSpeakerStore.getState().setPaused(false);
+      
+      if (this.wsClient.isConnected()) {
+        this.wsClient.send({
+          action: 'resumeBroadcast',
+          timestamp: Date.now(),
+        });
+      }
+      
+      this.logControlLatency('resume', startTime);
+    } catch (error) {
+      console.error('Failed to resume broadcast:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle pause/resume
+   */
+  async togglePause(): Promise<void> {
+    const isPaused = useSpeakerStore.getState().isPaused;
+    if (isPaused) {
+      await this.resume();
+    } else {
+      await this.pause();
     }
   }
 
   /**
    * Mute audio
    */
-  mute(): void {
-    useSpeakerStore.getState().setMuted(true);
-    useSpeakerStore.getState().setTransmitting(false);
+  async mute(): Promise<void> {
+    const startTime = Date.now();
     
-    if (this.wsClient.isConnected()) {
-      this.wsClient.send({
-        action: 'muteBroadcast',
-      });
+    try {
+      this.audioCapture.mute();
+      useSpeakerStore.getState().setMuted(true);
+      useSpeakerStore.getState().setTransmitting(false);
+      
+      if (this.wsClient.isConnected()) {
+        this.wsClient.send({
+          action: 'muteBroadcast',
+          timestamp: Date.now(),
+        });
+      }
+      
+      this.logControlLatency('mute', startTime);
+    } catch (error) {
+      console.error('Failed to mute broadcast:', error);
+      throw error;
     }
   }
 
   /**
    * Unmute audio
    */
-  unmute(): void {
-    useSpeakerStore.getState().setMuted(false);
+  async unmute(): Promise<void> {
+    const startTime = Date.now();
     
-    if (this.wsClient.isConnected()) {
-      this.wsClient.send({
-        action: 'unmuteBroadcast',
-      });
+    try {
+      this.audioCapture.unmute();
+      useSpeakerStore.getState().setMuted(false);
+      
+      if (this.wsClient.isConnected()) {
+        this.wsClient.send({
+          action: 'unmuteBroadcast',
+          timestamp: Date.now(),
+        });
+      }
+      
+      this.logControlLatency('unmute', startTime);
+    } catch (error) {
+      console.error('Failed to unmute broadcast:', error);
+      throw error;
     }
+  }
+
+  /**
+   * Toggle mute/unmute
+   */
+  async toggleMute(): Promise<void> {
+    const isMuted = useSpeakerStore.getState().isMuted;
+    if (isMuted) {
+      await this.unmute();
+    } else {
+      await this.mute();
+    }
+  }
+
+  /**
+   * Set input volume (0-100)
+   */
+  async setVolume(volume: number): Promise<void> {
+    const clampedVolume = Math.max(0, Math.min(100, volume));
+    this.inputVolume = clampedVolume;
+    
+    // Update audio capture volume (normalize to 0-1)
+    this.audioCapture.setVolume(clampedVolume / 100);
+    
+    // Update store
+    useSpeakerStore.getState().setInputVolume(clampedVolume);
   }
 
   /**
@@ -326,6 +409,29 @@ export class SpeakerService {
         return 'No audio detected. Check if microphone is muted';
       default:
         return 'Audio quality issue detected';
+    }
+  }
+
+  /**
+   * Log control operation latency
+   */
+  private logControlLatency(operation: string, startTime: number): void {
+    const latency = Date.now() - startTime;
+    console.log(`Control latency [${operation}]: ${latency}ms`);
+    
+    // Warn if latency exceeds target
+    if (latency > 100) {
+      console.warn(`Control latency exceeded target: ${latency}ms for ${operation}`);
+    }
+    
+    // Send to monitoring service if available
+    if (typeof window !== 'undefined' && (window as any).monitoring) {
+      (window as any).monitoring.logMetric({
+        name: `control.${operation}.latency`,
+        value: latency,
+        unit: 'ms',
+        timestamp: Date.now(),
+      });
     }
   }
 }
