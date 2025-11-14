@@ -118,3 +118,107 @@ def validate_action(action: str) -> None:
             f'action must be one of: {", ".join(valid_actions)}',
             field='action'
         )
+
+
+def validate_message_size(
+    message_body: str,
+    max_size_bytes: int = 131072  # 128 KB default (API Gateway limit is 1 MB)
+) -> None:
+    """
+    Validate WebSocket message size.
+    
+    API Gateway WebSocket has a 1 MB message size limit, but we enforce
+    a more conservative 128 KB limit by default to prevent abuse.
+    
+    Args:
+        message_body: Message body to validate (string or bytes)
+        max_size_bytes: Maximum allowed size in bytes (default: 128 KB)
+    
+    Raises:
+        ValidationError: If message size exceeds limit
+    """
+    if isinstance(message_body, str):
+        size_bytes = len(message_body.encode('utf-8'))
+    else:
+        size_bytes = len(message_body)
+    
+    if size_bytes > max_size_bytes:
+        raise ValidationError(
+            f'Message size ({size_bytes} bytes) exceeds maximum allowed size ({max_size_bytes} bytes)',
+            field='messageSize'
+        )
+
+
+def validate_audio_chunk_size(
+    audio_data: bytes,
+    max_size_bytes: int = 32768  # 32 KB default
+) -> None:
+    """
+    Validate audio chunk size.
+    
+    Audio chunks should be reasonably sized to prevent memory issues
+    and ensure smooth processing. Typical audio chunks are 100-200ms
+    of audio, which at 16kHz 16-bit mono is 3.2-6.4 KB.
+    
+    Args:
+        audio_data: Audio data bytes to validate
+        max_size_bytes: Maximum allowed size in bytes (default: 32 KB)
+    
+    Raises:
+        ValidationError: If audio chunk size exceeds limit
+    """
+    if not isinstance(audio_data, bytes):
+        raise ValidationError(
+            'Audio data must be bytes',
+            field='audioData'
+        )
+    
+    size_bytes = len(audio_data)
+    
+    if size_bytes > max_size_bytes:
+        raise ValidationError(
+            f'Audio chunk size ({size_bytes} bytes) exceeds maximum allowed size ({max_size_bytes} bytes)',
+            field='audioChunkSize'
+        )
+    
+    # Also validate minimum size (at least 100 bytes)
+    if size_bytes < 100:
+        raise ValidationError(
+            f'Audio chunk size ({size_bytes} bytes) is too small (minimum: 100 bytes)',
+            field='audioChunkSize'
+        )
+
+
+def validate_control_message_size(
+    payload: dict,
+    max_size_bytes: int = 4096  # 4 KB default
+) -> None:
+    """
+    Validate control message payload size.
+    
+    Control messages (pause, mute, volume, etc.) should be small.
+    This prevents abuse and ensures fast processing.
+    
+    Args:
+        payload: Control message payload dictionary
+        max_size_bytes: Maximum allowed size in bytes (default: 4 KB)
+    
+    Raises:
+        ValidationError: If payload size exceeds limit
+    """
+    import json
+    
+    try:
+        payload_str = json.dumps(payload)
+        size_bytes = len(payload_str.encode('utf-8'))
+    except (TypeError, ValueError) as e:
+        raise ValidationError(
+            f'Invalid control message payload: {str(e)}',
+            field='payload'
+        )
+    
+    if size_bytes > max_size_bytes:
+        raise ValidationError(
+            f'Control message payload size ({size_bytes} bytes) exceeds maximum allowed size ({max_size_bytes} bytes)',
+            field='payloadSize'
+        )
