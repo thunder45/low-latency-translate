@@ -3,6 +3,7 @@ import { AudioCapture } from '../../../shared/audio/AudioCapture';
 import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
 import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
 import { RetryHandler } from '../../../shared/utils/RetryHandler';
+import { controlsMonitoring } from '../../../shared/utils/ControlsMonitoring';
 
 /**
  * Configuration for SpeakerService
@@ -92,6 +93,8 @@ export class SpeakerService {
    * Load saved preferences
    */
   private async loadPreferences(): Promise<void> {
+    const startTime = Date.now();
+    
     try {
       const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
       const preferenceStore = PreferenceStore.getInstance();
@@ -104,8 +107,19 @@ export class SpeakerService {
       if (savedVolume !== null) {
         await this.setVolume(savedVolume);
       }
+      
+      const duration = Date.now() - startTime;
+      controlsMonitoring.logPreferenceOperation('load', 'volume', true, duration, {
+        userType: 'speaker',
+        userId,
+      });
     } catch (error) {
       console.warn('Failed to load preferences:', error);
+      const duration = Date.now() - startTime;
+      controlsMonitoring.logPreferenceOperation('load', 'volume', false, duration, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
       // Continue with defaults
     }
   }
@@ -162,8 +176,16 @@ export class SpeakerService {
       }
       
       this.logControlLatency('pause', startTime);
+      controlsMonitoring.logControlAction('pause', true, {
+        userType: 'speaker',
+        sessionId: useSpeakerStore.getState().sessionId,
+      });
     } catch (error) {
       console.error('Failed to pause broadcast:', error);
+      controlsMonitoring.logControlAction('pause', false, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
@@ -186,8 +208,16 @@ export class SpeakerService {
       }
       
       this.logControlLatency('resume', startTime);
+      controlsMonitoring.logControlAction('resume', true, {
+        userType: 'speaker',
+        sessionId: useSpeakerStore.getState().sessionId,
+      });
     } catch (error) {
       console.error('Failed to resume broadcast:', error);
+      controlsMonitoring.logControlAction('resume', false, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
@@ -223,8 +253,16 @@ export class SpeakerService {
       }
       
       this.logControlLatency('mute', startTime);
+      controlsMonitoring.logControlAction('mute', true, {
+        userType: 'speaker',
+        sessionId: useSpeakerStore.getState().sessionId,
+      });
     } catch (error) {
       console.error('Failed to mute broadcast:', error);
+      controlsMonitoring.logControlAction('mute', false, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
@@ -247,8 +285,16 @@ export class SpeakerService {
       }
       
       this.logControlLatency('unmute', startTime);
+      controlsMonitoring.logControlAction('unmute', true, {
+        userType: 'speaker',
+        sessionId: useSpeakerStore.getState().sessionId,
+      });
     } catch (error) {
       console.error('Failed to unmute broadcast:', error);
+      controlsMonitoring.logControlAction('unmute', false, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
       throw error;
     }
   }
@@ -279,13 +325,26 @@ export class SpeakerService {
     useSpeakerStore.getState().setInputVolume(clampedVolume);
     
     // Save preference
+    const startTime = Date.now();
     try {
       const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
       const preferenceStore = PreferenceStore.getInstance();
       const userId = 'speaker-user'; // TODO: Get from auth service
       await preferenceStore.saveVolume(userId, clampedVolume);
+      
+      const duration = Date.now() - startTime;
+      controlsMonitoring.logPreferenceOperation('save', 'volume', true, duration, {
+        userType: 'speaker',
+        userId,
+        volume: clampedVolume,
+      });
     } catch (error) {
       console.warn('Failed to save volume preference:', error);
+      const duration = Date.now() - startTime;
+      controlsMonitoring.logPreferenceOperation('save', 'volume', false, duration, {
+        userType: 'speaker',
+        error: (error as Error).message,
+      });
     }
   }
 
@@ -451,22 +510,9 @@ export class SpeakerService {
    * Log control operation latency
    */
   private logControlLatency(operation: string, startTime: number): void {
-    const latency = Date.now() - startTime;
-    console.log(`Control latency [${operation}]: ${latency}ms`);
-    
-    // Warn if latency exceeds target
-    if (latency > 100) {
-      console.warn(`Control latency exceeded target: ${latency}ms for ${operation}`);
-    }
-    
-    // Send to monitoring service if available
-    if (typeof window !== 'undefined' && (window as any).monitoring) {
-      (window as any).monitoring.logMetric({
-        name: `control.${operation}.latency`,
-        value: latency,
-        unit: 'ms',
-        timestamp: Date.now(),
-      });
-    }
+    controlsMonitoring.logControlLatency(operation, startTime, {
+      userType: 'speaker',
+      sessionId: useSpeakerStore.getState().sessionId,
+    });
   }
 }
