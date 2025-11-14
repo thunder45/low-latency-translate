@@ -9,26 +9,26 @@
   - Configure on-demand billing mode for all tables
   - _Requirements: 2.1, 2.2, 9.1_
 
-- [ ] 2. Implement Translation Cache Manager
-  - [ ] 2.1 Create cache key generation logic
+- [x] 2. Implement Translation Cache Manager
+  - [x] 2.1 Create cache key generation logic
     - Implement text normalization (trim, lowercase)
     - Implement SHA-256 hashing with 16-character truncation
     - Generate composite key format: {source}:{target}:{hash16}
     - _Requirements: 9.2, 9.6, 9.7_
 
-  - [ ] 2.2 Implement cache lookup and storage
+  - [x] 2.2 Implement cache lookup and storage
     - Write get_cached_translation() method with DynamoDB query
     - Write cache_translation() method with TTL setting (3600 seconds)
     - Handle cache misses gracefully
     - _Requirements: 9.3, 9.4_
 
-  - [ ] 2.3 Implement LRU eviction logic
+  - [x] 2.3 Implement LRU eviction logic
     - Track accessCount and lastAccessedAt on cache reads
     - Implement eviction when cache exceeds 10,000 entries
     - Evict entries with lowest accessCount (oldest lastAccessedAt on tie)
     - _Requirements: 9.5_
 
-  - [ ] 2.4 Add cache metrics emission
+  - [x] 2.4 Add cache metrics emission
     - Emit CloudWatch metric for cache hit rate
     - Emit CloudWatch metric for cache size
     - Emit CloudWatch metric for cache evictions
