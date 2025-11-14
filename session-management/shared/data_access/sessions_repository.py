@@ -8,6 +8,7 @@ from typing import Dict, Optional, Any
 
 from .dynamodb_client import DynamoDBClient
 from .exceptions import ItemNotFoundError, ConditionalCheckFailedError
+from ..models.broadcast_state import BroadcastState
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ class SessionsRepository:
         current_time = int(time.time() * 1000)
         expires_at = int(time.time()) + (session_max_duration_hours * 3600)
 
+        # Initialize broadcast state
+        broadcast_state = BroadcastState.default()
+        
         session_item = {
             'sessionId': session_id,
             'speakerConnectionId': speaker_connection_id,
@@ -75,7 +79,8 @@ class SessionsRepository:
             'expiresAt': expires_at,
             'partialResultsEnabled': partial_results_enabled,
             'minStabilityThreshold': Decimal(str(min_stability_threshold)),
-            'maxBufferTimeout': Decimal(str(max_buffer_timeout))
+            'maxBufferTimeout': Decimal(str(max_buffer_timeout)),
+            'broadcastState': broadcast_state.to_dict()
         }
 
         # Ensure session ID doesn't already exist
@@ -214,3 +219,163 @@ class SessionsRepository:
         """
         session = self.get_session(session_id)
         return session is not None and session.get('isActive', False)
+    
+    def get_broadcast_state(self, session_id: str) -> Optional[BroadcastState]:
+        """
+        Get broadcast state for session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            BroadcastState or None if session not found
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        
+        broadcast_data = session.get('broadcastState')
+        if not broadcast_data:
+            # Return default state for backward compatibility
+            return BroadcastState.default()
+        
+        return BroadcastState.from_dict(broadcast_data)
+    
+    def update_broadcast_state(
+        self,
+        session_id: str,
+        broadcast_state: BroadcastState
+    ) -> None:
+        """
+        Update broadcast state for session.
+        
+        Args:
+            session_id: Session identifier
+            broadcast_state: New broadcast state
+            
+        Raises:
+            ConditionalCheckFailedError: If session doesn't exist or is inactive
+        """
+        self.client.update_item(
+            table_name=self.table_name,
+            key={'sessionId': session_id},
+            update_expression='SET broadcastState = :state',
+            condition_expression='attribute_exists(sessionId) AND isActive = :true',
+            expression_attribute_values={
+                ':state': broadcast_state.to_dict(),
+                ':true': True
+            }
+        )
+        logger.info(f"Updated broadcast state for session {session_id}")
+    
+    def pause_broadcast(self, session_id: str) -> BroadcastState:
+        """
+        Pause broadcast for session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Updated broadcast state
+            
+        Raises:
+            ItemNotFoundError: If session not found
+            ConditionalCheckFailedError: If session is inactive
+        """
+        current_state = self.get_broadcast_state(session_id)
+        if not current_state:
+            raise ItemNotFoundError(f"Session not found: {session_id}")
+        
+        new_state = current_state.pause()
+        self.update_broadcast_state(session_id, new_state)
+        return new_state
+    
+    def resume_broadcast(self, session_id: str) -> BroadcastState:
+        """
+        Resume broadcast for session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Updated broadcast state
+            
+        Raises:
+            ItemNotFoundError: If session not found
+            ConditionalCheckFailedError: If session is inactive
+        """
+        current_state = self.get_broadcast_state(session_id)
+        if not current_state:
+            raise ItemNotFoundError(f"Session not found: {session_id}")
+        
+        new_state = current_state.resume()
+        self.update_broadcast_state(session_id, new_state)
+        return new_state
+    
+    def mute_broadcast(self, session_id: str) -> BroadcastState:
+        """
+        Mute broadcast for session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Updated broadcast state
+            
+        Raises:
+            ItemNotFoundError: If session not found
+            ConditionalCheckFailedError: If session is inactive
+        """
+        current_state = self.get_broadcast_state(session_id)
+        if not current_state:
+            raise ItemNotFoundError(f"Session not found: {session_id}")
+        
+        new_state = current_state.mute()
+        self.update_broadcast_state(session_id, new_state)
+        return new_state
+    
+    def unmute_broadcast(self, session_id: str) -> BroadcastState:
+        """
+        Unmute broadcast for session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Updated broadcast state
+            
+        Raises:
+            ItemNotFoundError: If session not found
+            ConditionalCheckFailedError: If session is inactive
+        """
+        current_state = self.get_broadcast_state(session_id)
+        if not current_state:
+            raise ItemNotFoundError(f"Session not found: {session_id}")
+        
+        new_state = current_state.unmute()
+        self.update_broadcast_state(session_id, new_state)
+        return new_state
+    
+    def set_broadcast_volume(self, session_id: str, volume: float) -> BroadcastState:
+        """
+        Set broadcast volume for session.
+        
+        Args:
+            session_id: Session identifier
+            volume: Volume level (0.0-1.0)
+            
+        Returns:
+            Updated broadcast state
+            
+        Raises:
+            ItemNotFoundError: If session not found
+            ConditionalCheckFailedError: If session is inactive
+            ValueError: If volume is out of range
+        """
+        current_state = self.get_broadcast_state(session_id)
+        if not current_state:
+            raise ItemNotFoundError(f"Session not found: {session_id}")
+        
+        new_state = current_state.set_volume(volume)
+        self.update_broadcast_state(session_id, new_state)
+        return new_state
