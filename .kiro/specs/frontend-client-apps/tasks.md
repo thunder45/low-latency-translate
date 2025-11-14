@@ -8,26 +8,26 @@
   - Configure TypeScript with strict mode and path aliases
   - _Requirements: 20.5_
 
-- [ ] 2. Implement shared WebSocket client
-  - [ ] 2.1 Create WebSocket client class with connection management
+- [x] 2. Implement shared WebSocket client
+  - [x] 2.1 Create WebSocket client class with connection management
     - Write WebSocketClient class with connect, send, disconnect methods
     - Implement connection state tracking (disconnected, connecting, connected, reconnecting, failed)
     - Add message handler registration with on() method
     - _Requirements: 13.1, 13.2, 13.3, 13.4_
   
-  - [ ] 2.2 Implement heartbeat mechanism
+  - [x] 2.2 Implement heartbeat mechanism
     - Add automatic heartbeat sending every 30 seconds
     - Implement heartbeat acknowledgment tracking with 5-second timeout
     - Trigger reconnection on heartbeat timeout
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
   
-  - [ ] 2.3 Add automatic reconnection with exponential backoff
+  - [x] 2.3 Add automatic reconnection with exponential backoff
     - Implement reconnection logic with exponential backoff (1s, 2s, 4s, 8s, max 30s)
     - Track reconnection attempts and enforce maximum attempts limit
     - Emit reconnection events for application layer handling
     - _Requirements: 13.5, 15.1, 15.2, 15.3_
   
-  - [ ] 2.4 Create TypeScript interfaces for all message types
+  - [x] 2.4 Create TypeScript interfaces for all message types
     - Define interfaces for speaker messages (sendAudio, pauseBroadcast, endSession, getSessionStatus)
     - Define interfaces for listener messages (switchLanguage)
     - Define interfaces for server messages (sessionCreated, sessionJoined, audio, qualityWarning, sessionStatus, speakerState, connectionRefresh, sessionEnded, error)
