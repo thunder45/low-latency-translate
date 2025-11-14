@@ -270,7 +270,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Log violations with connection details
   - _Requirements: 27_
 
-- [ ] 7. Implement connection timeout handling
+- [x] 7. Implement connection timeout handling
   - Add timeout detection to connection_handler
   - Close connections idle for >120 seconds
   - Send connectionTimeout message before closing

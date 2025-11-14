@@ -215,3 +215,24 @@ class ConnectionsRepository:
             self.batch_delete_connections(connection_ids)
 
         return len(connection_ids)
+
+    def scan_all_connections(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Scan all connections in the table.
+        
+        Note: This is used by the timeout handler to check for idle connections.
+        In production with many connections, this should use pagination.
+        
+        Args:
+            limit: Optional limit on number of items to return
+            
+        Returns:
+            List of all connection items
+        """
+        connections = self.client.scan(
+            table_name=self.table_name,
+            limit=limit
+        )
+        
+        logger.info(f"Scanned {len(connections)} connections")
+        return connections

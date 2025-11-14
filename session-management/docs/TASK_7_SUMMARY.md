@@ -1,249 +1,153 @@
-# Task 7: Connection Refresh Handler Lambda - Implementation Summary
+# Task 7: Implement Connection Timeout Handling
 
-## Overview
+## Task Description
+Implemented connection timeout detection and cleanup to automatically close idle WebSocket connections and free up resources.
 
-Implemented the Connection Refresh Handler Lambda to enable seamless connection refresh for sessions longer than 2 hours, addressing the API Gateway WebSocket 2-hour connection limit. This allows unlimited session duration through automatic reconnection every 100 minutes.
+## Task Instructions
+Add timeout detection to identify and close connections idle for >120 seconds:
+- Create timeout_handler Lambda triggered by EventBridge (every 60 seconds)
+- Query all connections and check lastActivityTime
+- Send connectionTimeout message before closing
+- Trigger disconnect handler for cleanup
+- Emit CloudWatch metrics for timeouts
 
-## Components Implemented
-
-### 1. Connection Refresh Handler Lambda (`lambda/refresh_handler/handler.py`)
-
-**Key Features:**
-- Handles both speaker and listener connection refresh
-- Speaker identity validation (JWT-based)
-- Atomic session state updates
-- Connection record management
-- Comprehensive error handling
-
-**Speaker Refresh Logic:**
-- Validates speaker identity matches session owner
-- Atomically updates `speakerConnectionId` in Sessions table
-- Sends `connectionRefreshComplete` message to new connection
-- Logs old and new connection IDs for debugging
-
-**Listener Refresh Logic:**
-- Validates session exists and is active
-- Creates new connection record in Connections table
-- Atomically increments `listenerCount`
-- Sends `connectionRefreshComplete` message with session details
-- Tolerates temporary count spikes during transition
-
-**Error Handling:**
-- 400: Missing or invalid parameters
-- 401: Speaker authentication required
-- 403: Speaker identity mismatch
-- 404: Session not found or inactive
-- 500: Internal errors with detailed logging
-
-### 2. API Gateway WebSocket Configuration
-
-**Updated CDK Stack (`infrastructure/stacks/session_management_stack.py`):**
-- Created WebSocket API with route selection expression
-- Configured Lambda Authorizer for speaker authentication
-- Added `refreshConnection` custom route with authorizer
-- Integrated refresh handler Lambda with API Gateway
-- Granted API Gateway Management API permissions for message sending
-- Added WebSocket endpoint to CloudFormation outputs
-
-**Routes Configured:**
-- `$connect` - Connection Handler (with authorizer)
-- `$disconnect` - Disconnect Handler
-- `heartbeat` - Heartbeat Handler
-- `refreshConnection` - Refresh Handler (with authorizer)
-
-**Security:**
-- Lambda Authorizer validates JWT tokens for speaker refresh
-- Listener refresh doesn't require authentication (anonymous)
-- IAM permissions for API Gateway to invoke Lambdas
-- API Gateway Management API permissions for sending messages
-
-### 3. Integration Tests (`tests/test_refresh_handler.py`)
-
-**Test Coverage: 10 tests, all passing**
-
-**Speaker Refresh Tests:**
-- ✅ Valid identity succeeds and updates connection ID
-- ✅ Mismatched identity fails with 403 Forbidden
-- ✅ Missing authentication fails with 401 Unauthorized
-
-**Listener Refresh Tests:**
-- ✅ Creates new connection and increments count
-- ✅ Missing targetLanguage fails with 400 Bad Request
-
-**Error Scenario Tests:**
-- ✅ Invalid session ID fails with 404 Not Found
-- ✅ Inactive session fails with 404 Not Found
-- ✅ Missing sessionId parameter fails with 400 Bad Request
-- ✅ Invalid role parameter fails with 400 Bad Request
-
-**Count Tolerance Test:**
-- ✅ Temporary listenerCount spike allowed during refresh transition
-
-## Requirements Addressed
-
-**Requirement 11: Seamless Connection Refresh for Long Sessions**
-
-All acceptance criteria implemented:
-
-1. ✅ Speaker receives `connectionRefreshRequired` at 100 minutes
-2. ✅ Speaker establishes new connection while maintaining existing
-3. ✅ New speaker connection validated with sessionId and userId match
-4. ✅ Session `speakerConnectionId` updated atomically
-5. ✅ `connectionRefreshComplete` sent to new connection
-6. ✅ Listener receives `connectionRefreshRequired` at 100 minutes
-7. ✅ Listener establishes new connection with same sessionId/targetLanguage
-8. ✅ New connection record created and count incremented atomically
-9. ✅ Session state persists across refreshes with no audio loss
-10. ✅ Unlimited session duration through periodic refresh
-11. ✅ Temporary listenerCount spikes tolerated during transition
-
-## Technical Highlights
-
-### Atomic Operations
-
-**Speaker Connection Update:**
-```python
-sessions_table.update_item(
-    Key={'sessionId': session_id},
-    UpdateExpression='SET speakerConnectionId = :new_conn',
-    ConditionExpression='attribute_exists(sessionId) AND isActive = :true',
-    ExpressionAttributeValues={
-        ':new_conn': connection_id,
-        ':true': True
-    }
-)
+## Task Tests
+```bash
+python -m pytest tests/unit/test_timeout_handler.py -v
 ```
 
-**Listener Count Increment:**
-```python
-sessions_table.update_item(
-    Key={'sessionId': session_id},
-    UpdateExpression='ADD listenerCount :inc',
-    ConditionExpression='attribute_exists(sessionId) AND isActive = :true',
-    ExpressionAttributeValues={
-        ':inc': 1,
-        ':true': True
-    }
-)
-```
+**Results**: 15 tests passed in 0.39s
+- ✅ Send timeout message tests (3 tests)
+- ✅ Close connection tests (3 tests)
+- ✅ Trigger disconnect handler tests (2 tests)
+- ✅ Check and close idle connections tests (4 tests)
+- ✅ Lambda handler tests (3 tests)
 
-### Identity Validation
+**Coverage**: 100% of timeout handler functions
 
-**Speaker Identity Check:**
-```python
-authorizer_context = event['requestContext'].get('authorizer', {})
-user_id = authorizer_context.get('userId')
+## Task Solution
 
-if user_id != session.get('speakerUserId'):
-    return error_response(403, 'FORBIDDEN', 'Speaker identity mismatch')
-```
+### Files Created
+1. **session-management/lambda/timeout_handler/__init__.py** - Module initialization
+2. **session-management/lambda/timeout_handler/handler.py** - Timeout handler Lambda (300+ lines)
+3. **session-management/tests/unit/test_timeout_handler.py** - Comprehensive unit tests (15 tests)
 
-### Message Protocol
+### Files Modified
+1. **session-management/shared/data_access/connections_repository.py**
+   - Added `scan_all_connections()` method to query all connections
 
-**Connection Refresh Complete Message:**
+### Key Implementation Decisions
+
+**1. Periodic Trigger Approach**
+- EventBridge scheduled rule triggers Lambda every 60 seconds
+- Scans all connections to check for idle ones
+- More efficient than per-connection timers
+- Rationale: Centralized timeout management, easier to monitor
+
+**2. Idle Timeout Threshold**
+- Default: 120 seconds (2 minutes)
+- Configurable via CONNECTION_IDLE_TIMEOUT_SECONDS environment variable
+- Uses lastActivityTime or connectedAt as fallback
+- Rationale: Balance between keeping connections alive and freeing resources
+
+**3. Graceful Shutdown Flow**
+1. Send connectionTimeout message to client (best effort)
+2. Close WebSocket connection via API Gateway Management API
+3. Trigger disconnect handler Lambda for cleanup (async)
+4. Emit CloudWatch metrics
+
+**4. Error Handling**
+- GoneException (connection already closed) treated as success
+- Failed message sends logged but don't block connection close
+- Disconnect handler invoked asynchronously (fire-and-forget)
+- Rationale: Ensure cleanup happens even if client is unresponsive
+
+**5. Metrics and Observability**
+- ConnectionTimeout metric (by role and reason)
+- ConnectionsChecked, IdleConnectionsDetected, ConnectionsClosed
+- Structured logging with correlation IDs
+- Separate tracking for speaker vs listener timeouts
+
+### Message Format
+
+**connectionTimeout Message**:
 ```json
 {
-  "type": "connectionRefreshComplete",
-  "sessionId": "golden-eagle-427",
-  "role": "speaker|listener",
-  "targetLanguage": "es",  // listener only
-  "sourceLanguage": "en",  // listener only
+  "type": "connectionTimeout",
+  "message": "Connection closed due to inactivity",
+  "idleSeconds": 120,
   "timestamp": 1699500000000
 }
 ```
 
-## Integration with Existing Components
+### Integration Points
 
-### Heartbeat Handler Integration
+**1. EventBridge Rule** (to be added in CDK - Task 10):
+- Schedule: rate(1 minute)
+- Target: timeout_handler Lambda
+- Permissions: lambda:InvokeFunction
 
-The Heartbeat Handler (Task 8) will:
-1. Check connection duration at each heartbeat
-2. Send `connectionRefreshRequired` at 100-minute threshold
-3. Send `connectionWarning` at 105-minute threshold
-4. Trigger client-side refresh logic
+**2. IAM Permissions** (to be added in CDK - Task 10):
+- execute-api:ManageConnections (API Gateway Management API)
+- execute-api:Invoke (API Gateway Management API)
+- dynamodb:Scan (Connections table)
+- lambda:InvokeFunction (disconnect_handler)
 
-### Disconnect Handler Integration
+**3. Environment Variables**:
+- CONNECTION_IDLE_TIMEOUT_SECONDS (default: 120)
+- API_GATEWAY_ENDPOINT (required)
+- CONNECTIONS_TABLE (required)
+- DISCONNECT_HANDLER_FUNCTION (required)
 
-The Disconnect Handler (Task 9) will:
-1. Handle old connection cleanup after refresh
-2. Decrement listenerCount when old listener connection closes
-3. Maintain idempotent operations for duplicate disconnects
+### Performance Considerations
 
-### Client Implementation
+**1. Scan Efficiency**
+- Current implementation scans all connections
+- For production with >1000 connections, should use pagination
+- Consider adding lastActivityTime GSI for efficient queries
+- Rationale: Simple implementation for MVP, optimize later if needed
 
-**Speaker Client Flow:**
-1. Receive `connectionRefreshRequired` message
-2. Establish new WebSocket with `action=refreshConnection&role=speaker`
-3. Wait for `connectionRefreshComplete`
-4. Switch audio streaming to new connection
-5. Close old connection gracefully
+**2. Lambda Configuration**
+- Memory: 256 MB (sufficient for scanning and API calls)
+- Timeout: 60 seconds (matches trigger interval)
+- Concurrency: 1 (only one instance should run at a time)
 
-**Listener Client Flow:**
-1. Receive `connectionRefreshRequired` message
-2. Establish new WebSocket with `action=refreshConnection&role=listener`
-3. Wait for `connectionRefreshComplete`
-4. Switch audio playback to new connection
-5. Close old connection gracefully
+**3. Async Disconnect Handler**
+- Invoked asynchronously to avoid blocking timeout check
+- Ensures cleanup happens even if timeout handler times out
+- Rationale: Separation of concerns, better reliability
 
-## Configuration
+### CloudWatch Metrics
 
-**Environment Variables:**
-- `SESSIONS_TABLE_NAME`: Sessions DynamoDB table
-- `CONNECTIONS_TABLE_NAME`: Connections DynamoDB table
-- `SESSION_MAX_DURATION_HOURS`: Maximum session duration (default: 2)
-- `API_GATEWAY_ENDPOINT`: WebSocket API endpoint for sending messages
+**Emitted Metrics**:
+- `ConnectionTimeout` (Count, dimensions: Role, Reason)
+- `ConnectionsChecked` (Count)
+- `IdleConnectionsDetected` (Count)
+- `ConnectionsClosed` (Count)
 
-**CDK Configuration:**
-- Lambda timeout: 30 seconds
-- Memory: 256MB (default)
-- Log retention: 1 day (dev), 1 week (prod)
+**Recommended Alarms**:
+- Warning: IdleConnectionsDetected >10/minute (may indicate client issues)
+- Critical: ConnectionsClosed >50/minute (may indicate system issues)
 
-## Testing Results
+### Testing Strategy
 
-```
-10 passed, 68 warnings in 1.64s
-```
+**Unit Tests**:
+- Message sending (success, GoneException, errors)
+- Connection closing (success, already gone, errors)
+- Disconnect handler triggering
+- Idle connection detection logic
+- Lambda handler (success, missing config, errors)
 
-All tests passing with comprehensive coverage of:
-- Speaker refresh with identity validation
-- Listener refresh with count management
-- Error scenarios (invalid session, missing params, auth failures)
-- Temporary count spike tolerance
+**Integration Tests** (to be added in Task 11):
+- End-to-end timeout flow with real connections
+- Verify disconnect handler is triggered
+- Verify session cleanup occurs
+- Test with multiple idle connections
 
-## Files Created/Modified
+### Next Steps
 
-**Created:**
-- `lambda/refresh_handler/__init__.py`
-- `lambda/refresh_handler/handler.py`
-- `tests/test_refresh_handler.py`
-
-**Modified:**
-- `infrastructure/stacks/session_management_stack.py` - Added WebSocket API and refresh route
-- `tests/conftest.py` - Added environment variables for refresh handler
-
-## Next Steps
-
-**Task 8: Implement Heartbeat Handler Lambda**
-- Add connection duration checking
-- Send `connectionRefreshRequired` at 100 minutes
-- Send `connectionWarning` at 105 minutes
-- Integrate with refresh handler
-
-**Task 9: Implement Disconnect Handler Lambda**
-- Handle old connection cleanup after refresh
-- Maintain idempotent disconnect operations
-- Notify listeners on speaker disconnect
-
-**Task 10: Implement API Gateway WebSocket API**
-- Deploy complete WebSocket API configuration
-- Test end-to-end connection refresh flow
-- Validate 2+ hour session duration
-
-## Notes
-
-- Connection refresh enables unlimited session duration by working around API Gateway's 2-hour limit
-- Temporary listenerCount spikes are expected and tolerated during refresh transitions
-- Old connections are cleaned up automatically via $disconnect handler
-- Zero audio loss during refresh through client-side buffer management
-- Speaker identity validation prevents unauthorized connection takeover
-- All operations are atomic to prevent race conditions
+1. Add EventBridge rule in CDK (Task 10)
+2. Add IAM permissions in CDK (Task 10)
+3. Configure environment variables in CDK (Task 10)
+4. Integration testing (Task 11)
+5. Monitor timeout metrics in production
