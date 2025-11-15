@@ -33,6 +33,8 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
         processor: PartialResultProcessor instance for processing results
         session_id: Session ID for this transcription stream
         source_language: Source language code (ISO 639-1)
+        translation_pipeline: Optional LambdaTranslationPipeline for forwarding
+        emotion_cache: Optional dict for cached emotion data
     
     Examples:
         >>> processor = PartialResultProcessor(...)
@@ -69,6 +71,8 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
         self.processor = processor
         self.session_id = session_id
         self.source_language = source_language
+        self.translation_pipeline = None  # Injected after creation
+        self.emotion_cache = {}  # For storing emotion data by timestamp
         
         logger.info(
             f"Initialized TranscribeStreamHandler for session {session_id}, "
@@ -193,6 +197,15 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
                 # Process partial result
                 await self.processor.process_partial(partial)
                 
+                # Forward to Translation Pipeline if available
+                if self.translation_pipeline:
+                    await self._forward_to_translation(
+                        text=text,
+                        is_partial=True,
+                        stability_score=stability_score,
+                        timestamp=timestamp
+                    )
+                
             else:
                 # Create FinalResult
                 final = FinalResult(
@@ -210,6 +223,15 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
                 
                 # Process final result
                 await self.processor.process_final(final)
+                
+                # Forward to Translation Pipeline if available
+                if self.translation_pipeline:
+                    await self._forward_to_translation(
+                        text=text,
+                        is_partial=False,
+                        stability_score=1.0,
+                        timestamp=timestamp
+                    )
                 
         except Exception as e:
             logger.error(
@@ -292,4 +314,111 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
                 f"returning None"
             )
             return None
+    
+    async def _forward_to_translation(
+        self,
+        text: str,
+        is_partial: bool,
+        stability_score: float,
+        timestamp: float
+    ) -> None:
+        """
+        Forward transcription to Translation Pipeline.
+        
+        This method forwards the transcription result to the Translation Pipeline
+        Lambda function for translation and broadcasting to listeners.
+        
+        Args:
+            text: Transcribed text
+            is_partial: Whether this is a partial result
+            stability_score: Stability score (0.0-1.0)
+            timestamp: Unix timestamp
+        """
+        try:
+            # Get cached emotion data if available
+            emotion_data = self._get_cached_emotion_data()
+            
+            # Forward to Translation Pipeline
+            success = self.translation_pipeline.process(
+                text=text,
+                session_id=self.session_id,
+                source_language=self.source_language,
+                is_partial=is_partial,
+                stability_score=stability_score,
+                timestamp=int(timestamp * 1000),  # Convert to milliseconds
+                emotion_dynamics=emotion_data
+            )
+            
+            if success:
+                logger.debug(
+                    f"Forwarded transcription to Translation Pipeline: "
+                    f"session={self.session_id}, text='{text[:50]}...', "
+                    f"is_partial={is_partial}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to forward transcription to Translation Pipeline: "
+                    f"session={self.session_id}"
+                )
+                
+        except Exception as e:
+            logger.error(
+                f"Error forwarding to Translation Pipeline: {e}",
+                exc_info=True
+            )
+            # Don't re-raise - continue processing
+    
+    def _get_cached_emotion_data(self) -> dict:
+        """
+        Get cached emotion data for current session.
+        
+        Returns emotion data from the most recent cache entry, or default
+        neutral values if no data is available.
+        
+        Returns:
+            Dict with emotion dynamics (volume, rate, energy)
+        """
+        try:
+            if not self.emotion_cache:
+                return self._get_default_emotion()
+            
+            # Get most recent emotion data
+            latest_timestamp = max(self.emotion_cache.keys())
+            emotion_data = self.emotion_cache[latest_timestamp]
+            
+            return emotion_data
+            
+        except Exception as e:
+            logger.warning(f"Error getting cached emotion data: {e}")
+            return self._get_default_emotion()
+    
+    def _get_default_emotion(self) -> dict:
+        """
+        Get default neutral emotion values.
+        
+        Returns:
+            Dict with neutral emotion dynamics
+        """
+        return {
+            'volume': 0.5,
+            'rate': 1.0,
+            'energy': 0.5
+        }
+    
+    def cache_emotion_data(self, timestamp: float, emotion_data: dict) -> None:
+        """
+        Cache emotion data for correlation with transcripts.
+        
+        Args:
+            timestamp: Unix timestamp
+            emotion_data: Dict with emotion dynamics
+        """
+        self.emotion_cache[timestamp] = emotion_data
+        
+        # Keep only last 10 seconds of emotion data
+        cutoff_time = timestamp - 10.0
+        self.emotion_cache = {
+            ts: data for ts, data in self.emotion_cache.items()
+            if ts >= cutoff_time
+        }
 

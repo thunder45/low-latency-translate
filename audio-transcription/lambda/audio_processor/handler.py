@@ -397,18 +397,26 @@ def handle_websocket_audio_event(event: Dict[str, Any], context: Any) -> Dict[st
                 })
             }
         
-        # Step 6: Add audio to buffer and process
+        # Step 6: Add audio to buffer and send to Transcribe
         try:
             # Add to buffer (handles backpressure)
             buffer.add_chunk(audio_bytes, session_id)
             
-            # TODO: Send audio to Transcribe stream
-            # This would be done asynchronously in a real implementation
-            # For now, we just buffer the audio
+            # Send audio to Transcribe stream asynchronously
+            # Run in event loop
+            loop = asyncio.get_event_loop()
+            success = loop.run_until_complete(
+                _send_audio_to_stream(session_id, audio_bytes)
+            )
+            
+            if not success:
+                logger.error(f"Failed to send audio to Transcribe for session {session_id}")
+                # Continue processing - buffer will hold the audio
             
             logger.debug(
-                f"Audio chunk buffered for session {session_id}: "
-                f"buffer_size={buffer.size()}/{buffer.capacity_chunks}"
+                f"Audio chunk processed for session {session_id}: "
+                f"buffer_size={buffer.size()}/{buffer.capacity_chunks}, "
+                f"sent_to_transcribe={success}"
             )
             
             return {
@@ -416,7 +424,8 @@ def handle_websocket_audio_event(event: Dict[str, Any], context: Any) -> Dict[st
                 'body': json.dumps({
                     'message': 'Audio chunk processed',
                     'sessionId': session_id,
-                    'bufferSize': buffer.size()
+                    'bufferSize': buffer.size(),
+                    'sentToTranscribe': success
                 })
             }
             
@@ -525,9 +534,9 @@ def _get_or_create_stream(
         source_language: Source language code
     
     Returns:
-        Tuple of (client, manager, handler, buffer, last_activity_time)
+        Tuple of (client, manager, handler, buffer, last_activity_time, is_active)
     """
-    global active_streams, partial_processor
+    global active_streams, partial_processor, translation_pipeline
     
     # Check if stream already exists
     if session_id in active_streams:
@@ -557,10 +566,17 @@ def _get_or_create_stream(
         region=os.getenv('AWS_REGION', 'us-east-1')
     )
     
-    # Create stream handler
-    # Note: In a real implementation, we would need to create an output stream
-    # For now, we create a placeholder handler
-    handler = None  # TODO: Create actual TranscribeStreamHandler
+    # Create stream handler with processor and translation pipeline
+    # The handler will process transcription events and forward to translation
+    handler = TranscribeStreamHandler(
+        output_stream=None,  # Will be set when stream starts
+        processor=partial_processor,
+        session_id=session_id,
+        source_language=source_language
+    )
+    
+    # Inject translation pipeline into handler for forwarding
+    handler.translation_pipeline = translation_pipeline
     
     # Create audio buffer
     buffer = AudioBuffer(
@@ -569,8 +585,8 @@ def _get_or_create_stream(
         cloudwatch_client=cloudwatch
     )
     
-    # Store stream info
-    stream_info = (client, manager, handler, buffer, time.time())
+    # Store stream info with is_active flag
+    stream_info = (client, manager, handler, buffer, time.time(), False)
     active_streams[session_id] = stream_info
     
     logger.info(f"Created Transcribe stream for session {session_id}")
@@ -608,6 +624,110 @@ def _convert_to_aws_language_code(iso_code: str) -> str:
     return mapping.get(iso_code, f"{iso_code}-US")
 
 
+async def _initialize_stream_async(session_id: str) -> bool:
+    """
+    Initialize Transcribe stream asynchronously.
+    
+    This function starts the Transcribe streaming connection and begins
+    the event loop for processing transcription events.
+    
+    Args:
+        session_id: Session identifier
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    global active_streams
+    
+    if session_id not in active_streams:
+        logger.error(f"Cannot initialize stream: session {session_id} not found")
+        return False
+    
+    try:
+        client, manager, handler, buffer, last_activity, is_active = active_streams[session_id]
+        
+        # Skip if already active
+        if is_active:
+            logger.debug(f"Stream already active for session {session_id}")
+            return True
+        
+        logger.info(f"Initializing Transcribe stream for session {session_id}")
+        
+        # Start the stream using the manager
+        # This creates the output stream and starts the event loop
+        output_stream = await manager.start_stream()
+        
+        # Set the output stream on the handler
+        handler.output_stream = output_stream
+        
+        # Mark stream as active
+        active_streams[session_id] = (
+            client, manager, handler, buffer, time.time(), True
+        )
+        
+        logger.info(f"Transcribe stream initialized for session {session_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize Transcribe stream for session {session_id}: {e}",
+            exc_info=True
+        )
+        return False
+
+
+async def _send_audio_to_stream(session_id: str, audio_bytes: bytes) -> bool:
+    """
+    Send audio chunk to Transcribe stream.
+    
+    This function sends audio data to the active Transcribe stream.
+    If the stream is not initialized, it will attempt to initialize it first.
+    
+    Args:
+        session_id: Session identifier
+        audio_bytes: PCM audio data (16-bit, 16kHz, mono)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    global active_streams
+    
+    if session_id not in active_streams:
+        logger.error(f"Cannot send audio: session {session_id} not found")
+        return False
+    
+    try:
+        client, manager, handler, buffer, last_activity, is_active = active_streams[session_id]
+        
+        # Initialize stream if not active
+        if not is_active:
+            success = await _initialize_stream_async(session_id)
+            if not success:
+                logger.error(f"Failed to initialize stream for session {session_id}")
+                return False
+            
+            # Reload stream info after initialization
+            client, manager, handler, buffer, last_activity, is_active = active_streams[session_id]
+        
+        # Send audio to stream via manager
+        await manager.send_audio(audio_bytes)
+        
+        # Update last activity time
+        active_streams[session_id] = (
+            client, manager, handler, buffer, time.time(), is_active
+        )
+        
+        logger.debug(f"Sent {len(audio_bytes)} bytes to Transcribe stream for session {session_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(
+            f"Failed to send audio to stream for session {session_id}: {e}",
+            exc_info=True
+        )
+        return False
+
+
 def cleanup_idle_streams() -> None:
     """
     Clean up idle Transcribe streams.
@@ -621,7 +741,7 @@ def cleanup_idle_streams() -> None:
     sessions_to_remove = []
     
     for session_id, stream_info in active_streams.items():
-        _, _, _, _, last_activity_time = stream_info
+        *_, last_activity_time, is_active = stream_info
         idle_duration = current_time - last_activity_time
         
         if idle_duration >= STREAM_IDLE_TIMEOUT_SECONDS:
@@ -633,12 +753,15 @@ def cleanup_idle_streams() -> None:
     
     # Remove idle streams
     for session_id in sessions_to_remove:
-        _close_stream(session_id)
+        asyncio.create_task(_close_stream_async(session_id))
 
 
-def _close_stream(session_id: str) -> None:
+async def _close_stream_async(session_id: str) -> None:
     """
-    Close Transcribe stream for session.
+    Close Transcribe stream for session asynchronously.
+    
+    This function gracefully closes the Transcribe stream, clears buffers,
+    and removes the session from active streams.
     
     Args:
         session_id: Session identifier
@@ -649,13 +772,20 @@ def _close_stream(session_id: str) -> None:
         return
     
     try:
-        client, manager, handler, buffer, _ = active_streams[session_id]
+        client, manager, handler, buffer, last_activity, is_active = active_streams[session_id]
+        
+        logger.info(f"Closing Transcribe stream for session {session_id}")
         
         # Clear buffer
         buffer.clear()
         
-        # TODO: Close Transcribe stream properly
-        # In a real implementation, we would close the stream gracefully
+        # Close stream gracefully if active
+        if is_active:
+            try:
+                await manager.end_stream()
+                logger.debug(f"Ended Transcribe stream for session {session_id}")
+            except Exception as e:
+                logger.warning(f"Error ending stream for session {session_id}: {e}")
         
         # Remove from active streams
         del active_streams[session_id]
@@ -663,7 +793,29 @@ def _close_stream(session_id: str) -> None:
         logger.info(f"Closed stream for session {session_id}")
         
     except Exception as e:
-        logger.error(f"Error closing stream for session {session_id}: {e}")
+        logger.error(f"Error closing stream for session {session_id}: {e}", exc_info=True)
+
+
+def _close_stream(session_id: str) -> None:
+    """
+    Close Transcribe stream for session (synchronous wrapper).
+    
+    This is a synchronous wrapper around _close_stream_async for
+    compatibility with synchronous code paths.
+    
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is running, create a task
+            asyncio.create_task(_close_stream_async(session_id))
+        else:
+            # If loop is not running, run until complete
+            loop.run_until_complete(_close_stream_async(session_id))
+    except Exception as e:
+        logger.error(f"Error in _close_stream wrapper: {e}", exc_info=True)
 
 
 async def process_audio_async(
