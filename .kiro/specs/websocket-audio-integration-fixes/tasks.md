@@ -161,7 +161,7 @@ This implementation plan systematically addresses all issues identified in the c
 
 ### Phase 4: Infrastructure Fix (Day 2)
 
-- [ ] 4. Add sendAudio route to CDK configuration
+- [x] 4. Add sendAudio route to CDK configuration
   - Update `session-management/infrastructure/stacks/session_management_stack.py`
   - Add sendAudio route configuration to WebSocket API
   - Map route to audio_processor Lambda integration
@@ -170,14 +170,14 @@ This implementation plan systematically addresses all issues identified in the c
   - _Requirements: 4_
   - _Estimated Time: 2 hours_
 
-- [ ] 4.1 Create cross-stack reference
+- [x] 4.1 Create cross-stack reference
   - Import AudioTranscriptionStack in session_management_stack.py
   - Accept audio_transcription_stack parameter in constructor
   - Reference audio_processor_function from audio_transcription_stack
   - Store reference as instance variable
   - _Requirements: 4.1, 4.2_
 
-- [ ] 4.2 Add sendAudio route configuration
+- [x] 4.2 Add sendAudio route configuration
   - Create Lambda integration for audio_processor function
   - Create CfnRoute with route_key="sendAudio"
   - Set target to integration reference
@@ -185,14 +185,14 @@ This implementation plan systematically addresses all issues identified in the c
   - Set timeout_in_millis=60000
   - _Requirements: 4.3, 4.4_
 
-- [ ] 4.3 Update CDK app to pass stack references
+- [x] 4.3 Update CDK app to pass stack references
   - Modify infrastructure/app.py to create stacks in correct order
   - Create AudioTranscriptionStack first
   - Pass audio_transcription_stack to SessionManagementStack constructor
   - Verify CDK synth generates correct CloudFormation
   - _Requirements: 4.5_
 
-- [ ] 4.4 Verify route deployment
+- [x] 4.4 Verify route deployment
   - Deploy CDK stack to dev environment
   - Verify sendAudio route appears in API Gateway console
   - Test route with sample WebSocket message

@@ -31,12 +31,14 @@ class SessionManagementStack(Stack):
         construct_id: str,
         config: dict,
         env_name: str,
+        audio_transcription_stack=None,
         **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         self.config = config
         self.env_name = env_name
+        self.audio_transcription_stack = audio_transcription_stack
 
         # Create DynamoDB tables
         self.sessions_table = self._create_sessions_table()
@@ -375,9 +377,16 @@ class SessionManagementStack(Stack):
         refresh_integration = self._create_lambda_integration(api, self.refresh_handler, "RefreshIntegration")
         
         # Create Lambda integrations for new audio/control routes
-        # Note: sendAudio route will be added when audio_processor Lambda is integrated (Task 1.1)
-        # The audio_processor Lambda is in the audio-transcription component and will be
-        # configured separately with binary WebSocket frame support
+        # Add sendAudio route if audio_transcription_stack is provided
+        if self.audio_transcription_stack:
+            send_audio_integration = self._create_lambda_integration(
+                api,
+                self.audio_transcription_stack.audio_processor_function,
+                "SendAudioIntegration",
+                timeout_ms=60000  # 60 seconds for audio processing
+            )
+            # Configure binary frame support
+            send_audio_integration.content_handling_strategy = "CONVERT_TO_BINARY"
 
         # Update Lambda environment with API Gateway endpoint (will be set after deployment)
         # This is a placeholder - actual endpoint will be available after deployment
@@ -538,6 +547,17 @@ class SessionManagementStack(Stack):
             target=f"integrations/{listener_control_integration.ref}",
         )
 
+        # Create sendAudio route if audio_transcription_stack is provided
+        send_audio_route = None
+        if self.audio_transcription_stack:
+            send_audio_route = apigwv2.CfnRoute(
+                self,
+                "SendAudioRoute",
+                api_id=api.ref,
+                route_key="sendAudio",
+                target=f"integrations/{send_audio_integration.ref}",
+            )
+
         # Create deployment
         deployment = apigwv2.CfnDeployment(
             self,
@@ -558,6 +578,9 @@ class SessionManagementStack(Stack):
         deployment.add_dependency(get_session_status_route)
         deployment.add_dependency(pause_playback_route)
         deployment.add_dependency(change_language_route)
+        # Add sendAudio route dependency if it exists
+        if send_audio_route:
+            deployment.add_dependency(send_audio_route)
 
         # Create stage with connection timeout settings
         # API Gateway WebSocket hard limits:

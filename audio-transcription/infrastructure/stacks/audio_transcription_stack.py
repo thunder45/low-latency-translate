@@ -49,13 +49,13 @@ class AudioTranscriptionStack(Stack):
         lambda_role = self._create_lambda_role(feature_flag_parameter)
 
         # Create Audio Processor Lambda function
-        audio_processor = self._create_audio_processor_lambda(lambda_role)
+        self.audio_processor_function = self._create_audio_processor_lambda(lambda_role)
 
         # Create CloudWatch alarms
-        self._create_cloudwatch_alarms(audio_processor, alarm_topic)
+        self._create_cloudwatch_alarms(self.audio_processor_function, alarm_topic)
 
         # Create CloudWatch dashboard
-        self._create_cloudwatch_dashboard(audio_processor)
+        self._create_cloudwatch_dashboard(self.audio_processor_function)
 
     def _create_feature_flag_parameter(self) -> ssm.StringParameter:
         """
