@@ -166,7 +166,11 @@ export type NotificationType =
   | 'speaker_state' 
   | 'listener_state' 
   | 'listener_joined' 
-  | 'listener_left';
+  | 'listener_left'
+  | 'broadcastPaused'
+  | 'broadcastResumed'
+  | 'broadcastMuted'
+  | 'broadcastUnmuted';
 
 /**
  * Notification interface

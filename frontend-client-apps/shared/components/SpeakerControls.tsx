@@ -219,6 +219,6 @@ export const SpeakerControls: React.FC<SpeakerControlsProps> = React.memo(({
       </div>
     </div>
   );
-}));
+});
 
 export default SpeakerControls;

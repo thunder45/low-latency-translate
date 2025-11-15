@@ -80,9 +80,9 @@ export class NotificationService {
     });
     
     // Handle specific notification types
-    this.wsClient.on('speakerPaused', (data: any) => {
+    this.wsClient.on('broadcastPaused', (data: any) => {
       this.notifySubscribers(data.sessionId, {
-        type: 'speakerPaused',
+        type: 'broadcastPaused',
         sessionId: data.sessionId,
         userId: 'speaker',
         data: {},
@@ -90,9 +90,9 @@ export class NotificationService {
       });
     });
     
-    this.wsClient.on('speakerResumed', (data: any) => {
+    this.wsClient.on('broadcastResumed', (data: any) => {
       this.notifySubscribers(data.sessionId, {
-        type: 'speakerResumed',
+        type: 'broadcastResumed',
         sessionId: data.sessionId,
         userId: 'speaker',
         data: {},
@@ -100,9 +100,9 @@ export class NotificationService {
       });
     });
     
-    this.wsClient.on('speakerMuted', (data: any) => {
+    this.wsClient.on('broadcastMuted', (data: any) => {
       this.notifySubscribers(data.sessionId, {
-        type: 'speakerMuted',
+        type: 'broadcastMuted',
         sessionId: data.sessionId,
         userId: 'speaker',
         data: {},
@@ -110,9 +110,9 @@ export class NotificationService {
       });
     });
     
-    this.wsClient.on('speakerUnmuted', (data: any) => {
+    this.wsClient.on('broadcastUnmuted', (data: any) => {
       this.notifySubscribers(data.sessionId, {
-        type: 'speakerUnmuted',
+        type: 'broadcastUnmuted',
         sessionId: data.sessionId,
         userId: 'speaker',
         data: {},

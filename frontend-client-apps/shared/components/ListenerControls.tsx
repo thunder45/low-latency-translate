@@ -243,6 +243,6 @@ export const ListenerControls: React.FC<ListenerControlsProps> = React.memo(({
       </div>
     </div>
   );
-}));
+});
 
 export default ListenerControls;

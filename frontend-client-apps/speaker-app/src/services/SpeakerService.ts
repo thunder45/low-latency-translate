@@ -419,7 +419,7 @@ export class SpeakerService {
     });
 
     // Handle quality warnings
-    this.wsClient.on('audio_quality_warning', (message: any) => {
+    this.wsClient.on('audioQualityWarning', (message: any) => {
       const warning: QualityWarning = {
         type: message.issue,
         message: this.getQualityWarningMessage(message.issue, message.value),

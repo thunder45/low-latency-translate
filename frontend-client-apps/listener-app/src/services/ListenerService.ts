@@ -289,7 +289,7 @@ export class ListenerService {
       // Send switch language request
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
-          action: 'switchLanguage',
+          action: 'changeLanguage',
           targetLanguage: newLanguage,
           timestamp: Date.now(),
         });
@@ -413,21 +413,21 @@ export class ListenerService {
     });
 
     // Handle speaker state changes
-    this.wsClient.on('speakerPaused', () => {
+    this.wsClient.on('broadcastPaused', () => {
       useListenerStore.getState().setSpeakerPaused(true);
     });
 
-    this.wsClient.on('speakerResumed', () => {
+    this.wsClient.on('broadcastResumed', () => {
       setTimeout(() => {
         useListenerStore.getState().setSpeakerPaused(false);
       }, 500);
     });
 
-    this.wsClient.on('speakerMuted', () => {
+    this.wsClient.on('broadcastMuted', () => {
       useListenerStore.getState().setSpeakerMuted(true);
     });
 
-    this.wsClient.on('speakerUnmuted', () => {
+    this.wsClient.on('broadcastUnmuted', () => {
       setTimeout(() => {
         useListenerStore.getState().setSpeakerMuted(false);
       }, 500);
