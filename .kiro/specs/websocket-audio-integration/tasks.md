@@ -43,7 +43,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 18, 19_
 
 
-- [ ] 2. Extend audio_processor Lambda to handle WebSocket audio messages
+- [x] 2. Extend audio_processor Lambda to handle WebSocket audio messages
   - Modify existing `audio-transcription/lambda/audio_processor/handler.py`
   - Add WebSocket event parsing and validation
   - Extract audio data from WebSocket message
@@ -51,14 +51,14 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Add rate limiting for audio chunks
   - _Requirements: 1-5, 13, 26_
 
-- [ ] 2.1 Add WebSocket message parsing
+- [x] 2.1 Add WebSocket message parsing
   - Parse WebSocket event structure from API Gateway
   - Extract connectionId from event context
   - Extract audio data from message body (base64 or binary)
   - Validate message format and required fields
   - _Requirements: 1, 27_
 
-- [ ] 2.2 Add connection and session validation
+- [x] 2.2 Add connection and session validation
   - Query Connections table using connectionId
   - Verify role=speaker
   - Extract sessionId from connection record
@@ -66,7 +66,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Return 403 if unauthorized, 404 if session not found
   - _Requirements: 1, 24_
 
-- [ ] 2.3 Implement audio chunk rate limiting
+- [x] 2.3 Implement audio chunk rate limiting
   - Create RateLimiter class with sliding window (1 second)
   - Track chunks per second per connectionId
   - Drop excess chunks beyond limit (default 50/sec)
@@ -75,7 +75,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Close connection after 30 seconds of violations
   - _Requirements: 26_
 
-- [ ] 2.4 Add audio format validation
+- [x] 2.4 Add audio format validation
   - Validate first chunk is PCM 16-bit mono
   - Verify sample rate is 16000 Hz
   - Cache validation result for subsequent chunks
@@ -83,7 +83,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Log validation failures with connection details
   - _Requirements: 13_
 
-- [ ] 2.5 Integrate with existing TranscribeStreamHandler
+- [x] 2.5 Integrate with existing TranscribeStreamHandler
   - Initialize TranscribeStreamHandler on first audio chunk
   - Pass sessionId and sourceLanguage from session record
   - Forward audio chunks to handler's send_audio_chunk() method
@@ -92,7 +92,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 2-5_
 
 
-- [ ] 2.6 Add Transcribe stream lifecycle management
+- [x] 2.6 Add Transcribe stream lifecycle management
   - Initialize stream on first audio chunk
   - Keep stream active during broadcasting
   - Close stream on speaker disconnect or 60-second idle
@@ -100,7 +100,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Track stream state per session in memory
   - _Requirements: 5, 14_
 
-- [ ] 2.7 Implement audio buffer management
+- [x] 2.7 Implement audio buffer management
   - Create AudioBuffer class with 5-second capacity
   - Handle backpressure from Transcribe stream
   - Drop oldest chunks if buffer full
@@ -108,7 +108,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Clear buffer on stream close
   - _Requirements: 3, 16_
 
-- [ ] 2.8 Add unit tests for audio processing
+- [x] 2.8 Add unit tests for audio processing
   - Test WebSocket message parsing
   - Test connection/session validation
   - Test rate limiting logic

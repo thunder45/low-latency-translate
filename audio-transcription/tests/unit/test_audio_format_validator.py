@@ -1,276 +1,180 @@
 """
-Unit tests for AudioFormatValidator.
-
-Tests validation logic for audio format specifications including
-sample rate, bit depth, channel count, and encoding validation.
+Unit tests for audio format validator.
 """
 
 import pytest
-from audio_quality.models.audio_format import AudioFormat
-from audio_quality.models.validation_result import ValidationResult
-from audio_quality.validators.format_validator import AudioFormatValidator
+import struct
+from shared.services.audio_format_validator import (
+    AudioFormatValidator,
+    AudioFormatError,
+    AudioFormat
+)
 
 
 class TestAudioFormatValidator:
-    """Test suite for AudioFormatValidator class."""
+    """Test suite for AudioFormatValidator."""
     
-    @pytest.fixture
-    def validator(self):
-        """Fixture providing AudioFormatValidator instance."""
-        return AudioFormatValidator()
+    def test_validator_initialization(self):
+        """Test validator initializes correctly."""
+        validator = AudioFormatValidator()
+        
+        assert validator.EXPECTED_ENCODING == 'pcm'
+        assert validator.EXPECTED_SAMPLE_RATE == 16000
+        assert validator.EXPECTED_BIT_DEPTH == 16
+        assert validator.EXPECTED_CHANNELS == 1
+        assert len(validator.validation_cache) == 0
     
-    def test_validate_valid_format_16khz(self, validator):
-        """Test validation succeeds with valid 16 kHz format."""
-        audio_format = AudioFormat(
-            sample_rate=16000,
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
+    def test_validate_audio_chunk_valid_pcm(self):
+        """Test validation passes for valid PCM audio."""
+        validator = AudioFormatValidator()
+        
+        # Create valid PCM 16-bit audio (10 samples)
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        
+        is_valid = validator.validate_audio_chunk('conn-123', audio_bytes)
+        
+        assert is_valid is True
+        assert 'conn-123' in validator.validation_cache
+    
+    def test_validate_audio_chunk_uses_cache(self):
+        """Test validation uses cache for subsequent chunks."""
+        validator = AudioFormatValidator()
+        
+        # First chunk - performs validation
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
+        
+        # Second chunk - should use cache
+        # We can verify by checking the cache directly
+        assert validator.is_format_cached('conn-123') is True
+        
+        # Validation should still pass
+        is_valid = validator.validate_audio_chunk('conn-123', audio_bytes)
+        assert is_valid is True
+    
+    def test_validate_audio_chunk_invalid_byte_length(self):
+        """Test validation fails for odd byte length."""
+        validator = AudioFormatValidator()
+        
+        # Odd number of bytes (invalid for 16-bit)
+        audio_bytes = b"abc"
+        
+        with pytest.raises(AudioFormatError, match="Invalid byte length"):
+            validator.validate_audio_chunk('conn-123', audio_bytes)
+    
+    def test_validate_audio_chunk_empty_data(self):
+        """Test validation fails for empty data."""
+        validator = AudioFormatValidator()
+        
+        audio_bytes = b""
+        
+        with pytest.raises(AudioFormatError, match="Empty audio data"):
+            validator.validate_audio_chunk('conn-123', audio_bytes)
+    
+    def test_validate_audio_chunk_force_revalidate(self):
+        """Test force revalidation bypasses cache."""
+        validator = AudioFormatValidator()
+        
+        # First validation
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
+        
+        # Cache should exist
+        assert validator.is_format_cached('conn-123') is True
+        
+        # Force revalidation
+        is_valid = validator.validate_audio_chunk(
+            'conn-123',
+            audio_bytes,
+            force_revalidate=True
         )
         
-        result = validator.validate(audio_format)
-        
-        assert result.success is True
-        assert len(result.errors) == 0
-        assert result.error_message == ''
-        assert bool(result) is True
+        assert is_valid is True
     
-    def test_validate_valid_format_8khz(self, validator):
-        """Test validation succeeds with valid 8 kHz format."""
-        audio_format = AudioFormat(
-            sample_rate=8000,
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
+    def test_get_cached_format(self):
+        """Test getting cached format."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
         
-        assert result.success is True
-        assert len(result.errors) == 0
+        cached_format = validator.get_cached_format('conn-123')
+        
+        assert cached_format is not None
+        assert isinstance(cached_format, AudioFormat)
+        assert cached_format.encoding == 'pcm'
+        assert cached_format.bit_depth == 16
     
-    def test_validate_valid_format_24khz(self, validator):
-        """Test validation succeeds with valid 24 kHz format."""
-        audio_format = AudioFormat(
-            sample_rate=24000,
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
+    def test_get_cached_format_not_cached(self):
+        """Test getting cached format when not cached."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        cached_format = validator.get_cached_format('conn-999')
         
-        assert result.success is True
-        assert len(result.errors) == 0
+        assert cached_format is None
     
-    def test_validate_valid_format_48khz(self, validator):
-        """Test validation succeeds with valid 48 kHz format."""
-        audio_format = AudioFormat(
-            sample_rate=48000,
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
+    def test_is_format_cached(self):
+        """Test checking if format is cached."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        assert validator.is_format_cached('conn-123') is False
         
-        assert result.success is True
-        assert len(result.errors) == 0
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
+        
+        assert validator.is_format_cached('conn-123') is True
     
-    def test_validate_invalid_sample_rate(self, validator):
-        """Test validation fails with unsupported sample rate."""
-        audio_format = AudioFormat(
-            sample_rate=44100,  # CD quality, not supported
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
+    def test_clear_cache(self):
+        """Test clearing cache for connection."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
         
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert '44100 Hz not supported' in result.errors[0]
-        assert '[8000, 16000, 24000, 48000]' in result.errors[0]
-        assert bool(result) is False
+        assert validator.is_format_cached('conn-123') is True
+        
+        validator.clear_cache('conn-123')
+        
+        assert validator.is_format_cached('conn-123') is False
     
-    def test_validate_invalid_bit_depth(self, validator):
-        """Test validation fails with unsupported bit depth."""
-        audio_format = AudioFormat(
-            sample_rate=16000,
-            bit_depth=24,  # 24-bit not supported
-            channels=1,
-            encoding='pcm_s16le'
-        )
+    def test_clear_all_cache(self):
+        """Test clearing all cache."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
+        validator.validate_audio_chunk('conn-456', audio_bytes)
         
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert '24 bits not supported' in result.errors[0]
-        assert '[16]' in result.errors[0]
+        assert len(validator.validation_cache) == 2
+        
+        validator.clear_all_cache()
+        
+        assert len(validator.validation_cache) == 0
     
-    def test_validate_invalid_channels(self, validator):
-        """Test validation fails with unsupported channel count."""
-        audio_format = AudioFormat(
-            sample_rate=16000,
-            bit_depth=16,
-            channels=2,  # Stereo not supported
-            encoding='pcm_s16le'
-        )
+    def test_get_cache_stats(self):
+        """Test getting cache statistics."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        audio_bytes = struct.pack('<10h', *range(-5, 5))
+        validator.validate_audio_chunk('conn-123', audio_bytes)
+        validator.validate_audio_chunk('conn-456', audio_bytes)
         
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert '2 not supported' in result.errors[0]
-        assert 'mono only' in result.errors[0].lower()
+        stats = validator.get_cache_stats()
+        
+        assert stats['cached_connections'] == 2
+        assert stats['valid_connections'] == 2
+        assert stats['invalid_connections'] == 0
     
-    def test_validate_invalid_encoding(self, validator):
-        """Test validation fails with unsupported encoding."""
-        audio_format = AudioFormat(
-            sample_rate=16000,
-            bit_depth=16,
-            channels=1,
-            encoding='mp3'  # MP3 not supported
-        )
+    def test_detect_format_valid_samples(self):
+        """Test format detection with valid samples."""
+        validator = AudioFormatValidator()
         
-        result = validator.validate(audio_format)
+        # Create audio with samples in valid range
+        audio_bytes = struct.pack('<5h', -1000, -500, 0, 500, 1000)
         
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert 'mp3' in result.errors[0].lower()
-        assert 'pcm_s16le' in result.errors[0]
-    
-    def test_validate_multiple_invalid_parameters(self, validator):
-        """Test validation fails with multiple invalid parameters."""
-        audio_format = AudioFormat(
-            sample_rate=44100,  # Invalid
-            bit_depth=24,       # Invalid
-            channels=2,         # Invalid
-            encoding='mp3'      # Invalid
-        )
+        audio_format = validator._detect_format(audio_bytes)
         
-        result = validator.validate(audio_format)
-        
-        assert result.success is False
-        assert len(result.errors) == 4
-        assert any('44100' in error for error in result.errors)
-        assert any('24 bits' in error for error in result.errors)
-        assert any('2 not supported' in error for error in result.errors)
-        assert any('mp3' in error.lower() for error in result.errors)
-    
-    def test_validate_edge_case_zero_sample_rate(self, validator):
-        """Test validation fails with zero sample rate."""
-        audio_format = AudioFormat(
-            sample_rate=0,
-            bit_depth=16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
-        
-        result = validator.validate(audio_format)
-        
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert '0 Hz not supported' in result.errors[0]
-    
-    def test_validate_edge_case_negative_bit_depth(self, validator):
-        """Test validation fails with negative bit depth."""
-        audio_format = AudioFormat(
-            sample_rate=16000,
-            bit_depth=-16,
-            channels=1,
-            encoding='pcm_s16le'
-        )
-        
-        result = validator.validate(audio_format)
-        
-        assert result.success is False
-        assert len(result.errors) == 1
-        assert '-16 bits not supported' in result.errors[0]
-    
-    def test_validation_result_error_message_property(self, validator):
-        """Test ValidationResult error_message property formats errors correctly."""
-        audio_format = AudioFormat(
-            sample_rate=44100,
-            bit_depth=24,
-            channels=1,
-            encoding='pcm_s16le'
-        )
-        
-        result = validator.validate(audio_format)
-        
-        error_msg = result.error_message
-        assert '44100 Hz not supported' in error_msg
-        assert '24 bits not supported' in error_msg
-        assert '\n' in error_msg  # Errors joined by newlines
-    
-    def test_supported_constants_match_audio_format(self, validator):
-        """Test validator constants match AudioFormat constants."""
-        assert validator.SUPPORTED_SAMPLE_RATES == AudioFormat.SUPPORTED_SAMPLE_RATES
-        assert validator.SUPPORTED_BIT_DEPTHS == AudioFormat.SUPPORTED_BIT_DEPTHS
-        assert validator.SUPPORTED_CHANNELS == AudioFormat.SUPPORTED_CHANNELS
-        assert validator.SUPPORTED_ENCODINGS == AudioFormat.SUPPORTED_ENCODINGS
-
-
-class TestValidationResult:
-    """Test suite for ValidationResult dataclass."""
-    
-    def test_success_result_factory(self):
-        """Test ValidationResult.success_result() factory method."""
-        result = ValidationResult.success_result()
-        
-        assert result.success is True
-        assert result.errors == []
-        assert bool(result) is True
-        assert result.error_message == ''
-    
-    def test_failure_result_factory(self):
-        """Test ValidationResult.failure_result() factory method."""
-        errors = ['Error 1', 'Error 2']
-        result = ValidationResult.failure_result(errors)
-        
-        assert result.success is False
-        assert result.errors == errors
-        assert bool(result) is False
-        assert 'Error 1' in result.error_message
-        assert 'Error 2' in result.error_message
-    
-    def test_boolean_conversion_success(self):
-        """Test ValidationResult can be used in boolean context (success)."""
-        result = ValidationResult(success=True, errors=[])
-        
-        if result:
-            assert True
-        else:
-            pytest.fail('ValidationResult should evaluate to True')
-    
-    def test_boolean_conversion_failure(self):
-        """Test ValidationResult can be used in boolean context (failure)."""
-        result = ValidationResult(success=False, errors=['Error'])
-        
-        if not result:
-            assert True
-        else:
-            pytest.fail('ValidationResult should evaluate to False')
-    
-    def test_error_message_empty_for_success(self):
-        """Test error_message is empty string for successful validation."""
-        result = ValidationResult(success=True, errors=[])
-        
-        assert result.error_message == ''
-    
-    def test_error_message_single_error(self):
-        """Test error_message with single error."""
-        result = ValidationResult(success=False, errors=['Single error'])
-        
-        assert result.error_message == 'Single error'
-    
-    def test_error_message_multiple_errors(self):
-        """Test error_message joins multiple errors with newlines."""
-        errors = ['Error 1', 'Error 2', 'Error 3']
-        result = ValidationResult(success=False, errors=errors)
-        
-        expected = 'Error 1\nError 2\nError 3'
-        assert result.error_message == expected
+        assert audio_format.encoding == 'pcm'
+        assert audio_format.bit_depth == 16
+        assert audio_format.channels == 1
+        assert audio_format.sample_rate == 16000

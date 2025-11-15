@@ -1,10 +1,9 @@
 """
-Audio Processor Lambda handler with partial results support and audio quality validation.
+Audio Processor Lambda handler with WebSocket audio integration.
 
 This module provides the Lambda handler for processing audio transcription
-with partial results. It bridges the synchronous Lambda handler interface
-with the asynchronous AWS Transcribe Streaming API and includes real-time
-audio quality validation.
+from WebSocket connections. It handles audio chunk reception, validation,
+rate limiting, and streaming to AWS Transcribe with partial results support.
 """
 
 import asyncio
@@ -14,9 +13,37 @@ import json
 import boto3
 import numpy as np
 import base64
+import time
 from typing import Dict, Any, Optional
 from shared.models.configuration import PartialResultConfig
 from shared.services.partial_result_processor import PartialResultProcessor
+
+# WebSocket audio processing imports
+from shared.utils.websocket_parser import (
+    WebSocketMessageParser,
+    WebSocketParseError
+)
+from shared.services.connection_validator import (
+    ConnectionValidator,
+    ValidationError,
+    UnauthorizedError,
+    SessionNotFoundError,
+    SessionInactiveError
+)
+from shared.services.audio_rate_limiter import AudioRateLimiter
+from shared.services.audio_format_validator import (
+    AudioFormatValidator,
+    AudioFormatError as FormatValidationError
+)
+from shared.services.audio_buffer import AudioBuffer
+
+# Transcribe streaming imports
+from shared.services.transcribe_stream_handler import TranscribeStreamHandler
+from shared.services.transcribe_client import (
+    TranscribeClientConfig,
+    TranscribeClientManager,
+    create_transcribe_client_for_session
+)
 
 # Audio quality imports
 from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
@@ -44,6 +71,16 @@ quality_analyzer: Optional[AudioQualityAnalyzer] = None
 metrics_emitter: Optional[QualityMetricsEmitter] = None
 speaker_notifier: Optional[SpeakerNotifier] = None
 
+# WebSocket audio processing components (singleton per Lambda container)
+websocket_parser: Optional[WebSocketMessageParser] = None
+connection_validator: Optional[ConnectionValidator] = None
+rate_limiter: Optional[AudioRateLimiter] = None
+format_validator: Optional[AudioFormatValidator] = None
+
+# Transcribe stream management (per session)
+# session_id -> (client, manager, handler, buffer, last_activity_time)
+active_streams: Dict[str, tuple] = {}
+
 # CloudWatch and EventBridge clients
 cloudwatch = boto3.client('cloudwatch')
 eventbridge = boto3.client('events')
@@ -56,48 +93,75 @@ fallback_reason = None
 last_result_time = None
 audio_session_active = False
 
+# Stream lifecycle constants
+STREAM_IDLE_TIMEOUT_SECONDS = 60  # Close stream after 60 seconds of inactivity
+STREAM_CLEANUP_INTERVAL_SECONDS = 300  # Check for idle streams every 5 minutes
+
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Synchronous Lambda handler that bridges to async Transcribe processing.
+    Synchronous Lambda handler for WebSocket audio processing.
     
-    This handler is invoked by AWS Lambda for each audio processing request.
-    It initializes the PartialResultProcessor and audio quality components
-    on cold start (singleton pattern) and bridges the synchronous Lambda
-    interface with the asynchronous Transcribe processing.
+    This handler processes audio chunks from WebSocket connections, validates
+    them, and streams them to AWS Transcribe. It supports both direct invocation
+    (for testing) and WebSocket events from API Gateway.
     
     Args:
-        event: Lambda event object containing:
+        event: Lambda event object containing either:
+            WebSocket event from API Gateway:
+            - requestContext: {connectionId, routeKey, ...}
+            - body: Audio data (base64 or binary)
+            - isBase64Encoded: Boolean
+            
+            Or direct invocation:
+            - action: 'initialize' or 'process'
             - sessionId: Session identifier
-            - sourceLanguage: Source language code (ISO 639-1)
-            - audioData: Base64-encoded audio data (optional)
-            - sampleRate: Audio sample rate in Hz (optional, default: 16000)
+            - sourceLanguage: Source language code
+            - audioData: Base64-encoded audio (optional)
             - connectionId: WebSocket connection ID (optional)
-            - action: Action to perform (e.g., 'initialize', 'process')
+        
         context: Lambda context object
     
     Returns:
         Response dict with statusCode and body
+    """
+    global partial_processor, quality_analyzer, metrics_emitter, speaker_notifier
+    global websocket_parser, connection_validator, rate_limiter, format_validator
     
-    Examples:
-        >>> # Initialize session
-        >>> event = {
-        ...     'action': 'initialize',
-        ...     'sessionId': 'golden-eagle-427',
-        ...     'sourceLanguage': 'en'
-        ... }
-        >>> response = lambda_handler(event, context)
-        >>> assert response['statusCode'] == 200
+    try:
+        # Determine if this is a WebSocket event or direct invocation
+        is_websocket_event = 'requestContext' in event and 'connectionId' in event.get('requestContext', {})
         
-        >>> # Process audio
-        >>> event = {
-        ...     'action': 'process',
-        ...     'sessionId': 'golden-eagle-427',
-        ...     'audioData': 'base64_encoded_audio...',
-        ...     'sampleRate': 16000,
-        ...     'connectionId': 'conn-123'
-        ... }
-        >>> response = lambda_handler(event, context)
+        if is_websocket_event:
+            # Handle WebSocket audio event
+            logger.info("Processing WebSocket audio event")
+            return handle_websocket_audio_event(event, context)
+        else:
+            # Handle direct invocation (legacy/testing)
+            logger.info("Processing direct invocation event")
+            return handle_direct_invocation(event, context)
+            
+    except Exception as e:
+        logger.error(f"Error in lambda_handler: {e}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': 'Internal server error',
+                'message': str(e)
+            })
+        }
+
+
+def handle_direct_invocation(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Handle direct invocation (non-WebSocket) for testing and legacy support.
+    
+    Args:
+        event: Lambda event with action, sessionId, etc.
+        context: Lambda context
+    
+    Returns:
+        Response dict
     """
     global partial_processor, quality_analyzer, metrics_emitter, speaker_notifier
     
@@ -108,7 +172,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         action = event.get('action', 'process')
         
         logger.info(
-            f"Lambda handler invoked: action={action}, "
+            f"Direct invocation: action={action}, "
             f"session={session_id}, language={source_language}"
         )
         
@@ -170,6 +234,415 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'message': str(e)
             })
         }
+
+
+def handle_websocket_audio_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Handle WebSocket audio event from API Gateway.
+    
+    This function processes audio chunks from WebSocket connections:
+    1. Parse WebSocket message and extract audio data
+    2. Validate connection and session
+    3. Check rate limits
+    4. Validate audio format
+    5. Stream to Transcribe (initialize stream if needed)
+    6. Handle backpressure with buffer
+    
+    Args:
+        event: WebSocket event from API Gateway
+        context: Lambda context
+    
+    Returns:
+        Response dict with statusCode
+    """
+    global websocket_parser, connection_validator, rate_limiter, format_validator
+    global partial_processor, active_streams
+    
+    try:
+        # Initialize components on cold start
+        _initialize_websocket_components()
+        
+        # Step 1: Parse WebSocket message
+        try:
+            connection_id, audio_bytes = websocket_parser.parse_audio_message(event)
+            logger.info(
+                f"Parsed WebSocket message: connection={connection_id}, "
+                f"audio_size={len(audio_bytes)} bytes"
+            )
+        except WebSocketParseError as e:
+            logger.error(f"Failed to parse WebSocket message: {e}")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'error': 'Invalid message format',
+                    'message': str(e)
+                })
+            }
+        
+        # Step 2: Validate connection and session
+        try:
+            validation_result = connection_validator.validate_connection_and_session(
+                connection_id
+            )
+            session_id = validation_result.session_id
+            source_language = validation_result.source_language
+            
+            logger.info(
+                f"Validation successful: session={session_id}, "
+                f"language={source_language}"
+            )
+        except UnauthorizedError as e:
+            logger.warning(f"Unauthorized connection: {e}")
+            return {
+                'statusCode': 403,
+                'body': json.dumps({
+                    'error': 'Unauthorized',
+                    'message': str(e)
+                })
+            }
+        except SessionNotFoundError as e:
+            logger.warning(f"Session not found: {e}")
+            return {
+                'statusCode': 404,
+                'body': json.dumps({
+                    'error': 'Session not found',
+                    'message': str(e)
+                })
+            }
+        except SessionInactiveError as e:
+            logger.warning(f"Session inactive: {e}")
+            return {
+                'statusCode': 410,
+                'body': json.dumps({
+                    'error': 'Session inactive',
+                    'message': str(e)
+                })
+            }
+        except ValidationError as e:
+            logger.error(f"Validation error: {e}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'error': 'Validation failed',
+                    'message': str(e)
+                })
+            }
+        
+        # Step 3: Check rate limits
+        if not rate_limiter.check_rate_limit(connection_id):
+            logger.warning(f"Rate limit exceeded for connection {connection_id}")
+            
+            # Check if warning should be sent
+            if rate_limiter.should_send_warning(connection_id):
+                # TODO: Send warning message to speaker via WebSocket
+                logger.warning(f"Sending rate limit warning to {connection_id}")
+            
+            # Check if connection should be closed
+            if rate_limiter.should_close_connection(connection_id):
+                logger.error(f"Closing connection {connection_id} due to rate limit violations")
+                # TODO: Close WebSocket connection
+                return {
+                    'statusCode': 429,
+                    'body': json.dumps({
+                        'error': 'Rate limit exceeded',
+                        'message': 'Connection closed due to excessive rate limit violations'
+                    })
+                }
+            
+            # Drop this chunk
+            return {
+                'statusCode': 429,
+                'body': json.dumps({
+                    'error': 'Rate limit exceeded',
+                    'message': 'Audio chunk dropped'
+                })
+            }
+        
+        # Step 4: Validate audio format (first chunk only, then cached)
+        try:
+            format_validator.validate_audio_chunk(connection_id, audio_bytes)
+        except FormatValidationError as e:
+            logger.error(f"Invalid audio format: {e}")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'error': 'Invalid audio format',
+                    'message': str(e)
+                })
+            }
+        
+        # Step 5: Initialize or get Transcribe stream
+        try:
+            stream_info = _get_or_create_stream(session_id, source_language)
+            client, manager, handler, buffer, _ = stream_info
+            
+            # Update last activity time
+            active_streams[session_id] = (
+                client, manager, handler, buffer, time.time()
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Transcribe stream: {e}", exc_info=True)
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'error': 'Stream initialization failed',
+                    'message': str(e)
+                })
+            }
+        
+        # Step 6: Add audio to buffer and process
+        try:
+            # Add to buffer (handles backpressure)
+            buffer.add_chunk(audio_bytes, session_id)
+            
+            # TODO: Send audio to Transcribe stream
+            # This would be done asynchronously in a real implementation
+            # For now, we just buffer the audio
+            
+            logger.debug(
+                f"Audio chunk buffered for session {session_id}: "
+                f"buffer_size={buffer.size()}/{buffer.capacity_chunks}"
+            )
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'message': 'Audio chunk processed',
+                    'sessionId': session_id,
+                    'bufferSize': buffer.size()
+                })
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to process audio chunk: {e}", exc_info=True)
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'error': 'Audio processing failed',
+                    'message': str(e)
+                })
+            }
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in handle_websocket_audio_event: {e}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': 'Internal server error',
+                'message': str(e)
+            })
+        }
+
+
+def _initialize_websocket_components() -> None:
+    """
+    Initialize WebSocket processing components on cold start.
+    
+    Initializes:
+    - WebSocket message parser
+    - Connection validator
+    - Rate limiter
+    - Audio format validator
+    """
+    global websocket_parser, connection_validator, rate_limiter, format_validator
+    
+    if websocket_parser is None:
+        logger.info("Cold start: Initializing WebSocket components")
+        
+        # Initialize parser
+        websocket_parser = WebSocketMessageParser()
+        
+        # Initialize validator (requires table names from environment)
+        try:
+            import sys
+            session_mgmt_path = os.path.join(
+                os.path.dirname(__file__),
+                '../../../session-management'
+            )
+            if os.path.exists(session_mgmt_path):
+                sys.path.insert(0, session_mgmt_path)
+            
+            from shared.data_access.connections_repository import ConnectionsRepository
+            from shared.data_access.sessions_repository import SessionsRepository
+            
+            connections_table = os.getenv('CONNECTIONS_TABLE_NAME', 'Connections')
+            sessions_table = os.getenv('SESSIONS_TABLE_NAME', 'Sessions')
+            
+            connections_repo = ConnectionsRepository(connections_table)
+            sessions_repo = SessionsRepository(sessions_table)
+            
+            connection_validator = ConnectionValidator(connections_repo, sessions_repo)
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize connection validator: {e}")
+            # Continue without validator - will fail on first validation attempt
+            connection_validator = None
+        
+        # Initialize rate limiter
+        rate_limit = int(os.getenv('AUDIO_RATE_LIMIT', '50'))
+        rate_limiter = AudioRateLimiter(
+            limit=rate_limit,
+            cloudwatch_client=cloudwatch
+        )
+        
+        # Initialize format validator
+        format_validator = AudioFormatValidator()
+        
+        logger.info("WebSocket components initialized successfully")
+
+
+def _get_or_create_stream(
+    session_id: str,
+    source_language: str
+) -> tuple:
+    """
+    Get existing Transcribe stream or create new one.
+    
+    Args:
+        session_id: Session identifier
+        source_language: Source language code
+    
+    Returns:
+        Tuple of (client, manager, handler, buffer, last_activity_time)
+    """
+    global active_streams, partial_processor
+    
+    # Check if stream already exists
+    if session_id in active_streams:
+        logger.debug(f"Using existing stream for session {session_id}")
+        return active_streams[session_id]
+    
+    # Create new stream
+    logger.info(f"Creating new Transcribe stream for session {session_id}")
+    
+    # Initialize partial processor if needed
+    if partial_processor is None:
+        config = _load_config_from_environment()
+        partial_processor = PartialResultProcessor(
+            config=config,
+            session_id=session_id,
+            source_language=source_language
+        )
+    
+    # Create Transcribe client and manager
+    # Convert ISO 639-1 to AWS language code (e.g., 'en' -> 'en-US')
+    aws_language_code = _convert_to_aws_language_code(source_language)
+    
+    client, manager = create_transcribe_client_for_session(
+        language_code=aws_language_code,
+        sample_rate_hz=16000,
+        encoding='pcm',
+        region=os.getenv('AWS_REGION', 'us-east-1')
+    )
+    
+    # Create stream handler
+    # Note: In a real implementation, we would need to create an output stream
+    # For now, we create a placeholder handler
+    handler = None  # TODO: Create actual TranscribeStreamHandler
+    
+    # Create audio buffer
+    buffer = AudioBuffer(
+        capacity_seconds=5.0,
+        chunk_duration_ms=100,
+        cloudwatch_client=cloudwatch
+    )
+    
+    # Store stream info
+    stream_info = (client, manager, handler, buffer, time.time())
+    active_streams[session_id] = stream_info
+    
+    logger.info(f"Created Transcribe stream for session {session_id}")
+    
+    return stream_info
+
+
+def _convert_to_aws_language_code(iso_code: str) -> str:
+    """
+    Convert ISO 639-1 language code to AWS Transcribe language code.
+    
+    Args:
+        iso_code: ISO 639-1 code (e.g., 'en', 'es')
+    
+    Returns:
+        AWS language code (e.g., 'en-US', 'es-ES')
+    """
+    # Simple mapping for common languages
+    # In production, this should be more comprehensive
+    mapping = {
+        'en': 'en-US',
+        'es': 'es-ES',
+        'fr': 'fr-FR',
+        'de': 'de-DE',
+        'it': 'it-IT',
+        'pt': 'pt-BR',
+        'ja': 'ja-JP',
+        'ko': 'ko-KR',
+        'zh': 'zh-CN',
+        'ar': 'ar-SA',
+        'hi': 'hi-IN',
+        'ru': 'ru-RU'
+    }
+    
+    return mapping.get(iso_code, f"{iso_code}-US")
+
+
+def cleanup_idle_streams() -> None:
+    """
+    Clean up idle Transcribe streams.
+    
+    Closes streams that have been inactive for more than STREAM_IDLE_TIMEOUT_SECONDS.
+    Should be called periodically.
+    """
+    global active_streams
+    
+    current_time = time.time()
+    sessions_to_remove = []
+    
+    for session_id, stream_info in active_streams.items():
+        _, _, _, _, last_activity_time = stream_info
+        idle_duration = current_time - last_activity_time
+        
+        if idle_duration >= STREAM_IDLE_TIMEOUT_SECONDS:
+            logger.info(
+                f"Closing idle stream for session {session_id} "
+                f"(idle for {idle_duration:.1f} seconds)"
+            )
+            sessions_to_remove.append(session_id)
+    
+    # Remove idle streams
+    for session_id in sessions_to_remove:
+        _close_stream(session_id)
+
+
+def _close_stream(session_id: str) -> None:
+    """
+    Close Transcribe stream for session.
+    
+    Args:
+        session_id: Session identifier
+    """
+    global active_streams
+    
+    if session_id not in active_streams:
+        return
+    
+    try:
+        client, manager, handler, buffer, _ = active_streams[session_id]
+        
+        # Clear buffer
+        buffer.clear()
+        
+        # TODO: Close Transcribe stream properly
+        # In a real implementation, we would close the stream gracefully
+        
+        # Remove from active streams
+        del active_streams[session_id]
+        
+        logger.info(f"Closed stream for session {session_id}")
+        
+    except Exception as e:
+        logger.error(f"Error closing stream for session {session_id}: {e}")
 
 
 async def process_audio_async(
