@@ -8,14 +8,14 @@ This implementation plan converts the WebSocket Audio Integration design into ac
 
 ## Task List
 
-- [ ] 1. Configure WebSocket API routes and integrate with existing handlers
+- [x] 1. Configure WebSocket API routes and integrate with existing handlers
   - Add 10 new custom routes to existing API Gateway WebSocket API
   - Configure route selection expressions
   - Map routes to existing and new Lambda handlers
   - Update IAM permissions for new routes
   - _Requirements: 19, 20_
 
-- [ ] 1.1 Add sendAudio route configuration
+- [x] 1.1 Add sendAudio route configuration
   - Configure `sendAudio` custom route in API Gateway
   - Map to extended audio_processor Lambda
   - Set integration timeout to 60 seconds
@@ -23,20 +23,20 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Set content handling to CONVERT_TO_BINARY for audio chunks
   - _Requirements: 1, 19_
 
-- [ ] 1.2 Add speaker control routes
+- [x] 1.2 Add speaker control routes
   - Configure `pauseBroadcast`, `resumeBroadcast`, `muteBroadcast`, `unmuteBroadcast` routes
   - Configure `setVolume` and `speakerStateChange` routes
   - Map to extended connection_handler Lambda
   - Set integration timeout to 10 seconds
   - _Requirements: 6-10, 19_
 
-- [ ] 1.3 Add session status route
+- [x] 1.3 Add session status route
   - Configure `getSessionStatus` custom route
   - Map to new session_status_handler Lambda
   - Set integration timeout to 5 seconds
   - _Requirements: 11, 19_
 
-- [ ] 1.4 Add listener control routes
+- [x] 1.4 Add listener control routes
   - Configure `pausePlayback` and `changeLanguage` routes
   - Map to extended connection_handler Lambda
   - Set integration timeout to 5 seconds

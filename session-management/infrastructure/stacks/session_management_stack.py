@@ -50,6 +50,7 @@ class SessionManagementStack(Stack):
         self.heartbeat_handler = self._create_heartbeat_handler()
         self.disconnect_handler = self._create_disconnect_handler()
         self.refresh_handler = self._create_refresh_handler()
+        self.session_status_handler = self._create_session_status_handler()
 
         # Create WebSocket API
         self.websocket_api = self._create_websocket_api()
@@ -301,6 +302,38 @@ class SessionManagementStack(Stack):
 
         return function
 
+    def _create_session_status_handler(self) -> lambda_.Function:
+        """Create Session Status Handler function."""
+        # Get log retention from config (12 hours not available in CDK, using ONE_DAY)
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.ONE_DAY  # CDK doesn't support TWELVE_HOURS
+        
+        function = lambda_.Function(
+            self,
+            "SessionStatusHandler",
+            function_name=f"session-status-handler-{self.env_name}",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="handler.lambda_handler",
+            code=lambda_.Code.from_asset("../lambda/session_status_handler"),
+            layers=[self.shared_layer],
+            timeout=Duration.seconds(5),
+            environment={
+                "ENV": self.env_name,
+                "SESSIONS_TABLE": self.sessions_table.table_name,
+                "CONNECTIONS_TABLE": self.connections_table.table_name,
+                "STATUS_QUERY_TIMEOUT_MS": "500",
+                "PERIODIC_UPDATE_INTERVAL_SECONDS": "30",
+                "LISTENER_COUNT_CHANGE_THRESHOLD_PERCENT": "10",
+            },
+            log_retention=log_retention,
+        )
+
+        # Grant DynamoDB permissions
+        self.sessions_table.grant_read_data(function)
+        self.connections_table.grant_read_data(function)
+
+        return function
+
     def _create_websocket_api(self) -> apigwv2.CfnApi:
         """Create WebSocket API Gateway with routes."""
         # Create WebSocket API
@@ -330,26 +363,33 @@ class SessionManagementStack(Stack):
             source_arn=f"arn:aws:execute-api:{self.region}:{self.account}:{api.ref}/*",
         )
 
-        # Create Lambda integrations
+        # Create Lambda integrations for existing handlers
         connect_integration = self._create_lambda_integration(api, self.connection_handler, "ConnectIntegration")
         disconnect_integration = self._create_lambda_integration(api, self.disconnect_handler, "DisconnectIntegration")
         heartbeat_integration = self._create_lambda_integration(api, self.heartbeat_handler, "HeartbeatIntegration")
         refresh_integration = self._create_lambda_integration(api, self.refresh_handler, "RefreshIntegration")
+        
+        # Create Lambda integrations for new audio/control routes
+        # Note: sendAudio route will be added when audio_processor Lambda is integrated (Task 1.1)
+        # The audio_processor Lambda is in the audio-transcription component and will be
+        # configured separately with binary WebSocket frame support
 
         # Update Lambda environment with API Gateway endpoint (will be set after deployment)
         # This is a placeholder - actual endpoint will be available after deployment
         api_endpoint = f"https://{api.ref}.execute-api.{self.region}.amazonaws.com/prod"
         
-        # Update heartbeat handler with API endpoint
+        # Update handlers with API endpoint
         self.heartbeat_handler.add_environment("API_GATEWAY_ENDPOINT", api_endpoint)
         self.refresh_handler.add_environment("API_GATEWAY_ENDPOINT", api_endpoint)
         self.disconnect_handler.add_environment("API_GATEWAY_ENDPOINT", api_endpoint)
+        self.connection_handler.add_environment("API_GATEWAY_ENDPOINT", api_endpoint)
 
         # Grant API Gateway Management API permissions
-        for function in [self.heartbeat_handler, self.refresh_handler, self.disconnect_handler]:
+        # connection_handler needs this for sending control messages to listeners
+        for function in [self.heartbeat_handler, self.refresh_handler, self.disconnect_handler, self.connection_handler]:
             function.add_to_role_policy(
                 iam.PolicyStatement(
-                    actions=["execute-api:ManageConnections"],
+                    actions=["execute-api:ManageConnections", "execute-api:Invoke"],
                     resources=[f"arn:aws:execute-api:{self.region}:{self.account}:{api.ref}/*"],
                 )
             )
@@ -394,6 +434,105 @@ class SessionManagementStack(Stack):
             target=f"integrations/{refresh_integration.ref}",
         )
 
+        # Task 1.2: Create speaker control routes (pause, resume, mute, unmute, volume, state)
+        # These routes map to the connection_handler Lambda which will be extended
+        speaker_control_integration = self._create_lambda_integration(
+            api, 
+            self.connection_handler, 
+            "SpeakerControlIntegration",
+            timeout_ms=10000  # 10 seconds
+        )
+        
+        pause_broadcast_route = apigwv2.CfnRoute(
+            self,
+            "PauseBroadcastRoute",
+            api_id=api.ref,
+            route_key="pauseBroadcast",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+        
+        resume_broadcast_route = apigwv2.CfnRoute(
+            self,
+            "ResumeBroadcastRoute",
+            api_id=api.ref,
+            route_key="resumeBroadcast",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+        
+        mute_broadcast_route = apigwv2.CfnRoute(
+            self,
+            "MuteBroadcastRoute",
+            api_id=api.ref,
+            route_key="muteBroadcast",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+        
+        unmute_broadcast_route = apigwv2.CfnRoute(
+            self,
+            "UnmuteBroadcastRoute",
+            api_id=api.ref,
+            route_key="unmuteBroadcast",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+        
+        set_volume_route = apigwv2.CfnRoute(
+            self,
+            "SetVolumeRoute",
+            api_id=api.ref,
+            route_key="setVolume",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+        
+        speaker_state_change_route = apigwv2.CfnRoute(
+            self,
+            "SpeakerStateChangeRoute",
+            api_id=api.ref,
+            route_key="speakerStateChange",
+            target=f"integrations/{speaker_control_integration.ref}",
+        )
+
+        # Task 1.3: Create session status route
+        # Maps to session_status_handler Lambda
+        session_status_integration = self._create_lambda_integration(
+            api,
+            self.session_status_handler,
+            "SessionStatusIntegration",
+            timeout_ms=5000  # 5 seconds
+        )
+        
+        get_session_status_route = apigwv2.CfnRoute(
+            self,
+            "GetSessionStatusRoute",
+            api_id=api.ref,
+            route_key="getSessionStatus",
+            target=f"integrations/{session_status_integration.ref}",
+        )
+
+        # Task 1.4: Create listener control routes (pausePlayback, changeLanguage)
+        # These also map to connection_handler Lambda
+        listener_control_integration = self._create_lambda_integration(
+            api,
+            self.connection_handler,
+            "ListenerControlIntegration",
+            timeout_ms=5000  # 5 seconds
+        )
+        
+        pause_playback_route = apigwv2.CfnRoute(
+            self,
+            "PausePlaybackRoute",
+            api_id=api.ref,
+            route_key="pausePlayback",
+            target=f"integrations/{listener_control_integration.ref}",
+        )
+        
+        change_language_route = apigwv2.CfnRoute(
+            self,
+            "ChangeLanguageRoute",
+            api_id=api.ref,
+            route_key="changeLanguage",
+            target=f"integrations/{listener_control_integration.ref}",
+        )
+
         # Create deployment
         deployment = apigwv2.CfnDeployment(
             self,
@@ -404,6 +543,16 @@ class SessionManagementStack(Stack):
         deployment.add_dependency(disconnect_route)
         deployment.add_dependency(heartbeat_route)
         deployment.add_dependency(refresh_route)
+        # Add dependencies for new routes
+        deployment.add_dependency(pause_broadcast_route)
+        deployment.add_dependency(resume_broadcast_route)
+        deployment.add_dependency(mute_broadcast_route)
+        deployment.add_dependency(unmute_broadcast_route)
+        deployment.add_dependency(set_volume_route)
+        deployment.add_dependency(speaker_state_change_route)
+        deployment.add_dependency(get_session_status_route)
+        deployment.add_dependency(pause_playback_route)
+        deployment.add_dependency(change_language_route)
 
         # Create stage with connection timeout settings
         # API Gateway WebSocket hard limits:
@@ -427,7 +576,8 @@ class SessionManagementStack(Stack):
         self,
         api: apigwv2.CfnApi,
         function: lambda_.Function,
-        integration_id: str
+        integration_id: str,
+        timeout_ms: int = 29000  # Default 29 seconds (API Gateway max is 29s)
     ) -> apigwv2.CfnIntegration:
         """
         Create Lambda integration for WebSocket API.
@@ -436,6 +586,7 @@ class SessionManagementStack(Stack):
             api: WebSocket API
             function: Lambda function
             integration_id: Integration construct ID
+            timeout_ms: Integration timeout in milliseconds (default 29000ms)
             
         Returns:
             Integration
@@ -446,6 +597,7 @@ class SessionManagementStack(Stack):
             api_id=api.ref,
             integration_type="AWS_PROXY",
             integration_uri=f"arn:aws:apigateway:{self.region}:lambda:path/2015-03-31/functions/{function.function_arn}/invocations",
+            timeout_in_millis=timeout_ms,
         )
 
         # Grant API Gateway permission to invoke Lambda
