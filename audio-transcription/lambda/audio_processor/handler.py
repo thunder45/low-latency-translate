@@ -48,6 +48,9 @@ from shared.services.transcribe_client import (
 # Translation Pipeline imports
 from shared.services.lambda_translation_pipeline import LambdaTranslationPipeline
 
+# Emotion dynamics imports
+from emotion_dynamics.orchestrator import AudioDynamicsOrchestrator
+
 # Audio quality imports
 from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.models.quality_config import QualityConfig
@@ -86,6 +89,13 @@ active_streams: Dict[str, tuple] = {}
 
 # Translation Pipeline client (singleton per Lambda container)
 translation_pipeline: Optional[LambdaTranslationPipeline] = None
+
+# Emotion detection orchestrator (singleton per Lambda container)
+emotion_orchestrator: Optional[AudioDynamicsOrchestrator] = None
+
+# Emotion cache for correlating with transcripts
+# session_id -> {'volume': float, 'rate': float, 'energy': float, 'timestamp': int}
+emotion_cache: Dict[str, Dict[str, Any]] = {}
 
 # CloudWatch and EventBridge clients
 cloudwatch = boto3.client('cloudwatch')
@@ -397,7 +407,24 @@ def handle_websocket_audio_event(event: Dict[str, Any], context: Any) -> Dict[st
                 })
             }
         
-        # Step 6: Add audio to buffer and send to Transcribe
+        # Step 6: Extract emotion dynamics from audio (if enabled)
+        try:
+            loop = asyncio.get_event_loop()
+            emotion_data = loop.run_until_complete(
+                process_audio_chunk_with_emotion(session_id, audio_bytes)
+            )
+            
+            if emotion_data:
+                logger.debug(
+                    f"Emotion data extracted for session {session_id}: "
+                    f"volume={emotion_data.get('volume')}, "
+                    f"rate={emotion_data.get('rate')}"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to extract emotion data: {e}")
+            # Continue processing even if emotion extraction fails
+        
+        # Step 7: Add audio to buffer and send to Transcribe
         try:
             # Add to buffer (handles backpressure)
             buffer.add_chunk(audio_bytes, session_id)
@@ -450,6 +477,163 @@ def handle_websocket_audio_event(event: Dict[str, Any], context: Any) -> Dict[st
         }
 
 
+async def process_audio_chunk_with_emotion(
+    session_id: str,
+    audio_bytes: bytes,
+    sample_rate: int = 16000
+) -> Optional[Dict[str, Any]]:
+    """
+    Process audio chunk with emotion detection.
+    
+    This function extracts emotion dynamics from audio chunks and caches
+    them for correlation with transcripts. It handles errors gracefully
+    and continues processing even if emotion extraction fails.
+    
+    Args:
+        session_id: Session identifier
+        audio_bytes: PCM audio data (16-bit, mono)
+        sample_rate: Audio sample rate in Hz (default: 16000)
+    
+    Returns:
+        Dictionary with emotion data (volume, rate, energy, timestamp)
+        or None if emotion detection is disabled or fails
+    """
+    global emotion_orchestrator, emotion_cache
+    
+    # Skip if emotion detection is disabled
+    if emotion_orchestrator is None:
+        return None
+    
+    try:
+        # Convert bytes to numpy array
+        audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
+        
+        # Extract emotion dynamics using orchestrator
+        # This runs volume and rate detection in parallel
+        dynamics, volume_ms, rate_ms, combined_ms = emotion_orchestrator.detect_audio_dynamics(
+            audio_data=audio_array,
+            sample_rate=sample_rate,
+            correlation_id=session_id
+        )
+        
+        # Extract emotion data from dynamics
+        # Map volume level to 0.0-1.0 scale
+        volume_mapping = {
+            'whisper': 0.2,
+            'soft': 0.4,
+            'medium': 0.6,
+            'loud': 1.0
+        }
+        volume = volume_mapping.get(dynamics.volume.level, 0.6)
+        
+        # Map rate classification to speaking rate multiplier
+        rate_mapping = {
+            'very_slow': 0.7,
+            'slow': 0.85,
+            'medium': 1.0,
+            'fast': 1.15,
+            'very_fast': 1.3
+        }
+        rate = rate_mapping.get(dynamics.rate.classification, 1.0)
+        
+        # Calculate energy from volume (normalized 0.0-1.0)
+        # Energy is derived from volume level
+        energy = volume
+        
+        # Cache emotion data with session_id and timestamp
+        emotion_data = {
+            'volume': volume,
+            'rate': rate,
+            'energy': energy,
+            'timestamp': int(time.time() * 1000),
+            'volume_level': dynamics.volume.level,
+            'rate_classification': dynamics.rate.classification,
+            'volume_db': dynamics.volume.db_value,
+            'rate_wpm': dynamics.rate.wpm
+        }
+        
+        emotion_cache[session_id] = emotion_data
+        
+        # Emit CloudWatch metrics for successful emotion extraction
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='AudioTranscription/EmotionDetection',
+                MetricData=[
+                    {
+                        'MetricName': 'EmotionExtractionLatency',
+                        'Value': combined_ms,
+                        'Unit': 'Milliseconds',
+                        'Dimensions': [
+                            {'Name': 'SessionId', 'Value': session_id}
+                        ]
+                    },
+                    {
+                        'MetricName': 'EmotionCacheSize',
+                        'Value': len(emotion_cache),
+                        'Unit': 'Count'
+                    }
+                ]
+            )
+        except Exception as metric_error:
+            logger.warning(f"Failed to emit emotion extraction metrics: {metric_error}")
+        
+        logger.debug(
+            f"Emotion data extracted for session {session_id}: "
+            f"volume={dynamics.volume.level} ({volume:.2f}), "
+            f"rate={dynamics.rate.classification} ({rate:.2f}), "
+            f"energy={energy:.2f}, "
+            f"latency={combined_ms}ms"
+        )
+        
+        return emotion_data
+        
+    except Exception as e:
+        logger.error(
+            f"Error extracting emotion data for session {session_id}: {e}",
+            exc_info=True
+        )
+        
+        # Emit CloudWatch metric for emotion extraction failure
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='AudioTranscription/EmotionDetection',
+                MetricData=[
+                    {
+                        'MetricName': 'EmotionExtractionErrors',
+                        'Value': 1,
+                        'Unit': 'Count',
+                        'Dimensions': [
+                            {'Name': 'SessionId', 'Value': session_id}
+                        ]
+                    }
+                ]
+            )
+        except Exception as metric_error:
+            logger.warning(f"Failed to emit emotion extraction error metric: {metric_error}")
+        
+        # Return default neutral emotion values on failure
+        default_emotion = {
+            'volume': 0.5,
+            'rate': 1.0,
+            'energy': 0.5,
+            'timestamp': int(time.time() * 1000),
+            'volume_level': 'medium',
+            'rate_classification': 'medium',
+            'volume_db': -15.0,
+            'rate_wpm': 145.0
+        }
+        
+        # Cache default values
+        emotion_cache[session_id] = default_emotion
+        
+        logger.info(
+            f"Using default neutral emotion values for session {session_id} "
+            f"after extraction failure"
+        )
+        
+        return default_emotion
+
+
 def _initialize_websocket_components() -> None:
     """
     Initialize WebSocket processing components on cold start.
@@ -460,9 +644,10 @@ def _initialize_websocket_components() -> None:
     - Rate limiter
     - Audio format validator
     - Translation Pipeline client
+    - Emotion detection orchestrator
     """
     global websocket_parser, connection_validator, rate_limiter, format_validator
-    global translation_pipeline
+    global translation_pipeline, emotion_orchestrator
     
     if websocket_parser is None:
         logger.info("Cold start: Initializing WebSocket components")
@@ -518,6 +703,23 @@ def _initialize_websocket_components() -> None:
             f"Translation Pipeline client initialized: "
             f"function={translation_function_name}"
         )
+        
+        # Initialize Emotion Detection orchestrator if enabled
+        enable_emotion_detection = os.getenv('ENABLE_EMOTION_DETECTION', 'true').lower() == 'true'
+        if enable_emotion_detection:
+            try:
+                emotion_orchestrator = AudioDynamicsOrchestrator()
+                logger.info("Emotion detection orchestrator initialized successfully")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize emotion detection orchestrator: {e}. "
+                    f"Emotion detection will be disabled.",
+                    exc_info=True
+                )
+                emotion_orchestrator = None
+        else:
+            logger.info("Emotion detection disabled via ENABLE_EMOTION_DETECTION environment variable")
+            emotion_orchestrator = None
         
         logger.info("WebSocket components initialized successfully")
 
@@ -577,6 +779,10 @@ def _get_or_create_stream(
     
     # Inject translation pipeline into handler for forwarding
     handler.translation_pipeline = translation_pipeline
+    
+    # Inject emotion cache reference for accessing cached emotion data
+    # The handler will use this to retrieve emotion data when forwarding to translation
+    handler.emotion_cache = emotion_cache
     
     # Create audio buffer
     buffer = AudioBuffer(
@@ -761,12 +967,12 @@ async def _close_stream_async(session_id: str) -> None:
     Close Transcribe stream for session asynchronously.
     
     This function gracefully closes the Transcribe stream, clears buffers,
-    and removes the session from active streams.
+    clears emotion cache, and removes the session from active streams.
     
     Args:
         session_id: Session identifier
     """
-    global active_streams
+    global active_streams, emotion_cache
     
     if session_id not in active_streams:
         return
@@ -778,6 +984,11 @@ async def _close_stream_async(session_id: str) -> None:
         
         # Clear buffer
         buffer.clear()
+        
+        # Clear emotion cache for this session
+        if session_id in emotion_cache:
+            del emotion_cache[session_id]
+            logger.debug(f"Cleared emotion cache for session {session_id}")
         
         # Close stream gracefully if active
         if is_active:

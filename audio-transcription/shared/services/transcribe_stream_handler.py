@@ -372,7 +372,7 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
         """
         Get cached emotion data for current session.
         
-        Returns emotion data from the most recent cache entry, or default
+        Returns emotion data from the session cache, or default
         neutral values if no data is available.
         
         Returns:
@@ -382,11 +382,26 @@ class TranscribeStreamHandler(TranscriptResultStreamHandler):
             if not self.emotion_cache:
                 return self._get_default_emotion()
             
-            # Get most recent emotion data
-            latest_timestamp = max(self.emotion_cache.keys())
-            emotion_data = self.emotion_cache[latest_timestamp]
+            # Get emotion data for this session
+            # emotion_cache is now a dict mapping session_id -> emotion_data
+            if isinstance(self.emotion_cache, dict):
+                # Check if this is a session-based cache (session_id -> data)
+                if self.session_id in self.emotion_cache:
+                    emotion_data = self.emotion_cache[self.session_id]
+                    # Extract only the fields needed for translation
+                    return {
+                        'volume': emotion_data.get('volume', 0.5),
+                        'rate': emotion_data.get('rate', 1.0),
+                        'energy': emotion_data.get('energy', 0.5)
+                    }
+                # Otherwise, try timestamp-based cache (backward compatibility)
+                elif len(self.emotion_cache) > 0:
+                    # Get most recent emotion data
+                    latest_timestamp = max(self.emotion_cache.keys())
+                    emotion_data = self.emotion_cache[latest_timestamp]
+                    return emotion_data
             
-            return emotion_data
+            return self._get_default_emotion()
             
         except Exception as e:
             logger.warning(f"Error getting cached emotion data: {e}")
