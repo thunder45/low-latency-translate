@@ -292,7 +292,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - **File**: session-management/lambda/timeout_handler/handler.py (300+ lines)
   - **Trigger**: EventBridge scheduled rule (every 60 seconds) - to be added in Task 10
 
-- [ ] 8. Add CloudWatch metrics and alarms
+- [x] 8. Add CloudWatch metrics and alarms
   - Implement metrics for audio processing
   - Implement metrics for control messages
   - Implement metrics for session status
@@ -302,7 +302,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 21, 23_
 
 
-- [ ] 8.1 Add audio processing metrics
+- [x] 8.1 Add audio processing metrics
   - AudioChunksReceived (Count, per session)
   - AudioProcessingLatency (Milliseconds, p50/p95/p99)
   - AudioChunksDropped (Count, per session)
@@ -311,31 +311,31 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - TranscribeStreamErrors (Count, by error type)
   - _Requirements: 23_
 
-- [ ] 8.2 Add control message metrics
+- [x] 8.2 Add control message metrics
   - ControlMessagesReceived (Count, by action type)
   - ControlMessageLatency (Milliseconds, p50/p95/p99)
   - ListenerNotificationLatency (Milliseconds)
   - ListenerNotificationFailures (Count)
   - _Requirements: 23_
 
-- [ ] 8.3 Add session status metrics
+- [x] 8.3 Add session status metrics
   - StatusQueriesReceived (Count, per session)
   - StatusQueryLatency (Milliseconds, p50/p95/p99)
   - PeriodicStatusUpdatesSent (Count)
   - _Requirements: 23_
 
-- [ ] 8.4 Add rate limiting metrics
+- [x] 8.4 Add rate limiting metrics
   - RateLimitViolations (Count, by message type)
   - ConnectionsClosedForRateLimit (Count)
   - _Requirements: 23_
 
-- [ ] 8.5 Add error metrics
+- [x] 8.5 Add error metrics
   - LambdaErrors (Count, by handler and error type)
   - DynamoDBErrors (Count, by operation)
   - TranscribeErrors (Count, by error code)
   - _Requirements: 23_
 
-- [ ] 8.6 Configure CloudWatch alarms
+- [x] 8.6 Configure CloudWatch alarms
   - Critical: Audio latency p95 >100ms for 5 min
   - Critical: Transcribe error rate >5% for 5 min
   - Critical: Lambda error rate >1% for 5 min
