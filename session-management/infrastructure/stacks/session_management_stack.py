@@ -646,13 +646,14 @@ class SessionManagementStack(Stack):
         
         Requirements: 12 (Periodic Session Status Updates)
         """
-        # Create EventBridge rule that triggers every 30 seconds
+        # Create EventBridge rule that triggers every 1 minute (minimum for EventBridge)
+        # Note: EventBridge doesn't support sub-minute intervals
         rule = events.Rule(
             self,
             "PeriodicStatusUpdateRule",
             rule_name=f"session-status-periodic-update-{self.env_name}",
-            description="Trigger periodic session status updates every 30 seconds",
-            schedule=events.Schedule.rate(Duration.seconds(30)),
+            description="Trigger periodic session status updates every 1 minute",
+            schedule=events.Schedule.rate(Duration.minutes(1)),
             enabled=True,
         )
 

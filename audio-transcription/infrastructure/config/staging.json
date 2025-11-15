@@ -1,0 +1,22 @@
+{
+  "environment": "staging",
+  "lambda": {
+    "memory_size": 512,
+    "timeout": 60,
+    "log_level": "INFO"
+  },
+  "partial_results": {
+    "enabled": true,
+    "min_stability_threshold": 0.85,
+    "max_buffer_timeout": 5.0,
+    "pause_threshold": 2.0,
+    "orphan_timeout": 15.0,
+    "max_rate_per_second": 5,
+    "dedup_cache_ttl": 10
+  },
+  "alarms": {
+    "latency_threshold_ms": 5000,
+    "dropped_results_threshold": 100,
+    "orphaned_results_threshold": 10
+  }
+}

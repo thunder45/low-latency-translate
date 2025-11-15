@@ -207,13 +207,21 @@ class AudioTranscriptionStack(Stack):
         Returns:
             Lambda function configured for partial results processing
         """
+        # Get the path to lambda directory (relative to infrastructure/stacks directory)
+        import os
+        lambda_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'lambda',
+            'audio_processor'
+        )
+        
         function = lambda_.Function(
             self,
             'AudioProcessorFunction',
             function_name='audio-processor',
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler='handler.lambda_handler',
-            code=lambda_.Code.from_asset('lambda/audio_processor'),
+            code=lambda_.Code.from_asset(lambda_path),
             role=role,
             memory_size=512,  # Increased from 256 MB for buffers and cache
             timeout=Duration.seconds(60),  # Increased from 30s for orphan cleanup
@@ -252,7 +260,7 @@ class AudioTranscriptionStack(Stack):
                 'EVENTBRIDGE_EVENTS_ENABLED': 'true',
                 
                 # AWS service configuration
-                'AWS_REGION': self.region,
+                # Note: AWS_REGION is automatically set by Lambda runtime
                 'SESSIONS_TABLE_NAME': 'Sessions',
                 'TRANSLATION_PIPELINE_FUNCTION_NAME': 'TranslationProcessor',
                 
