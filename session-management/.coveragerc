@@ -1,0 +1,22 @@
+[run]
+omit =
+    */tests/*
+    */lambda/*/cffi/*
+    */lambda/*/cryptography/*
+    */lambda/*/pycparser/*
+    */lambda/*/setuptools/*
+    */lambda/*/pkg_resources/*
+    */lambda/*/six.py
+    */lambda/*/packaging/*
+    */__pycache__/*
+    */site-packages/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod

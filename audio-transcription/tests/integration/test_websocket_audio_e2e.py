@@ -218,8 +218,12 @@ class TestControlMessageFlow:
         # This test verifies the integration is documented
         import os
         
-        # Check if session-management component exists
-        assert os.path.exists('../session-management')
+        # Navigate up from tests/integration to workspace root
+        test_file_dir = os.path.dirname(os.path.abspath(__file__))
+        audio_transcription_root = os.path.dirname(os.path.dirname(test_file_dir))
+        workspace_root = os.path.dirname(audio_transcription_root)
+        session_mgmt_path = os.path.join(workspace_root, 'session-management')
+        assert os.path.exists(session_mgmt_path), f"Expected session-management at {session_mgmt_path}"
 
 
 class TestSessionStatusQueries:
@@ -296,9 +300,12 @@ class TestErrorScenarios:
         # This test verifies the integration is documented
         import os
         
-        # Check if session-management validators exist
-        validators_path = '../session-management/shared/utils/validators.py'
-        assert os.path.exists(validators_path)
+        # Navigate up from tests/integration to workspace root
+        test_file_dir = os.path.dirname(os.path.abspath(__file__))
+        audio_transcription_root = os.path.dirname(os.path.dirname(test_file_dir))
+        workspace_root = os.path.dirname(audio_transcription_root)
+        validators_path = os.path.join(workspace_root, 'session-management', 'shared', 'utils', 'validators.py')
+        assert os.path.exists(validators_path), f"Expected validators at {validators_path}"
 
 
 class TestPerformance:
