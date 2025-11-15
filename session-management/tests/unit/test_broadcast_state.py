@@ -145,7 +145,7 @@ class TestBroadcastState:
         assert data['isActive'] is True
         assert data['isPaused'] is True
         assert data['isMuted'] is False
-        assert data['volume'] == 0.8
+        assert float(data['volume']) == 0.8  # Volume is Decimal in DynamoDB format
         assert data['lastStateChange'] == timestamp
     
     def test_from_dict(self):

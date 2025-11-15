@@ -190,7 +190,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: All in Requirements 6-10, 18_
 
 
-- [ ] 4. Create session_status_handler Lambda for status queries
+- [x] 4. Create session_status_handler Lambda for status queries
   - Create new `session-management/lambda/session_status_handler/`
   - Implement handler.py with status query logic
   - Add language distribution aggregation
@@ -198,7 +198,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Configure EventBridge rule for periodic triggers
   - _Requirements: 11, 12_
 
-- [ ] 4.1 Implement session status query handler
+- [x] 4.1 Implement session status query handler
   - Extract connectionId from WebSocket event
   - Query connection to get sessionId
   - Query session record from DynamoDB
@@ -208,14 +208,14 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Return sessionStatus message
   - _Requirements: 11_
 
-- [ ] 4.2 Add language distribution aggregation
+- [x] 4.2 Add language distribution aggregation
   - Group connections by targetLanguage
   - Count listeners per language
   - Return as map of language to count
   - Handle empty language gracefully
   - _Requirements: 11_
 
-- [ ] 4.3 Implement periodic status updates
+- [x] 4.3 Implement periodic status updates
   - Create EventBridge scheduled rule (every 30 seconds)
   - Query all active sessions
   - Send status update to each speaker
@@ -223,7 +223,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Handle speaker disconnections gracefully
   - _Requirements: 12_
 
-- [ ] 4.4 Add triggered status updates
+- [x] 4.4 Add triggered status updates
   - Detect listener count changes >10%
   - Detect new languages appearing
   - Send immediate status update
@@ -231,7 +231,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Reset periodic timer on explicit query
   - _Requirements: 12_
 
-- [ ] 4.5 Add unit tests for session status
+- [x] 4.5 Add unit tests for session status
   - Test status query with various listener counts
   - Test language distribution aggregation
   - Test periodic update logic

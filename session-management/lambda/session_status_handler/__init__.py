@@ -1,1 +1,1 @@
-"""Session Status Handler Lambda package."""
+# Session Status Handler Lambda

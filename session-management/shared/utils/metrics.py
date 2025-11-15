@@ -212,24 +212,6 @@ class MetricsPublisher:
             value=1,
             dimensions=[{'Name': 'Operation', 'Value': operation}]
         )
-
-
-# Global metrics publisher instance (reused across Lambda invocations)
-_metrics_publisher = None
-
-
-def get_metrics_publisher() -> MetricsPublisher:
-    """
-    Get global metrics publisher instance.
-    
-    Returns:
-        MetricsPublisher instance
-    """
-    global _metrics_publisher
-    if _metrics_publisher is None:
-        _metrics_publisher = MetricsPublisher()
-    return _metrics_publisher
-
     
     def emit_control_message_latency(self, duration_ms: float, action: str):
         """
@@ -239,10 +221,9 @@ def get_metrics_publisher() -> MetricsPublisher:
             duration_ms: Duration in milliseconds
             action: Control action type
         """
-        self.emit_metric(
+        self.put_latency_metric(
             metric_name='ControlMessageLatency',
             value=duration_ms,
-            unit='Milliseconds',
             dimensions=[
                 {'Name': 'Action', 'Value': action}
             ]
@@ -260,10 +241,9 @@ def get_metrics_publisher() -> MetricsPublisher:
         if session_id:
             dimensions.append({'Name': 'SessionId', 'Value': session_id})
         
-        self.emit_metric(
+        self.put_latency_metric(
             metric_name='ListenerNotificationLatency',
             value=duration_ms,
-            unit='Milliseconds',
             dimensions=dimensions
         )
     
@@ -279,10 +259,9 @@ def get_metrics_publisher() -> MetricsPublisher:
         if session_id:
             dimensions.append({'Name': 'SessionId', 'Value': session_id})
         
-        self.emit_metric(
+        self.put_count_metric(
             metric_name='ListenerNotificationFailures',
             value=count,
-            unit='Count',
             dimensions=dimensions
         )
     
@@ -298,9 +277,55 @@ def get_metrics_publisher() -> MetricsPublisher:
         if session_id:
             dimensions.append({'Name': 'SessionId', 'Value': session_id})
         
-        self.emit_metric(
+        self.put_latency_metric(
             metric_name='BroadcastPauseDuration',
             value=duration_ms,
-            unit='Milliseconds',
             dimensions=dimensions
         )
+    
+    def emit_status_query_latency(self, duration_ms: float, session_id: Optional[str] = None):
+        """
+        Emit session status query latency metric.
+        
+        Args:
+            duration_ms: Duration in milliseconds
+            session_id: Optional session identifier
+        """
+        dimensions = []
+        if session_id:
+            dimensions.append({'Name': 'SessionId', 'Value': session_id})
+        
+        self.put_latency_metric(
+            metric_name='StatusQueryLatency',
+            value=duration_ms,
+            dimensions=dimensions
+        )
+    
+    def emit_periodic_status_updates_sent(self, count: int):
+        """
+        Emit periodic status updates sent metric.
+        
+        Args:
+            count: Number of updates sent
+        """
+        self.put_count_metric(
+            metric_name='PeriodicStatusUpdatesSent',
+            value=count
+        )
+
+
+# Global metrics publisher instance (reused across Lambda invocations)
+_metrics_publisher = None
+
+
+def get_metrics_publisher() -> MetricsPublisher:
+    """
+    Get global metrics publisher instance.
+    
+    Returns:
+        MetricsPublisher instance
+    """
+    global _metrics_publisher
+    if _metrics_publisher is None:
+        _metrics_publisher = MetricsPublisher()
+    return _metrics_publisher
