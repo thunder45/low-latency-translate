@@ -24,7 +24,7 @@
   - Add comments explaining each environment variable
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 5. Update README documentation
+- [x] 5. Update README documentation
   - Add emphasis to installation section that dependencies must be installed before building
   - Add configuration section with instructions for copying .env.example files
   - Add troubleshooting section with common build and runtime issues
