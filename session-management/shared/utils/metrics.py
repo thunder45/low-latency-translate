@@ -229,3 +229,78 @@ def get_metrics_publisher() -> MetricsPublisher:
     if _metrics_publisher is None:
         _metrics_publisher = MetricsPublisher()
     return _metrics_publisher
+
+    
+    def emit_control_message_latency(self, duration_ms: float, action: str):
+        """
+        Emit control message processing latency metric.
+        
+        Args:
+            duration_ms: Duration in milliseconds
+            action: Control action type
+        """
+        self.emit_metric(
+            metric_name='ControlMessageLatency',
+            value=duration_ms,
+            unit='Milliseconds',
+            dimensions=[
+                {'Name': 'Action', 'Value': action}
+            ]
+        )
+    
+    def emit_listener_notification_latency(self, duration_ms: float, session_id: Optional[str] = None):
+        """
+        Emit listener notification latency metric.
+        
+        Args:
+            duration_ms: Duration in milliseconds
+            session_id: Optional session identifier
+        """
+        dimensions = []
+        if session_id:
+            dimensions.append({'Name': 'SessionId', 'Value': session_id})
+        
+        self.emit_metric(
+            metric_name='ListenerNotificationLatency',
+            value=duration_ms,
+            unit='Milliseconds',
+            dimensions=dimensions
+        )
+    
+    def emit_listener_notification_failures(self, count: int, session_id: Optional[str] = None):
+        """
+        Emit listener notification failures metric.
+        
+        Args:
+            count: Number of failures
+            session_id: Optional session identifier
+        """
+        dimensions = []
+        if session_id:
+            dimensions.append({'Name': 'SessionId', 'Value': session_id})
+        
+        self.emit_metric(
+            metric_name='ListenerNotificationFailures',
+            value=count,
+            unit='Count',
+            dimensions=dimensions
+        )
+    
+    def emit_pause_duration(self, duration_ms: int, session_id: Optional[str] = None):
+        """
+        Emit broadcast pause duration metric.
+        
+        Args:
+            duration_ms: Pause duration in milliseconds
+            session_id: Optional session identifier
+        """
+        dimensions = []
+        if session_id:
+            dimensions.append({'Name': 'SessionId', 'Value': session_id})
+        
+        self.emit_metric(
+            metric_name='BroadcastPauseDuration',
+            value=duration_ms,
+            unit='Milliseconds',
+            dimensions=dimensions
+        )

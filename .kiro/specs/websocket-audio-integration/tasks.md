@@ -117,7 +117,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Test error handling scenarios
   - _Requirements: All in Requirement 2_
 
-- [ ] 3. Extend connection_handler Lambda for speaker controls
+- [x] 3. Extend connection_handler Lambda for speaker controls
   - Modify existing `session-management/lambda/connection_handler/handler.py`
   - Add routing logic for control message actions
   - Implement pause/resume/mute/unmute handlers
@@ -125,7 +125,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Add listener notification logic
   - _Requirements: 6-10, 18_
 
-- [ ] 3.1 Add control message routing
+- [x] 3.1 Add control message routing
   - Parse action field from WebSocket message
   - Route to appropriate handler method
   - Validate connection role for each action
@@ -133,7 +133,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Log all control actions
   - _Requirements: 24_
 
-- [ ] 3.2 Implement pause/resume broadcast handlers
+- [x] 3.2 Implement pause/resume broadcast handlers
   - Update session broadcastState.isPaused in DynamoDB
   - Query all listener connections for session
   - Send broadcastPaused/broadcastResumed to listeners
@@ -142,14 +142,14 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 6, 7_
 
 
-- [ ] 3.3 Implement mute/unmute broadcast handlers
+- [x] 3.3 Implement mute/unmute broadcast handlers
   - Update session broadcastState.isMuted in DynamoDB
   - Send broadcastMuted/broadcastUnmuted to listeners
   - Stop/resume audio forwarding to Transcribe
   - Return acknowledgment to speaker
   - _Requirements: 8_
 
-- [ ] 3.4 Implement volume control handler
+- [x] 3.4 Implement volume control handler
   - Validate volumeLevel is between 0.0 and 1.0
   - Update session broadcastState.volume in DynamoDB
   - Send volumeChanged message to listeners
@@ -157,14 +157,14 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Treat volume=0.0 as mute
   - _Requirements: 9_
 
-- [ ] 3.5 Implement speaker state change handler
+- [x] 3.5 Implement speaker state change handler
   - Validate state object contains valid fields
   - Update multiple broadcastState fields atomically
   - Send speakerStateChanged to listeners
   - Trigger appropriate actions (pause, mute) if needed
   - _Requirements: 10_
 
-- [ ] 3.6 Implement listener notification logic
+- [x] 3.6 Implement listener notification logic
   - Query connections by sessionId using GSI
   - Send message to each listener in parallel
   - Use API Gateway Management API
@@ -172,7 +172,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Emit metric for notification latency
   - _Requirements: 6-10_
 
-- [ ] 3.7 Add listener control handlers
+- [x] 3.7 Add listener control handlers
   - Implement pausePlayback handler (acknowledgment only)
   - Implement changeLanguage handler
   - Validate new language is supported
@@ -180,7 +180,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Return acknowledgment with new language
   - _Requirements: 18_
 
-- [ ] 3.8 Add unit tests for control handlers
+- [x] 3.8 Add unit tests for control handlers
   - Test each control action handler
   - Test state updates in DynamoDB
   - Test listener notification logic

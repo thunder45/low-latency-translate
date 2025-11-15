@@ -37,9 +37,14 @@ class BroadcastState:
         Convert to dictionary for DynamoDB storage.
         
         Returns:
-            Dictionary representation
+            Dictionary representation with Decimal for volume
         """
-        return asdict(self)
+        from decimal import Decimal
+        
+        data = asdict(self)
+        # Convert volume to Decimal for DynamoDB
+        data['volume'] = Decimal(str(self.volume))
+        return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'BroadcastState':

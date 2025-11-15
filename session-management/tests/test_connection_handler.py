@@ -449,3 +449,619 @@ def test_rate_limit_exceeded(
     body = json.loads(response['body'])
     assert body['code'] == 'RATE_LIMIT_EXCEEDED'
     assert body['details']['retryAfter'] == 60
+
+
+
+def create_message_event(connection_id, action, body=None):
+    """Helper to create MESSAGE event for control messages."""
+    message_body = {'action': action}
+    if body:
+        message_body.update(body)
+    
+    return {
+        'requestContext': {
+            'connectionId': connection_id,
+            'eventType': 'MESSAGE',
+            'routeKey': '$default',
+            'identity': {
+                'sourceIp': '192.168.1.1'
+            }
+        },
+        'body': json.dumps(message_body)
+    }
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_pause_broadcast_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful pause broadcast."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Create listener connections
+    for i in range(3):
+        connections_repo.create_connection(
+            connection_id=f'listener-{i}',
+            session_id=session_id,
+            role='listener',
+            target_language='es'
+        )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create pause broadcast event
+    event = create_message_event(connection_id, 'pauseBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'broadcastPaused'
+    assert body['sessionId'] == session_id
+    assert body['broadcastState']['isPaused'] is True
+    assert body['listenersNotified'] == 3
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert session['broadcastState']['isPaused'] is True
+    
+    # Verify listeners notified
+    assert mock_apigw.post_to_connection.call_count == 3
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_resume_broadcast_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful resume broadcast."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    # Pause broadcast first
+    sessions_repo.pause_broadcast(session_id)
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create resume broadcast event
+    event = create_message_event(connection_id, 'resumeBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'broadcastResumed'
+    assert body['sessionId'] == session_id
+    assert body['broadcastState']['isPaused'] is False
+    assert 'pauseDuration' in body
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert session['broadcastState']['isPaused'] is False
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_mute_broadcast_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful mute broadcast."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create mute broadcast event
+    event = create_message_event(connection_id, 'muteBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'broadcastMuted'
+    assert body['sessionId'] == session_id
+    assert body['broadcastState']['isMuted'] is True
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert session['broadcastState']['isMuted'] is True
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_unmute_broadcast_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful unmute broadcast."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    # Mute broadcast first
+    sessions_repo.mute_broadcast(session_id)
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create unmute broadcast event
+    event = create_message_event(connection_id, 'unmuteBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'broadcastUnmuted'
+    assert body['sessionId'] == session_id
+    assert body['broadcastState']['isMuted'] is False
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert session['broadcastState']['isMuted'] is False
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_set_volume_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful set volume."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create set volume event
+    event = create_message_event(
+        connection_id,
+        'setVolume',
+        {'volumeLevel': 0.75}
+    )
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'volumeChanged'
+    assert body['sessionId'] == session_id
+    assert body['volumeLevel'] == 0.75
+    assert body['broadcastState']['volume'] == 0.75
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert float(session['broadcastState']['volume']) == 0.75
+
+
+@patch('handler.metrics_publisher')
+def test_set_volume_invalid_range(
+    mock_metrics,
+    mock_env,
+    dynamodb_tables
+):
+    """Test set volume with invalid range."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Create set volume event with invalid value
+    event = create_message_event(
+        connection_id,
+        'setVolume',
+        {'volumeLevel': 1.5}
+    )
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify error response
+    assert response['statusCode'] == 400
+    body = json.loads(response['body'])
+    assert body['code'] == 'INVALID_PARAMETER'
+    assert 'between 0.0 and 1.0' in body['message']
+
+
+@patch('handler.apigw_management_client')
+@patch('handler.metrics_publisher')
+def test_speaker_state_change_success(
+    mock_metrics,
+    mock_apigw,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful speaker state change."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Mock API Gateway client
+    mock_apigw.post_to_connection = Mock()
+    
+    # Create speaker state change event
+    event = create_message_event(
+        connection_id,
+        'speakerStateChange',
+        {
+            'state': {
+                'isPaused': True,
+                'isMuted': False,
+                'volume': 0.8
+            }
+        }
+    )
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'speakerStateChanged'
+    assert body['sessionId'] == session_id
+    assert body['broadcastState']['isPaused'] is True
+    assert body['broadcastState']['isMuted'] is False
+    assert body['broadcastState']['volume'] == 0.8
+    
+    # Verify broadcast state updated
+    session = sessions_repo.get_session(session_id)
+    assert session['broadcastState']['isPaused'] is True
+    assert session['broadcastState']['isMuted'] is False
+    assert float(session['broadcastState']['volume']) == 0.8
+
+
+@patch('handler.metrics_publisher')
+def test_pause_playback_listener_success(
+    mock_metrics,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful pause playback for listener."""
+    # Create session and listener connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'listener-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id='speaker-123',
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='listener',
+        target_language='es'
+    )
+    
+    # Create pause playback event
+    event = create_message_event(connection_id, 'pausePlayback')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'playbackPaused'
+    assert body['sessionId'] == session_id
+
+
+@patch('handler.language_validator')
+@patch('handler.metrics_publisher')
+def test_change_language_success(
+    mock_metrics,
+    mock_language_validator,
+    mock_env,
+    dynamodb_tables
+):
+    """Test successful change language for listener."""
+    # Create session and listener connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'listener-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id='speaker-123',
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='listener',
+        target_language='es',
+        ip_address='192.168.1.1'
+    )
+    
+    # Mock language validator
+    mock_language_validator.validate_target_language = Mock()
+    
+    # Create change language event
+    event = create_message_event(
+        connection_id,
+        'changeLanguage',
+        {'targetLanguage': 'fr'}
+    )
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify response
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['type'] == 'languageChanged'
+    assert body['sessionId'] == session_id
+    assert body['targetLanguage'] == 'fr'
+    assert body['sourceLanguage'] == 'en'
+    
+    # Verify connection updated
+    connection = connections_repo.get_connection(connection_id)
+    assert connection['targetLanguage'] == 'fr'
+
+
+@patch('handler.metrics_publisher')
+def test_unauthorized_speaker_action_for_listener(
+    mock_metrics,
+    mock_env,
+    dynamodb_tables
+):
+    """Test unauthorized speaker action from listener."""
+    # Create session and listener connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'listener-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id='speaker-123',
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='listener',
+        target_language='es'
+    )
+    
+    # Create pause broadcast event (speaker action)
+    event = create_message_event(connection_id, 'pauseBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify error response
+    assert response['statusCode'] == 403
+    body = json.loads(response['body'])
+    assert body['code'] == 'UNAUTHORIZED_ACTION'
+    assert 'speaker role' in body['message']
+
+
+@patch('handler.metrics_publisher')
+def test_unauthorized_listener_action_for_speaker(
+    mock_metrics,
+    mock_env,
+    dynamodb_tables
+):
+    """Test unauthorized listener action from speaker."""
+    # Create session and speaker connection
+    sessions_repo = SessionsRepository('Sessions')
+    connections_repo = ConnectionsRepository('Connections')
+    
+    session_id = 'test-session-123'
+    connection_id = 'speaker-conn-123'
+    
+    sessions_repo.create_session(
+        session_id=session_id,
+        speaker_connection_id=connection_id,
+        speaker_user_id='user-123',
+        source_language='en',
+        quality_tier='standard'
+    )
+    
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='speaker'
+    )
+    
+    # Create change language event (listener action)
+    event = create_message_event(
+        connection_id,
+        'changeLanguage',
+        {'targetLanguage': 'fr'}
+    )
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify error response
+    assert response['statusCode'] == 403
+    body = json.loads(response['body'])
+    assert body['code'] == 'UNAUTHORIZED_ACTION'
+    assert 'listener role' in body['message']
+
+
+@patch('handler.metrics_publisher')
+def test_connection_not_found_for_control_message(
+    mock_metrics,
+    mock_env,
+    dynamodb_tables
+):
+    """Test control message with non-existent connection."""
+    # Create pause broadcast event with non-existent connection
+    event = create_message_event('non-existent-conn', 'pauseBroadcast')
+    
+    # Execute handler
+    response = connection_handler.lambda_handler(event, {})
+    
+    # Verify error response
+    assert response['statusCode'] == 404
+    body = json.loads(response['body'])
+    assert body['code'] == 'CONNECTION_NOT_FOUND'

@@ -1,276 +1,204 @@
-# Task 3 Implementation Summary
+# Task 3: Extend connection_handler Lambda for Speaker Controls
 
-## Completed: Implement Session ID Generation
+## Task Description
 
-### What Was Created
+Extended the existing `connection_handler` Lambda to handle speaker broadcast control messages (pause, resume, mute, unmute, volume, state changes) and listener control messages (pause playback, change language). Implemented complete control message routing, state management, and listener notification logic.
 
-#### 1. Word List Configuration Files
-**Location**: `shared/config/`
+## Task Instructions
 
-- ✅ `adjectives.txt` - 140+ Christian/Bible-themed adjectives
-  - Examples: faithful, blessed, gracious, righteous, holy, merciful, glorious
-  - Includes variations: anointed, beloved, chosen, devoted, exalted, redeemed
-  
-- ✅ `nouns.txt` - 140+ Christian/Bible-themed nouns
-  - Examples: shepherd, covenant, temple, prophet, apostle, altar, sanctuary
-  - Includes variations: psalm, gospel, grace, faith, hope, light, truth, wisdom
-  
-- ✅ `blacklist.txt` - Profanity filter words
-  - Prevents inappropriate word combinations
-  - Comment support for documentation
+### Requirements Addressed
+- **Requirement 6**: Speaker Pause Control
+- **Requirement 7**: Speaker Resume Control
+- **Requirement 8**: Speaker Mute Control
+- **Requirement 9**: Speaker Volume Control
+- **Requirement 10**: Speaker State Change Notifications
+- **Requirement 18**: Listener Control Message Routing
 
-#### 2. Core Session ID Generator
-**Location**: `shared/utils/session_id_generator.py`
+### Subtasks Completed
+1. ✅ Add control message routing with role-based authorization
+2. ✅ Implement pause/resume broadcast handlers
+3. ✅ Implement mute/unmute broadcast handlers
+4. ✅ Implement volume control handler with validation
+5. ✅ Implement speaker state change handler
+6. ✅ Implement listener notification logic using API Gateway Management API
+7. ✅ Add listener control handlers (pausePlayback, changeLanguage)
+8. ✅ Add comprehensive unit tests for all control handlers
 
-**Class**: `SessionIDGenerator`
+## Task Tests
 
-**Features**:
-- Loads word lists at initialization (Lambda container reuse optimization)
-- Generates IDs in format: `{adjective}-{noun}-{3-digit-number}`
-  - Example: `faithful-shepherd-427`
-  - Number range: 100-999 (900 possibilities per word pair)
-- Blacklist filtering to prevent inappropriate combinations
-- Configurable max retry attempts (default: 10)
-- Optional uniqueness check callback for external validation
-- Static format validation method
+All tests passing:
 
-**Key Methods**:
-- `__init__()` - Initialize with word lists and configuration
-- `generate()` - Generate session ID with optional uniqueness check
-- `validate_format()` - Static method to validate session ID format
-- `_load_word_lists()` - Load and validate word lists from files
-- `_is_blacklisted()` - Check if words are in blacklist
-- `_generate_candidate()` - Generate a candidate session ID
+```bash
+python -m pytest tests/test_connection_handler.py -k "pause_broadcast or resume_broadcast or mute_broadcast or unmute_broadcast or set_volume or speaker_state_change or pause_playback or change_language or unauthorized or connection_not_found_for_control" -v
+```
 
-**Error Handling**:
-- Raises `RuntimeError` if unable to generate unique ID after max attempts
-- Validates word list files exist and are readable
-- Warns if word lists have fewer than 100 words
-
-#### 3. Session ID Service with DynamoDB Integration
-**Location**: `shared/utils/session_id_service.py`
-
-**Class**: `SessionIDService`
-
-**Features**:
-- Integrates `SessionIDGenerator` with DynamoDB uniqueness validation
-- Queries Sessions table to check for existing session IDs
-- Exponential backoff retry logic on collisions
-- Configurable retry parameters (max attempts, base delay)
-- Comprehensive logging for generation attempts and collisions
-
-**Key Methods**:
-- `__init__()` - Initialize with sessions repository and retry configuration
-- `generate_unique_session_id()` - Generate unique ID with DynamoDB validation
-- `validate_session_id_format()` - Static method for format validation
-- `_check_uniqueness()` - Check if session ID exists in DynamoDB
-
-**Retry Logic**:
-- Base delay: 0.1 seconds (configurable)
-- Exponential backoff: delay = base_delay * (2 ** attempt)
-- Max attempts: 10 (configurable)
-- Logs collision count and retry attempts
-
-#### 4. Module Exports
-**Location**: `shared/utils/__init__.py`
-
-Updated to export:
-- `SessionIDGenerator`
-- `SessionIDService`
+**Test Results**: 12 passed
 
 ### Test Coverage
+- ✅ `test_pause_broadcast_success` - Pause broadcast with listener notification
+- ✅ `test_resume_broadcast_success` - Resume broadcast with pause duration tracking
+- ✅ `test_mute_broadcast_success` - Mute broadcast with listener notification
+- ✅ `test_unmute_broadcast_success` - Unmute broadcast with listener notification
+- ✅ `test_set_volume_success` - Set volume with validation and listener notification
+- ✅ `test_set_volume_invalid_range` - Volume validation (0.0-1.0 range)
+- ✅ `test_speaker_state_change_success` - Atomic state updates with multiple fields
+- ✅ `test_pause_playback_listener_success` - Listener pause playback (client-side)
+- ✅ `test_change_language_success` - Listener language change with validation
+- ✅ `test_unauthorized_speaker_action_for_listener` - Authorization validation
+- ✅ `test_unauthorized_listener_action_for_speaker` - Authorization validation
+- ✅ `test_connection_not_found_for_control_message` - Error handling
 
-#### Unit Tests for SessionIDGenerator
-**Location**: `tests/test_session_id_generator.py`
+## Task Solution
 
-**11 Test Cases**:
-1. ✅ `test_initialization_with_default_paths` - Default word list loading
-2. ✅ `test_initialization_with_custom_paths` - Custom word list paths
-3. ✅ `test_generate_format_validation` - Format validation (adjective-noun-number)
-4. ✅ `test_blacklist_filtering` - Blacklisted words are filtered
-5. ✅ `test_uniqueness_collision_handling` - Retry logic on collisions
-6. ✅ `test_max_retry_limit_behavior` - Max retry enforcement
-7. ✅ `test_validate_format_valid_ids` - Valid ID acceptance
-8. ✅ `test_validate_format_invalid_ids` - Invalid ID rejection
-9. ✅ `test_generate_without_uniqueness_check` - Blacklist-only mode
-10. ✅ `test_multiple_generations_are_different` - Randomness verification
-11. ✅ `test_word_list_comments_ignored` - Comment handling in word lists
+### Key Implementation Decisions
 
-#### Unit Tests for SessionIDService
-**Location**: `tests/test_session_id_service.py`
+1. **Extended Existing Handler**: Modified `connection_handler` to handle both $connect events and MESSAGE events for control messages, avoiding the need for separate Lambda functions.
 
-**9 Test Cases**:
-1. ✅ `test_generate_unique_session_id_success` - Successful generation
-2. ✅ `test_generate_with_collision_then_success` - Collision handling
-3. ✅ `test_generate_max_attempts_exceeded` - Max attempts enforcement
-4. ✅ `test_exponential_backoff_on_collisions` - Backoff timing verification
-5. ✅ `test_validate_session_id_format_valid` - Valid format acceptance
-6. ✅ `test_validate_session_id_format_invalid` - Invalid format rejection
-7. ✅ `test_uniqueness_check_integration` - DynamoDB integration
-8. ✅ `test_logging_on_collisions` - Collision logging verification
-9. ✅ `test_multiple_generations_are_unique` - Uniqueness guarantee
+2. **Role-Based Authorization**: Implemented strict role validation ensuring speakers can only perform speaker actions and listeners can only perform listener actions.
 
-**Total Test Coverage**: 20 tests for Session ID generation
-**All Tests Passing**: 36/36 tests in full test suite
+3. **API Gateway Management API Integration**: Added boto3 client for `apigatewaymanagementapi` to send messages to WebSocket connections.
 
-### Session ID Format Specification
+4. **Parallel Listener Notification**: Implemented `notify_listeners()` function that sends messages to all listeners in parallel, logging failures but continuing with other listeners.
 
-**Pattern**: `{adjective}-{noun}-{number}`
+5. **Decimal Handling**: Fixed BroadcastState model to properly serialize volume as Decimal for DynamoDB storage and convert back to float for JSON responses.
 
-**Rules**:
-- Adjective: Alphanumeric starting with letter (e.g., faithful, blessed)
-- Noun: Alphanumeric starting with letter (e.g., shepherd, covenant)
-- Number: Exactly 3 digits, range 100-999
-- Separator: Hyphen (-)
-- Case: Lowercase
+6. **Atomic State Updates**: Used existing repository methods for atomic broadcast state updates with proper error handling.
 
-**Valid Examples**:
-- `faithful-shepherd-427`
-- `blessed-covenant-892`
-- `gracious-temple-156`
-- `holy-prophet-734`
+### Files Modified
 
-**Invalid Examples**:
-- `faithful-shepherd` (missing number)
-- `faithful-shepherd-12` (number too short)
-- `faithful-shepherd-1234` (number too long)
-- `123-faithful-shepherd` (wrong order)
-- `faithful_shepherd_123` (wrong separator)
+#### Core Handler
+- **`session-management/lambda/connection_handler/handler.py`**
+  - Added imports for boto3, typing, and ItemNotFoundError
+  - Initialized API Gateway Management API client
+  - Updated `lambda_handler()` to route MESSAGE events to control handlers
+  - Added `route_control_message()` for action routing with role validation
+  - Added `broadcast_state_to_json()` helper for Decimal-to-float conversion
+  - Added `send_to_connection()` for WebSocket message sending
+  - Added `notify_listeners()` for parallel listener notification
+  - Implemented 6 speaker control handlers:
+    - `handle_pause_broadcast()`
+    - `handle_resume_broadcast()` with pause duration tracking
+    - `handle_mute_broadcast()`
+    - `handle_unmute_broadcast()`
+    - `handle_set_volume()` with validation
+    - `handle_speaker_state_change()` with atomic updates
+  - Implemented 2 listener control handlers:
+    - `handle_pause_playback()` (acknowledgment only)
+    - `handle_change_language()` with language validation
 
-### Collision Probability Analysis
+#### Models
+- **`session-management/shared/models/broadcast_state.py`**
+  - Updated `to_dict()` to convert volume to Decimal for DynamoDB compatibility
 
-With the current word lists:
-- Adjectives: 140+ words
-- Nouns: 140+ words
-- Numbers: 900 (100-999)
+#### Metrics
+- **`session-management/shared/utils/metrics.py`**
+  - Added `emit_control_message_latency()`
+  - Added `emit_listener_notification_latency()`
+  - Added `emit_listener_notification_failures()`
+  - Added `emit_pause_duration()`
 
-**Total Possible IDs**: 140 × 140 × 900 = 17,640,000+
+#### Tests
+- **`session-management/tests/test_connection_handler.py`**
+  - Added `create_message_event()` helper for MESSAGE events
+  - Added 12 comprehensive unit tests covering all control handlers
+  - Tests validate state updates, listener notifications, authorization, and error handling
 
-**Collision Probability**:
-- At 1,000 sessions: ~0.003% chance of collision
-- At 10,000 sessions: ~0.28% chance of collision
-- At 100,000 sessions: ~28% chance of collision
+### Control Message Flow
 
-The retry logic with exponential backoff handles collisions gracefully, making the system robust even at high session counts.
+1. **Speaker sends control message** → WebSocket MESSAGE event
+2. **Lambda routes to `route_control_message()`** → Validates connection exists
+3. **Role validation** → Ensures speaker/listener has permission for action
+4. **Handler execution** → Updates broadcast state in DynamoDB
+5. **Listener notification** → Sends message to all listeners via API Gateway Management API
+6. **Acknowledgment** → Returns success response to sender
 
-### Integration with Existing Components
+### Message Formats
 
-**Dependencies**:
-- `SessionsRepository` - For DynamoDB uniqueness validation
-- `DynamoDBClient` - Underlying database operations
+**Speaker Control Messages**:
+```json
+{
+  "action": "pauseBroadcast" | "resumeBroadcast" | "muteBroadcast" | "unmuteBroadcast",
+  // No additional fields required
+}
 
-**Usage Pattern**:
-```python
-from shared.utils import SessionIDService
-from shared.data_access import SessionsRepository
+{
+  "action": "setVolume",
+  "volumeLevel": 0.75  // 0.0-1.0
+}
 
-# Initialize
-sessions_repo = SessionsRepository(table_name='Sessions')
-id_service = SessionIDService(sessions_repo)
-
-# Generate unique session ID
-session_id = id_service.generate_unique_session_id()
-# Returns: 'faithful-shepherd-427'
+{
+  "action": "speakerStateChange",
+  "state": {
+    "isPaused": true,
+    "isMuted": false,
+    "volume": 0.8
+  }
+}
 ```
 
-### Performance Characteristics
+**Listener Control Messages**:
+```json
+{
+  "action": "pausePlayback"
+  // Client-side only, just acknowledgment
+}
 
-**Initialization** (Lambda cold start):
-- Load 3 word list files
-- Parse ~300 words total
-- Time: <10ms
-
-**Generation** (per ID):
-- Random selection: <1ms
-- DynamoDB query: ~5-10ms
-- Total (no collision): ~10-15ms
-- Total (with retries): ~50-100ms
-
-**Memory Usage**:
-- Word lists: ~10KB
-- Generator instance: ~15KB
-- Total overhead: ~25KB
-
-### Logging and Observability
-
-**Log Levels**:
-- INFO: Successful generation, collision recovery
-- WARNING: Retry attempts, word list size warnings
-- ERROR: Generation failures, file loading errors
-- DEBUG: Individual collision attempts
-
-**Log Examples**:
-```
-INFO: SessionIDGenerator initialized with 140 adjectives, 140 nouns, 5 blacklisted words
-INFO: Generated session ID 'faithful-shepherd-427' on attempt 1
-WARNING: Session ID generation attempt 1 failed with 2 collision(s), retrying after 0.10s
-INFO: Successfully generated unique session ID 'blessed-covenant-892' after 2 collision(s)
-ERROR: Failed to generate unique session ID after 10 attempts
+{
+  "action": "changeLanguage",
+  "targetLanguage": "fr"
+}
 ```
 
-### Configuration Options
+**Listener Notification Messages**:
+```json
+{
+  "type": "broadcastPaused" | "broadcastResumed" | "broadcastMuted" | "broadcastUnmuted",
+  "sessionId": "golden-eagle-427",
+  "timestamp": 1699500000000
+}
 
-**SessionIDGenerator**:
-- `adjectives_file`: Path to adjectives word list
-- `nouns_file`: Path to nouns word list
-- `blacklist_file`: Path to blacklist word list
-- `max_attempts`: Maximum generation attempts (default: 10)
+{
+  "type": "volumeChanged",
+  "sessionId": "golden-eagle-427",
+  "volumeLevel": 0.75,
+  "timestamp": 1699500000000
+}
 
-**SessionIDService**:
-- `sessions_repository`: Repository for uniqueness checks
-- `max_attempts`: Maximum service-level retry attempts (default: 10)
-- `retry_base_delay`: Base delay for exponential backoff (default: 0.1s)
+{
+  "type": "speakerStateChanged",
+  "sessionId": "golden-eagle-427",
+  "broadcastState": {
+    "isActive": true,
+    "isPaused": false,
+    "isMuted": false,
+    "volume": 1.0,
+    "lastStateChange": 1699500000000
+  },
+  "timestamp": 1699500000000
+}
+```
 
-### Requirements Satisfied
+### Error Handling
 
-This implementation satisfies all requirements for Task 3:
+- **403 Forbidden**: Unauthorized action for role
+- **404 Not Found**: Connection or session not found
+- **400 Bad Request**: Invalid parameters (volume out of range, invalid language, etc.)
+- **500 Internal Server Error**: Unexpected errors with detailed logging
 
-✅ **3.1 Create word list files**
-- Created adjectives.txt with 140+ Christian/Bible-themed adjectives
-- Created nouns.txt with 140+ Christian/Bible-themed nouns
-- Created blacklist.txt with profanity filter words
-- Stored in shared configuration directory
+### Metrics Emitted
 
-✅ **3.2 Create session ID generator**
-- Loads word lists at Lambda initialization
-- Implements profanity blacklist filtering
-- Implements random selection with uniqueness check
-- Configurable max retry attempts (default 10)
+- `ControlMessageLatency` - Processing time by action type
+- `ListenerNotificationLatency` - Time to notify all listeners
+- `ListenerNotificationFailures` - Count of failed notifications
+- `BroadcastPauseDuration` - Duration of broadcast pauses
 
-✅ **3.3 Implement uniqueness validation**
-- Queries DynamoDB Sessions table for existing IDs
-- Implements retry logic with exponential backoff
-- Comprehensive logging for attempts and collisions
+## Next Steps
 
-✅ **3.4 Write unit tests**
-- Tests format validation (adjective-noun-number pattern)
-- Tests blacklist filtering
-- Tests uniqueness collision handling
-- Tests max retry limit behavior
-- 20 comprehensive tests, all passing
+Task 3 is complete. The connection_handler Lambda now fully supports:
+- ✅ Speaker broadcast controls (pause, resume, mute, unmute, volume, state changes)
+- ✅ Listener controls (pause playback, change language)
+- ✅ Role-based authorization
+- ✅ Parallel listener notification
+- ✅ Comprehensive error handling and metrics
 
-### Next Steps
-
-The Session ID generation is now ready for integration:
-
-1. **Task 4**: Implement Lambda Authorizer (will use session IDs)
-2. **Task 6**: Implement $connect handler (will generate session IDs)
-3. **Task 7**: Implement heartbeat handler (will validate session IDs)
-4. **Task 8**: Implement $disconnect handler (will reference session IDs)
-5. **Task 9**: Implement refresh handler (will validate session IDs)
-
-### Files Created/Modified
-
-**Created**:
-- `shared/config/adjectives.txt`
-- `shared/config/nouns.txt`
-- `shared/config/blacklist.txt`
-- `shared/utils/session_id_generator.py`
-- `shared/utils/session_id_service.py`
-- `tests/test_session_id_generator.py`
-- `tests/test_session_id_service.py`
-
-**Modified**:
-- `shared/utils/__init__.py` (added exports)
-
-**Total**: 7 new files, 1 modified file, 20 new tests
+The next task (Task 4) will implement the session_status_handler Lambda for real-time session statistics.
