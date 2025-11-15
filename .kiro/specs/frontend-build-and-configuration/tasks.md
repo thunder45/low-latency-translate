@@ -18,7 +18,7 @@
   - Change 'audio_quality_warning' handler to 'audioQualityWarning' in SpeakerService.ts (line 115)
   - _Requirements: 7.2, 7.7_
 
-- [ ] 4. Create environment configuration files
+- [x] 4. Create environment configuration files
   - Create speaker-app/.env.example with staging WebSocket URL and Cognito credentials
   - Create listener-app/.env.example with staging WebSocket URL
   - Add comments explaining each environment variable
