@@ -3,7 +3,16 @@ Utility for building standardized API Gateway responses.
 """
 import json
 import time
+from decimal import Decimal
 from typing import Dict, Any, Optional
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 
 def success_response(
@@ -22,7 +31,7 @@ def success_response(
     """
     return {
         'statusCode': status_code,
-        'body': json.dumps(body or {})
+        'body': json.dumps(body or {}, cls=DecimalEncoder)
     }
 
 
@@ -56,7 +65,7 @@ def error_response(
 
     return {
         'statusCode': status_code,
-        'body': json.dumps(body)
+        'body': json.dumps(body, cls=DecimalEncoder)
     }
 
 

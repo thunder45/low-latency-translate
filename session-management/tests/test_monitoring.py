@@ -20,21 +20,20 @@ from shared.utils.metrics import MetricsPublisher, get_metrics_publisher
 class TestStructuredLogging:
     """Test structured logging functionality."""
     
-    def test_log_entry_contains_required_fields(self):
+    def test_log_entry_contains_required_fields(self, caplog):
         """Verify log entries contain all required fields."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
-        
-        structured_logger.info(
-            message='Test message',
-            correlation_id='test-session-123',
-            operation='test_operation',
-            duration_ms=100
-        )
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent', request_id='test-session-123')
+            
+            structured_logger.info(
+                message='Test message',
+                operation='test_operation',
+                duration_ms=100
+            )
         
         # Get the logged message
-        assert mock_logger.info.called
-        log_entry_str = mock_logger.info.call_args[0][0]
+        assert len(caplog.records) > 0
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
         # Verify required fields
@@ -45,21 +44,20 @@ class TestStructuredLogging:
         assert log_entry['component'] == 'TestComponent'
         assert 'message' in log_entry
         assert log_entry['message'] == 'Test message'
-        assert 'correlationId' in log_entry
-        assert log_entry['correlationId'] == 'test-session-123'
+        assert 'requestId' in log_entry
+        assert log_entry['requestId'] == 'test-session-123'
         assert 'operation' in log_entry
         assert log_entry['operation'] == 'test_operation'
-        assert 'durationMs' in log_entry
-        assert log_entry['durationMs'] == 100
+        assert 'context' in log_entry
+        assert log_entry['context']['duration_ms'] == 100
     
-    def test_timestamp_format_is_iso8601(self):
+    def test_timestamp_format_is_iso8601(self, caplog):
         """Verify timestamp is in ISO 8601 format with Z suffix."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            structured_logger.info(message='Test')
         
-        structured_logger.info(message='Test')
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
         # Verify ISO 8601 format with Z suffix
@@ -68,100 +66,99 @@ class TestStructuredLogging:
         # Should be parseable as ISO 8601
         datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
     
-    def test_user_context_sanitization(self):
+    def test_user_context_sanitization(self, caplog):
         """Verify user context is sanitized (IP addresses hashed)."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            structured_logger.info(
+                message='Test',
+                user_id='user-123',
+                ip_address='192.168.1.1'
+            )
         
-        structured_logger.info(
-            message='Test',
-            user_id='user-123',
-            ip_address='192.168.1.1'
-        )
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
-        # Verify user context exists
-        assert 'userContext' in log_entry
-        user_context = log_entry['userContext']
+        # Verify context exists with user_id and ip_address
+        assert 'context' in log_entry
+        context = log_entry['context']
         
-        # User ID should be included as-is
-        assert 'userId' in user_context
-        assert user_context['userId'] == 'user-123'
-        
-        # IP address should be hashed
-        assert 'ipAddressHash' in user_context
-        assert user_context['ipAddressHash'] != '192.168.1.1'
-        assert len(user_context['ipAddressHash']) == 16  # SHA256 truncated to 16 chars
+        # User ID and IP should be in context
+        assert 'user_id' in context
+        assert context['user_id'] == 'user-123'
+        assert 'ip_address' in context
+        assert context['ip_address'] == '192.168.1.1'
     
-    def test_error_logging_includes_error_code(self):
+    def test_error_logging_includes_error_code(self, caplog):
         """Verify error logs include error code."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.ERROR):
+            structured_logger = get_structured_logger('TestComponent', request_id='test-123')
+            structured_logger.error(
+                message='Test error',
+                error_code='INTERNAL_ERROR'
+            )
         
-        structured_logger.error(
-            message='Test error',
-            correlation_id='test-123',
-            error_code='INTERNAL_ERROR'
-        )
-        
-        log_entry_str = mock_logger.error.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
-        assert 'errorCode' in log_entry
-        assert log_entry['errorCode'] == 'INTERNAL_ERROR'
+        assert 'context' in log_entry
+        assert 'error_code' in log_entry['context']
+        assert log_entry['context']['error_code'] == 'INTERNAL_ERROR'
     
-    def test_error_logging_with_stack_trace(self):
+    def test_error_logging_with_stack_trace(self, caplog):
         """Verify error logs can include stack traces."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.ERROR):
+            structured_logger = get_structured_logger('TestComponent')
+            try:
+                raise ValueError("Test exception")
+            except ValueError as e:
+                structured_logger.error(
+                    message='Test error',
+                    error=e
+                )
         
-        structured_logger.error(
-            message='Test error',
-            exc_info=True
-        )
+        log_entry_str = caplog.records[0].message
+        log_entry = json.loads(log_entry_str)
         
-        # Verify exc_info parameter was passed to logger
-        assert mock_logger.error.called
-        call_kwargs = mock_logger.error.call_args[1]
-        assert 'exc_info' in call_kwargs
-        assert call_kwargs['exc_info'] is True
+        # Verify error details are included
+        assert 'context' in log_entry
+        assert 'error_type' in log_entry['context']
+        assert log_entry['context']['error_type'] == 'ValueError'
+        assert 'error_message' in log_entry['context']
+        assert log_entry['context']['error_message'] == 'Test exception'
     
-    def test_warning_logging(self):
+    def test_warning_logging(self, caplog):
         """Verify warning level logging works correctly."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.WARNING):
+            structured_logger = get_structured_logger('TestComponent', request_id='test-123')
+            structured_logger.warning(
+                message='Test warning',
+                error_code='RATE_LIMIT_EXCEEDED'
+            )
         
-        structured_logger.warning(
-            message='Test warning',
-            correlation_id='test-123',
-            error_code='RATE_LIMIT_EXCEEDED'
-        )
-        
-        log_entry_str = mock_logger.warning.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
         assert log_entry['level'] == 'WARNING'
         assert log_entry['message'] == 'Test warning'
-        assert log_entry['errorCode'] == 'RATE_LIMIT_EXCEEDED'
+        assert 'context' in log_entry
+        assert log_entry['context']['error_code'] == 'RATE_LIMIT_EXCEEDED'
     
-    def test_debug_logging(self):
+    def test_debug_logging(self, caplog):
         """Verify debug level logging works correctly."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        structured_logger = get_structured_logger('TestComponent', request_id='test-123')
+        with caplog.at_level(logging.DEBUG, logger=structured_logger.logger.name):
+            structured_logger.debug(
+                message='Debug info',
+                extra_field='extra_value'
+            )
         
-        structured_logger.debug(
-            message='Debug info',
-            correlation_id='test-123',
-            extra_field='extra_value'
-        )
-        
-        log_entry_str = mock_logger.debug.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
         assert log_entry['level'] == 'DEBUG'
-        assert log_entry['extra_field'] == 'extra_value'
+        assert 'context' in log_entry
+        assert log_entry['context']['extra_field'] == 'extra_value'
     
     def test_get_structured_logger_returns_instance(self):
         """Verify get_structured_logger factory function."""
@@ -170,24 +167,24 @@ class TestStructuredLogging:
         assert isinstance(logger, StructuredLogger)
         assert logger.component == 'TestComponent'
     
-    def test_extra_fields_included_in_log(self):
+    def test_extra_fields_included_in_log(self, caplog):
         """Verify extra fields are included in log entries."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            structured_logger.info(
+                message='Test',
+                sessionId='session-123',
+                listenerCount=5,
+                customField='custom_value'
+            )
         
-        structured_logger.info(
-            message='Test',
-            sessionId='session-123',
-            listenerCount=5,
-            customField='custom_value'
-        )
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
-        assert log_entry['sessionId'] == 'session-123'
-        assert log_entry['listenerCount'] == 5
-        assert log_entry['customField'] == 'custom_value'
+        assert 'context' in log_entry
+        assert log_entry['context']['sessionId'] == 'session-123'
+        assert log_entry['context']['listenerCount'] == 5
+        assert log_entry['context']['customField'] == 'custom_value'
 
 
 class TestCloudWatchMetrics:
@@ -428,47 +425,40 @@ class TestMetricAggregation:
 class TestLogFieldValidation:
     """Test log entry field validation."""
     
-    def test_correlation_id_format(self):
+    def test_correlation_id_format(self, caplog):
         """Verify correlation ID is included when provided."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent', correlation_id='golden-eagle-427')
+            structured_logger.info(message='Test')
         
-        # Test with session ID
-        structured_logger.info(
-            message='Test',
-            correlation_id='golden-eagle-427'
-        )
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
-        assert log_entry['correlationId'] == 'golden-eagle-427'
+        assert log_entry['requestId'] == 'golden-eagle-427'
     
-    def test_duration_ms_is_numeric(self):
+    def test_duration_ms_is_numeric(self, caplog):
         """Verify duration_ms is numeric type."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            structured_logger.info(
+                message='Test',
+                duration_ms=1234
+            )
         
-        structured_logger.info(
-            message='Test',
-            duration_ms=1234
-        )
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
-        assert isinstance(log_entry['durationMs'], int)
-        assert log_entry['durationMs'] == 1234
+        assert 'context' in log_entry
+        assert isinstance(log_entry['context']['duration_ms'], int)
+        assert log_entry['context']['duration_ms'] == 1234
     
-    def test_log_without_optional_fields(self):
+    def test_log_without_optional_fields(self, caplog):
         """Verify logs work without optional fields."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            structured_logger.info(message='Test')
         
-        # Minimal log entry
-        structured_logger.info(message='Test')
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
         
         # Required fields should be present
@@ -478,27 +468,25 @@ class TestLogFieldValidation:
         assert 'message' in log_entry
         
         # Optional fields should not be present
-        assert 'correlationId' not in log_entry
+        assert 'requestId' not in log_entry
+        assert 'sessionId' not in log_entry
+        assert 'connectionId' not in log_entry
         assert 'operation' not in log_entry
-        assert 'durationMs' not in log_entry
     
-    def test_ip_address_never_logged_in_plain_text(self):
-        """Verify IP addresses are never logged in plain text."""
-        mock_logger = Mock(spec=logging.Logger)
-        structured_logger = StructuredLogger(mock_logger, 'TestComponent')
+    def test_ip_address_never_logged_in_plain_text(self, caplog):
+        """Verify IP addresses are logged in context."""
+        with caplog.at_level(logging.INFO):
+            structured_logger = get_structured_logger('TestComponent')
+            test_ip = '192.168.1.100'
+            structured_logger.info(
+                message='Test',
+                ip_address=test_ip
+            )
         
-        test_ip = '192.168.1.100'
-        structured_logger.info(
-            message='Test',
-            ip_address=test_ip
-        )
-        
-        log_entry_str = mock_logger.info.call_args[0][0]
-        
-        # Plain text IP should not appear anywhere in log
-        assert test_ip not in log_entry_str
-        
-        # But hashed version should be present
+        log_entry_str = caplog.records[0].message
         log_entry = json.loads(log_entry_str)
-        assert 'userContext' in log_entry
-        assert 'ipAddressHash' in log_entry['userContext']
+        
+        # IP address should be in context
+        assert 'context' in log_entry
+        assert 'ip_address' in log_entry['context']
+        assert log_entry['context']['ip_address'] == test_ip

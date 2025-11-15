@@ -21,13 +21,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from shared.data_access.connections_repository import ConnectionsRepository
-from shared.utils.structured_logger import StructuredLogger
+from shared.utils.structured_logger import get_structured_logger
 from shared.utils.metrics import MetricsPublisher
 
 # Initialize logger
 base_logger = logging.getLogger()
 base_logger.setLevel(logging.INFO)
-logger = StructuredLogger(base_logger, 'TimeoutHandler')
+logger = get_structured_logger('TimeoutHandler')
 
 # Initialize resources outside handler for reuse
 connections_table = os.environ.get('CONNECTIONS_TABLE', 'Connections')

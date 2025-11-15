@@ -45,6 +45,9 @@ from shared.services.transcribe_client import (
     create_transcribe_client_for_session
 )
 
+# Translation Pipeline imports
+from shared.services.lambda_translation_pipeline import LambdaTranslationPipeline
+
 # Audio quality imports
 from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
 from audio_quality.models.quality_config import QualityConfig
@@ -80,6 +83,9 @@ format_validator: Optional[AudioFormatValidator] = None
 # Transcribe stream management (per session)
 # session_id -> (client, manager, handler, buffer, last_activity_time)
 active_streams: Dict[str, tuple] = {}
+
+# Translation Pipeline client (singleton per Lambda container)
+translation_pipeline: Optional[LambdaTranslationPipeline] = None
 
 # CloudWatch and EventBridge clients
 cloudwatch = boto3.client('cloudwatch')
@@ -444,8 +450,10 @@ def _initialize_websocket_components() -> None:
     - Connection validator
     - Rate limiter
     - Audio format validator
+    - Translation Pipeline client
     """
     global websocket_parser, connection_validator, rate_limiter, format_validator
+    global translation_pipeline
     
     if websocket_parser is None:
         logger.info("Cold start: Initializing WebSocket components")
@@ -488,6 +496,19 @@ def _initialize_websocket_components() -> None:
         
         # Initialize format validator
         format_validator = AudioFormatValidator()
+        
+        # Initialize Translation Pipeline client
+        translation_function_name = os.getenv(
+            'TRANSLATION_PIPELINE_FUNCTION_NAME',
+            'TranslationProcessor'
+        )
+        translation_pipeline = LambdaTranslationPipeline(
+            function_name=translation_function_name
+        )
+        logger.info(
+            f"Translation Pipeline client initialized: "
+            f"function={translation_function_name}"
+        )
         
         logger.info("WebSocket components initialized successfully")
 

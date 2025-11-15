@@ -11,6 +11,15 @@ import logging
 import time
 from typing import Any, Dict, Optional
 from datetime import datetime
+from decimal import Decimal
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 
 class StructuredLogger:
@@ -94,7 +103,7 @@ class StructuredLogger:
         if kwargs:
             log_entry['context'] = kwargs
         
-        return json.dumps(log_entry)
+        return json.dumps(log_entry, cls=DecimalEncoder)
     
     def debug(
         self,
@@ -316,6 +325,54 @@ class LoggingContext:
                     duration_ms=duration_ms,
                     **self.context
                 )
+
+
+def get_structured_logger(
+    component: str,
+    correlation_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    connection_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    **kwargs
+) -> StructuredLogger:
+    """
+    Factory function for creating StructuredLogger instances.
+    
+    This function provides a convenient way to create logger instances
+    with consistent configuration across all Lambda handlers.
+    
+    Args:
+        component: Name of the component (e.g., 'ConnectionHandler', 'AudioProcessor')
+        correlation_id: Optional correlation ID for request tracing (alias for request_id)
+        session_id: Optional session ID for context
+        connection_id: Optional connection ID for context
+        request_id: Optional request ID from Lambda context
+        **kwargs: Additional keyword arguments (reserved for future use)
+        
+    Returns:
+        Configured StructuredLogger instance
+        
+    Example:
+        >>> logger = get_structured_logger('AudioProcessor')
+        >>> logger.info('Processing audio chunk')
+        
+        >>> logger = get_structured_logger(
+        ...     'ConnectionHandler',
+        ...     session_id='golden-eagle-427',
+        ...     connection_id='abc123'
+        ... )
+        >>> logger.info('Connection established')
+    """
+    # Use correlation_id as request_id if provided (for backward compatibility)
+    if correlation_id and not request_id:
+        request_id = correlation_id
+    
+    return StructuredLogger(
+        component=component,
+        session_id=session_id,
+        connection_id=connection_id,
+        request_id=request_id
+    )
 
 
 def configure_lambda_logging():

@@ -181,6 +181,20 @@ class AudioTranscriptionStack(Stack):
             )
         )
 
+        # Lambda invoke permissions (for Translation Pipeline)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'lambda:InvokeFunction',
+                    'lambda:InvokeAsync'
+                ],
+                resources=[
+                    f'arn:aws:lambda:{self.region}:{self.account}:function:TranslationProcessor'
+                ]
+            )
+        )
+
         return role
 
     def _create_audio_processor_lambda(self, role: iam.Role) -> lambda_.Function:
@@ -240,6 +254,7 @@ class AudioTranscriptionStack(Stack):
                 # AWS service configuration
                 'AWS_REGION': self.region,
                 'SESSIONS_TABLE_NAME': 'Sessions',
+                'TRANSLATION_PIPELINE_FUNCTION_NAME': 'TranslationProcessor',
                 
                 # Logging configuration
                 'LOG_LEVEL': 'INFO',  # Set to DEBUG for verbose logging

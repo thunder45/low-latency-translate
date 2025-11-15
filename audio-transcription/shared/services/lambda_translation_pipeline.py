@@ -1,0 +1,198 @@
+"""
+Lambda Translation Pipeline client for forwarding transcriptions.
+
+This module provides a Lambda client implementation of the TranslationPipeline
+Protocol for asynchronously forwarding transcription results to the Translation
+Pipeline Lambda function.
+"""
+
+import json
+import time
+import logging
+from typing import Dict, Any, Optional
+import boto3
+from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
+
+
+class LambdaTranslationPipeline:
+    """
+    Lambda client for forwarding transcriptions to Translation Pipeline.
+    
+    This client implements the TranslationPipeline Protocol and provides
+    asynchronous invocation of the Translation Pipeline Lambda function with
+    retry logic and error handling.
+    
+    Features:
+    - Asynchronous Lambda invocation (InvocationType='Event')
+    - Retry logic with exponential backoff (2 retries, 100ms delay)
+    - Emotion dynamics support in payload
+    - Graceful error handling without blocking audio processing
+    
+    Examples:
+        >>> pipeline = LambdaTranslationPipeline('TranslationProcessor')
+        >>> success = pipeline.process(
+        ...     text='Hello everyone',
+        ...     session_id='golden-eagle-427',
+        ...     source_language='en',
+        ...     emotion_dynamics={'volume': 0.7, 'rate': 1.2, 'energy': 0.8}
+        ... )
+    """
+    
+    def __init__(
+        self,
+        function_name: str,
+        lambda_client: Optional[boto3.client] = None
+    ):
+        """
+        Initialize Lambda Translation Pipeline client.
+        
+        Args:
+            function_name: Name of Translation Pipeline Lambda function
+            lambda_client: Optional boto3 Lambda client (for testing)
+        """
+        self.function_name = function_name
+        self.lambda_client = lambda_client or boto3.client('lambda')
+        self.max_retries = 2
+        self.retry_delay_ms = 100
+        
+        logger.info(
+            f"Initialized LambdaTranslationPipeline: "
+            f"function={function_name}, max_retries={self.max_retries}"
+        )
+    
+    def process(
+        self,
+        text: str,
+        session_id: str,
+        source_language: str,
+        is_partial: bool = False,
+        stability_score: float = 1.0,
+        timestamp: Optional[int] = None,
+        emotion_dynamics: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Forward transcription to Translation Pipeline.
+        
+        Constructs payload with all required fields and invokes the Translation
+        Pipeline Lambda function asynchronously. Includes retry logic for
+        transient failures.
+        
+        Args:
+            text: Transcribed text
+            session_id: Session identifier
+            source_language: Source language code (ISO 639-1)
+            is_partial: Whether this is a partial result (default: False)
+            stability_score: Transcription stability score 0.0-1.0 (default: 1.0)
+            timestamp: Unix timestamp in milliseconds (default: current time)
+            emotion_dynamics: Optional emotion data (volume, rate, energy)
+            
+        Returns:
+            True if successfully forwarded, False otherwise
+            
+        Examples:
+            >>> pipeline = LambdaTranslationPipeline('TranslationProcessor')
+            >>> success = pipeline.process(
+            ...     text='Hello',
+            ...     session_id='test-123',
+            ...     source_language='en',
+            ...     emotion_dynamics={'volume': 0.7, 'rate': 1.2, 'energy': 0.8}
+            ... )
+        """
+        # Construct payload
+        payload = {
+            'sessionId': session_id,
+            'sourceLanguage': source_language,
+            'transcriptText': text,
+            'isPartial': is_partial,
+            'stabilityScore': stability_score,
+            'timestamp': timestamp or int(time.time() * 1000),
+            'emotionDynamics': emotion_dynamics or self._get_default_emotion()
+        }
+        
+        # Retry loop
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.debug(
+                    f"Invoking Translation Pipeline (attempt {attempt + 1}): "
+                    f"session={session_id}, text_length={len(text)}"
+                )
+                
+                response = self.lambda_client.invoke(
+                    FunctionName=self.function_name,
+                    InvocationType='Event',  # Asynchronous invocation
+                    Payload=json.dumps(payload)
+                )
+                
+                # Check response status
+                status_code = response.get('StatusCode', 0)
+                if status_code in [200, 202]:
+                    logger.info(
+                        f"Successfully forwarded to Translation Pipeline: "
+                        f"session={session_id}, text='{text[:50]}...'"
+                    )
+                    return True
+                else:
+                    logger.warning(
+                        f"Unexpected status code from Translation Pipeline: "
+                        f"{status_code}"
+                    )
+                    # Continue to retry
+                    
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                error_message = e.response.get('Error', {}).get('Message', str(e))
+                
+                logger.error(
+                    f"Lambda invocation failed (attempt {attempt + 1}): "
+                    f"session={session_id}, error_code={error_code}, "
+                    f"error_message={error_message}"
+                )
+                
+                # Check if we should retry
+                if attempt < self.max_retries:
+                    # Wait before retry
+                    time.sleep(self.retry_delay_ms / 1000)
+                    continue
+                else:
+                    # Max retries reached
+                    logger.error(
+                        f"Failed to invoke Translation Pipeline after "
+                        f"{self.max_retries} retries: session={session_id}, "
+                        f"function={self.function_name}"
+                    )
+                    return False
+                    
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error invoking Translation Pipeline: "
+                    f"session={session_id}, error={str(e)}",
+                    exc_info=True
+                )
+                
+                # Check if we should retry
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay_ms / 1000)
+                    continue
+                else:
+                    return False
+        
+        # Should not reach here, but return False as fallback
+        return False
+    
+    def _get_default_emotion(self) -> Dict[str, Any]:
+        """
+        Get default neutral emotion values.
+        
+        Returns default emotion dynamics when emotion data is not provided
+        or extraction fails. These values represent neutral emotional state.
+        
+        Returns:
+            Dict with default emotion values (volume, rate, energy)
+        """
+        return {
+            'volume': 0.5,  # Medium volume (0.0-1.0)
+            'rate': 1.0,    # Normal speaking rate (0.5-2.0)
+            'energy': 0.5   # Medium energy (0.0-1.0)
+        }

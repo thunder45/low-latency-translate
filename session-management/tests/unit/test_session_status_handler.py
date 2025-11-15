@@ -6,12 +6,20 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from decimal import Decimal
 
-# Import handler functions
+# Import handler module
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lambda', 'session_status_handler'))
+import importlib.util
 
-import handler as session_status_handler
+# Add shared path for imports
+shared_path = os.path.join(os.path.dirname(__file__), '..', '..')
+sys.path.insert(0, shared_path)
+
+# Import handler module directly from file to avoid conflicts
+handler_file = os.path.join(os.path.dirname(__file__), '..', '..', 'lambda', 'session_status_handler', 'handler.py')
+spec = importlib.util.spec_from_file_location("session_status_handler", handler_file)
+session_status_handler = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(session_status_handler)
 
 lambda_handler = session_status_handler.lambda_handler
 handle_get_session_status = session_status_handler.handle_get_session_status
@@ -25,21 +33,21 @@ send_status_to_speaker = session_status_handler.send_status_to_speaker
 @pytest.fixture
 def mock_sessions_repo():
     """Mock sessions repository."""
-    with patch('handler.sessions_repo') as mock:
+    with patch.object(session_status_handler, 'sessions_repo') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_connections_repo():
     """Mock connections repository."""
-    with patch('handler.connections_repo') as mock:
+    with patch.object(session_status_handler, 'connections_repo') as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_metrics_publisher():
     """Mock metrics publisher."""
-    with patch('handler.metrics_publisher') as mock:
+    with patch.object(session_status_handler, 'metrics_publisher') as mock:
         yield mock
 
 
@@ -157,7 +165,7 @@ class TestLambdaHandler:
         }
         context = Mock()
         
-        with patch('handler.get_all_active_sessions') as mock_get_sessions:
+        with patch.object(session_status_handler, 'get_all_active_sessions') as mock_get_sessions:
             mock_get_sessions.return_value = []
             
             # Act
@@ -304,7 +312,7 @@ class TestHandleGetSessionStatus:
             'role': 'speaker'
         }
         
-        with patch('handler.get_session_status') as mock_get_status:
+        with patch.object(session_status_handler, 'get_session_status') as mock_get_status:
             mock_get_status.return_value = None
             
             # Act
@@ -543,8 +551,8 @@ class TestHandlePeriodicUpdates:
         
         active_sessions = [sample_session]
         
-        with patch('handler.get_all_active_sessions') as mock_get_sessions:
-            with patch('handler.send_status_to_speaker') as mock_send:
+        with patch.object(session_status_handler, 'get_all_active_sessions') as mock_get_sessions:
+            with patch.object(session_status_handler, 'send_status_to_speaker') as mock_send:
                 mock_get_sessions.return_value = active_sessions
                 mock_sessions_repo.get_session.return_value = sample_session
                 mock_connections_repo.get_listener_connections.return_value = sample_listener_connections
@@ -572,7 +580,7 @@ class TestHandlePeriodicUpdates:
         }
         context = Mock()
         
-        with patch('handler.get_all_active_sessions') as mock_get_sessions:
+        with patch.object(session_status_handler, 'get_all_active_sessions') as mock_get_sessions:
             mock_get_sessions.return_value = []
             
             # Act
@@ -604,8 +612,8 @@ class TestHandlePeriodicUpdates:
         active_sessions[1]['sessionId'] = 'another-session'
         active_sessions[1]['speakerConnectionId'] = 'speaker-conn-456'
         
-        with patch('handler.get_all_active_sessions') as mock_get_sessions:
-            with patch('handler.send_status_to_speaker') as mock_send:
+        with patch.object(session_status_handler, 'get_all_active_sessions') as mock_get_sessions:
+            with patch.object(session_status_handler, 'send_status_to_speaker') as mock_send:
                 mock_get_sessions.return_value = active_sessions
                 mock_sessions_repo.get_session.return_value = sample_session
                 mock_connections_repo.get_listener_connections.return_value = sample_listener_connections

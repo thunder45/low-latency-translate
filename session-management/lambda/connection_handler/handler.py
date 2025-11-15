@@ -7,7 +7,16 @@ import logging
 import os
 import time
 import boto3
+from decimal import Decimal
 from typing import Dict, Any, List
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 from shared.data_access import (
     SessionsRepository,
@@ -681,7 +690,7 @@ def send_to_connection(connection_id: str, message: Dict[str, Any]) -> bool:
     try:
         apigw_management_client.post_to_connection(
             ConnectionId=connection_id,
-            Data=json.dumps(message).encode('utf-8')
+            Data=json.dumps(message, cls=DecimalEncoder).encode('utf-8')
         )
         return True
     except apigw_management_client.exceptions.GoneException:
