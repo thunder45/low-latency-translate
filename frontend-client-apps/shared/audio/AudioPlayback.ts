@@ -7,7 +7,7 @@ import { AudioPlaybackConfig, PlaybackState } from './types';
 export class AudioPlayback {
   private audioContext: AudioContext | null = null;
   private audioQueue: AudioBuffer[] = [];
-  private isPlaying: boolean = false;
+  private _isPlaying: boolean = false;
   private isPaused: boolean = false;
   private isMuted: boolean = false;
   private volume: number = 0.8; // 0.0 to 1.0
@@ -85,7 +85,7 @@ export class AudioPlayback {
    * Check if currently playing
    */
   isPlaying(): boolean {
-    return this.isPlaying;
+    return this._isPlaying;
   }
 
   /**
@@ -163,7 +163,7 @@ export class AudioPlayback {
       this.currentSource.stop();
       this.currentSource = null;
     }
-    this.isPlaying = false;
+    this._isPlaying = false;
   }
 
   /**
@@ -220,7 +220,7 @@ export class AudioPlayback {
    */
   getState(): PlaybackState {
     return {
-      isPlaying: this.isPlaying,
+      isPlaying: this._isPlaying,
       isPaused: this.isPaused,
       isMuted: this.isMuted,
       volume: this.volume,
@@ -260,7 +260,7 @@ export class AudioPlayback {
    * Schedule next audio buffer for playback
    */
   private schedulePlayback(): void {
-    if (this.isPaused || this.isPlaying || this.audioQueue.length === 0) {
+    if (this.isPaused || this._isPlaying || this.audioQueue.length === 0) {
       // Check if we're buffering
       if (this.audioQueue.length === 0 && this.onBufferingCallback) {
         this.onBufferingCallback(true);
@@ -279,12 +279,12 @@ export class AudioPlayback {
     this.currentSource.connect(this.gainNode!);
 
     this.currentSource.onended = () => {
-      this.isPlaying = false;
+      this._isPlaying = false;
       this.currentSource = null;
       this.schedulePlayback();
     };
 
     this.currentSource.start();
-    this.isPlaying = true;
+    this._isPlaying = true;
   }
 }

@@ -20,8 +20,8 @@ export function useSpeakerPreferences(
           if (prefs.inputVolume !== undefined) {
             setInputVolume(prefs.inputVolume);
           }
-          if (prefs.keyboardShortcuts !== undefined) {
-            setKeyboardShortcutsEnabled(prefs.keyboardShortcuts);
+          if (prefs.keyboardShortcutsEnabled !== undefined) {
+            setKeyboardShortcutsEnabled(prefs.keyboardShortcutsEnabled);
           }
         }
       } catch (error) {
@@ -54,8 +54,8 @@ export function useListenerPreferences(
           if (prefs.languagePreference) {
             setLanguagePreference(prefs.languagePreference);
           }
-          if (prefs.keyboardShortcuts !== undefined) {
-            setKeyboardShortcutsEnabled(prefs.keyboardShortcuts);
+          if (prefs.keyboardShortcutsEnabled !== undefined) {
+            setKeyboardShortcutsEnabled(prefs.keyboardShortcutsEnabled);
           }
         }
       } catch (error) {

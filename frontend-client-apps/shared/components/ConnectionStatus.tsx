@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConnectionState } from '../websocket/WebSocketClient';
+import { ConnectionState } from '../websocket/types';
 
 interface ConnectionStatusProps {
   connectionState: ConnectionState;
@@ -15,7 +15,7 @@ export function ConnectionStatus({
   onRetry
 }: ConnectionStatusProps) {
   const getStatusColor = (): string => {
-    switch (connectionState) {
+    switch (connectionState.status) {
       case 'connected':
         return '#4caf50'; // Green
       case 'connecting':
@@ -31,7 +31,7 @@ export function ConnectionStatus({
   };
 
   const getStatusText = (): string => {
-    switch (connectionState) {
+    switch (connectionState.status) {
       case 'connected':
         return 'Connected';
       case 'connecting':
@@ -47,7 +47,7 @@ export function ConnectionStatus({
     }
   };
 
-  const showRetryButton = connectionState === 'failed' && onRetry;
+  const showRetryButton = connectionState.status === 'failed' && onRetry;
 
   return (
     <div

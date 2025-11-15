@@ -1,4 +1,4 @@
-import type { ControlError } from '../types/controls';
+import type { ControlError, ControlErrorType } from '../types/controls';
 
 /**
  * Error handler for control operations
@@ -53,7 +53,7 @@ export class ControlErrorHandler {
    */
   static createControlError(
     error: Error,
-    type: string,
+    type: ControlErrorType,
     recoverable: boolean = true
   ): ControlError {
     return {
@@ -61,7 +61,6 @@ export class ControlErrorHandler {
       message: error.message,
       recoverable,
       timestamp: Date.now(),
-      details: error.stack,
     };
   }
   

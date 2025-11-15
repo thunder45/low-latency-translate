@@ -37,8 +37,8 @@ class RUMClient {
     this.config = config;
 
     try {
-      // Dynamically import AWS RUM Web Client
-      const { AwsRum } = await import('aws-rum-web');
+      // Dynamically import AWS RUM Web Client (optional dependency)
+      const { AwsRum } = await import('aws-rum-web' as any);
 
       this.rum = new AwsRum(
         config.applicationId,
