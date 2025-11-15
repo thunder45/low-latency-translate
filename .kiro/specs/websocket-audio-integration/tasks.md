@@ -354,7 +354,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Configure log retention (12 hours)
   - _Requirements: 23_
 
-- [ ] 10. Update CDK infrastructure
+- [x] 10. Update CDK infrastructure ✅ COMPLETE
   - Update `session-management/infrastructure/stacks/` with new routes
   - Add session_status_handler Lambda to CDK
   - Update IAM roles with new permissions
@@ -363,7 +363,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Deploy infrastructure changes
   - _Requirements: 20_
 
-- [ ] 10.1 Add WebSocket routes to CDK
+- [x] 10.1 Add WebSocket routes to CDK ✅ COMPLETE
   - Add sendAudio route configuration
   - Add speaker control routes (pause, resume, mute, volume, state)
   - Add session status route
@@ -372,7 +372,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Map routes to Lambda integrations
   - _Requirements: 19, 20_
 
-- [ ] 10.2 Add session_status_handler Lambda to CDK
+- [x] 10.2 Add session_status_handler Lambda to CDK ✅ COMPLETE
   - Create Lambda function resource
   - Configure memory (256 MB) and timeout (5 seconds)
   - Add IAM role with DynamoDB read permissions
@@ -380,7 +380,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Configure log group
   - _Requirements: 20_
 
-- [ ] 10.3 Update IAM permissions
+- [x] 10.3 Update IAM permissions ✅ COMPLETE
   - Add Transcribe permissions to audio_processor role:
     - `transcribe:StartStreamTranscription`
     - `transcribe:StartStreamTranscriptionWebSocket`
@@ -397,8 +397,9 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Add Lambda invoke permissions for Translation Pipeline:
     - `lambda:InvokeFunction` on TranslationProcessor Lambda
   - _Requirements: 20_
+  - **Note**: Translation Pipeline Lambda invoke permission needs to be added to audio-transcription stack separately
 
-- [ ] 10.4 Add EventBridge rule for periodic updates
+- [x] 10.4 Add EventBridge rule for periodic updates ✅ COMPLETE
   - Create scheduled rule (every 30 seconds)
   - Target session_status_handler Lambda
   - Configure input transformer

@@ -14,6 +14,8 @@ from aws_cdk import (
     aws_cloudwatch as cloudwatch,
     aws_cloudwatch_actions as cw_actions,
     aws_sns as sns,
+    aws_events as events,
+    aws_events_targets as targets,
 )
 from constructs import Construct
 
@@ -54,6 +56,9 @@ class SessionManagementStack(Stack):
 
         # Create WebSocket API
         self.websocket_api = self._create_websocket_api()
+
+        # Create EventBridge rule for periodic status updates
+        self._create_periodic_status_update_rule()
 
         # Create SNS topic for alarms
         self.alarm_topic = self._create_alarm_topic()
@@ -608,6 +613,53 @@ class SessionManagementStack(Stack):
         )
 
         return integration
+
+    def _create_periodic_status_update_rule(self):
+        """
+        Create EventBridge rule for periodic session status updates.
+        
+        This rule triggers the session_status_handler Lambda every 30 seconds
+        to send automatic status updates to all active speakers.
+        
+        Requirements: 12 (Periodic Session Status Updates)
+        """
+        # Create EventBridge rule that triggers every 30 seconds
+        rule = events.Rule(
+            self,
+            "PeriodicStatusUpdateRule",
+            rule_name=f"session-status-periodic-update-{self.env_name}",
+            description="Trigger periodic session status updates every 30 seconds",
+            schedule=events.Schedule.rate(Duration.seconds(30)),
+            enabled=True,
+        )
+
+        # Add session_status_handler as target
+        rule.add_target(
+            targets.LambdaFunction(
+                self.session_status_handler,
+                retry_attempts=2,  # Retry up to 2 times on failure
+            )
+        )
+
+        # Grant EventBridge permission to invoke the Lambda
+        # This is automatically handled by add_target, but we can be explicit
+        self.session_status_handler.grant_invoke(
+            iam.ServicePrincipal("events.amazonaws.com")
+        )
+
+        # Add API Gateway endpoint to session_status_handler environment
+        # This is needed for sending status updates to speakers via WebSocket
+        api_endpoint = f"https://{self.websocket_api.ref}.execute-api.{self.region}.amazonaws.com/prod"
+        self.session_status_handler.add_environment("API_GATEWAY_ENDPOINT", api_endpoint)
+
+        # Grant API Gateway Management API permissions to session_status_handler
+        # This allows it to send messages to WebSocket connections
+        self.session_status_handler.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["execute-api:ManageConnections", "execute-api:Invoke"],
+                resources=[f"arn:aws:execute-api:{self.region}:{self.account}:{self.websocket_api.ref}/*"],
+            )
+        )
 
     def _create_alarm_topic(self) -> sns.Topic:
         """Create SNS topic for CloudWatch alarms."""

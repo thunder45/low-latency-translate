@@ -91,6 +91,7 @@ Start here based on your role:
 
 ### For Project Managers
 1. **Task Summaries** - See docs/TASK_1_SUMMARY.md through docs/TASK_14_SUMMARY.md
+   - Latest: docs/TASK_10_SUMMARY.md (CDK Infrastructure Updates)
 2. **[OVERVIEW.md](OVERVIEW.md)** - This file
 
 ### For Architects
