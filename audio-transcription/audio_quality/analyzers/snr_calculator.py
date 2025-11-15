@@ -110,6 +110,10 @@ class SNRCalculator:
             noise_power = (1.0 / (2**16)) ** 2  # Quantization noise level
             
             snr_db = 10 * np.log10(signal_power / noise_power)
+            
+            # Cap at 45 dB for realistic range (very clean audio)
+            # This prevents unrealistically high values while still indicating excellent quality
+            snr_db = min(snr_db, 45.0)
         else:
             # NOISY SIGNAL PATH: Use percentile-based separation
             # Real speech and noisy signals have natural variance

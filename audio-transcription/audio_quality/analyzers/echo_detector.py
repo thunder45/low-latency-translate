@@ -34,7 +34,7 @@ class EchoDetector:
         self,
         min_delay_ms: int = 10,
         max_delay_ms: int = 500,
-        threshold_db: float = -5.0,
+        threshold_db: float = -15.0,
         downsample_rate: int = 8000
     ):
         """
@@ -44,7 +44,7 @@ class EchoDetector:
             min_delay_ms: Minimum echo delay in milliseconds
             max_delay_ms: Maximum echo delay in milliseconds
             threshold_db: Echo level threshold in dB (echo > threshold triggers detection)
-                         Default -5.0 dB means echo must be ~56% of original signal strength
+                         Default -15.0 dB means echo must be ~18% of original signal strength
             downsample_rate: Target sample rate for downsampling (0 to disable)
         """
         self.min_delay_ms = min_delay_ms
@@ -106,6 +106,45 @@ class EchoDetector:
         if np.max(np.abs(audio_normalized)) > 0:
             audio_normalized = audio_normalized / np.max(np.abs(audio_normalized))
         
+        # Detect if signal is highly periodic (like a pure sine wave)
+        # Periodic signals have many strong autocorrelation peaks and should not trigger echo detection
+        # Calculate signal variance to detect pure tones
+        # Pure tones have very low variance in their envelope
+        
+        # Calculate short-term energy variance
+        frame_size = 400  # 25ms at 16kHz
+        num_frames = len(audio_normalized) // frame_size
+        
+        if num_frames >= 4:
+            frame_energies = []
+            for i in range(num_frames):
+                frame = audio_normalized[i * frame_size:(i + 1) * frame_size]
+                energy = np.mean(frame ** 2)
+                frame_energies.append(energy)
+            
+            frame_energies = np.array(frame_energies)
+            energy_variance = np.var(frame_energies)
+            mean_energy = np.mean(frame_energies)
+            
+            # Coefficient of variation for energy
+            if mean_energy > 0:
+                energy_cv = np.sqrt(energy_variance) / mean_energy
+            else:
+                energy_cv = 0
+            
+            # Pure tones have very low energy CV (<0.01)
+            # Real speech has higher CV (>0.1) due to amplitude variations
+            is_pure_tone = (energy_cv < 0.05)
+            
+            if is_pure_tone:
+                # Pure tones should not trigger echo detection
+                # Their autocorrelation peaks are from periodicity, not echoes
+                return EchoResult(
+                    echo_level_db=-100.0,
+                    delay_ms=0.0,
+                    has_echo=False
+                )
+        
         # Compute autocorrelation using scipy for better accuracy
         from scipy import signal as scipy_signal
         autocorr = scipy_signal.correlate(audio_normalized, audio_normalized, mode='full')
@@ -136,19 +175,21 @@ class EchoDetector:
             )
             
         # Sophisticated peak detection to distinguish echo from periodic signal peaks
-        # Increased threshold from 0.01 to 0.3 to avoid false positives
-        # For periodic signals, use higher threshold to filter periodic peaks
-        peak_threshold = 0.3
+        # For periodic signals (like pure sine waves), autocorrelation has many peaks
+        # Real echoes are typically isolated peaks in the 30-200ms range
+        # Increased threshold from 0.01 to 0.5 to avoid false positives from periodic signals
+        peak_threshold = 0.5
         
         # Use scipy's find_peaks to identify all significant peaks
         from scipy.signal import find_peaks
         
         # Find ALL peaks above threshold
         # Use prominence to identify peaks that stand out from surroundings
+        # Increased prominence to 0.2 to filter out periodic signal peaks
         peaks, properties = find_peaks(
             search_range,
             height=peak_threshold,
-            prominence=0.1  # Peak must stand out from surroundings
+            prominence=0.2  # Peak must stand out significantly from surroundings
         )
         
         if len(peaks) == 0:
