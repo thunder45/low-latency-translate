@@ -667,12 +667,10 @@ def _initialize_websocket_components() -> None:
             
             from shared.data_access.connections_repository import ConnectionsRepository
             from shared.data_access.sessions_repository import SessionsRepository
+            from shared.config.table_names import get_table_name, SESSIONS_TABLE_NAME, CONNECTIONS_TABLE_NAME
             
-            connections_table = os.getenv('CONNECTIONS_TABLE_NAME', 'Connections')
-            sessions_table = os.getenv('SESSIONS_TABLE_NAME', 'Sessions')
-            
-            connections_repo = ConnectionsRepository(connections_table)
-            sessions_repo = SessionsRepository(sessions_table)
+            connections_repo = ConnectionsRepository(get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME))
+            sessions_repo = SessionsRepository(get_table_name('SESSIONS_TABLE_NAME', SESSIONS_TABLE_NAME))
             
             connection_validator = ConnectionValidator(connections_repo, sessions_repo)
             

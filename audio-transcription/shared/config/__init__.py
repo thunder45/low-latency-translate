@@ -1,5 +1,5 @@
 """
-Configuration module for session management.
+Configuration module for audio transcription.
 """
 
 from .table_names import (

@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from shared.data_access.connections_repository import ConnectionsRepository
 from shared.utils.structured_logger import get_structured_logger
 from shared.utils.metrics import MetricsPublisher
+from shared.config.table_names import get_table_name, CONNECTIONS_TABLE_NAME
 
 # Initialize logger
 base_logger = logging.getLogger()
@@ -30,8 +31,7 @@ base_logger.setLevel(logging.INFO)
 logger = get_structured_logger('TimeoutHandler')
 
 # Initialize resources outside handler for reuse
-connections_table = os.environ.get('CONNECTIONS_TABLE', 'Connections')
-connections_repo = ConnectionsRepository(connections_table)
+connections_repo = ConnectionsRepository(get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME))
 
 # Configuration
 CONNECTION_IDLE_TIMEOUT_SECONDS = int(os.environ.get('CONNECTION_IDLE_TIMEOUT_SECONDS', 120))

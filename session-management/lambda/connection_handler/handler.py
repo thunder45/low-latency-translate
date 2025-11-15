@@ -42,6 +42,7 @@ from shared.utils.response_builder import (
 )
 from shared.utils.structured_logger import get_structured_logger
 from shared.utils.metrics import get_metrics_publisher
+from shared.config.table_names import get_table_name, SESSIONS_TABLE_NAME, CONNECTIONS_TABLE_NAME
 
 # Initialize structured logger
 base_logger = logging.getLogger()
@@ -49,8 +50,8 @@ base_logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 logger = get_structured_logger('ConnectionHandler')
 
 # Initialize repositories and services (reused across Lambda invocations)
-sessions_repo = SessionsRepository(os.environ.get('SESSIONS_TABLE', 'Sessions'))
-connections_repo = ConnectionsRepository(os.environ.get('CONNECTIONS_TABLE', 'Connections'))
+sessions_repo = SessionsRepository(get_table_name('SESSIONS_TABLE_NAME', SESSIONS_TABLE_NAME))
+connections_repo = ConnectionsRepository(get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME))
 rate_limit_service = RateLimitService()
 language_validator = LanguageValidator(region=os.environ.get('AWS_REGION', 'us-east-1'))
 session_id_service = SessionIDService(sessions_repo)

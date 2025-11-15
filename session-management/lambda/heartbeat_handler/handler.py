@@ -17,13 +17,13 @@ from shared.config.constants import (
     CONNECTION_REFRESH_MINUTES,
     CONNECTION_WARNING_MINUTES
 )
+from shared.config.table_names import get_table_name, CONNECTIONS_TABLE_NAME
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize resources outside handler for reuse
-connections_table = os.environ.get('CONNECTIONS_TABLE', 'Connections')
-connections_repo = ConnectionsRepository(connections_table)
+connections_repo = ConnectionsRepository(get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME))
 
 # API Gateway Management API client (initialized per request with endpoint)
 api_gateway_endpoint = os.environ.get('API_GATEWAY_ENDPOINT', '')

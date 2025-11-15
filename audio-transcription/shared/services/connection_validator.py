@@ -275,15 +275,16 @@ def create_validator_from_env():
         logger.error(f"Failed to import repositories: {e}")
         raise ValueError(f"Failed to import repositories: {e}")
     
-    # Get table names from environment
-    connections_table = os.getenv('CONNECTIONS_TABLE_NAME')
-    sessions_table = os.getenv('SESSIONS_TABLE_NAME')
-    
-    if not connections_table:
-        raise ValueError("CONNECTIONS_TABLE_NAME environment variable not set")
-    
-    if not sessions_table:
-        raise ValueError("SESSIONS_TABLE_NAME environment variable not set")
+    # Get table names from shared config
+    try:
+        from shared.config.table_names import get_table_name, SESSIONS_TABLE_NAME, CONNECTIONS_TABLE_NAME
+        
+        connections_table = get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME)
+        sessions_table = get_table_name('SESSIONS_TABLE_NAME', SESSIONS_TABLE_NAME)
+    except ImportError:
+        # Fallback to environment variables if config not available
+        connections_table = os.getenv('CONNECTIONS_TABLE_NAME', 'Connections')
+        sessions_table = os.getenv('SESSIONS_TABLE_NAME', 'Sessions')
     
     # Create repositories
     connections_repo = ConnectionsRepository(connections_table)

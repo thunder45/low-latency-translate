@@ -14,15 +14,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from shared.data_access.connections_repository import ConnectionsRepository
 from shared.data_access.sessions_repository import SessionsRepository
+from shared.config.table_names import get_table_name, SESSIONS_TABLE_NAME, CONNECTIONS_TABLE_NAME
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize resources outside handler for reuse
-connections_table = os.environ.get('CONNECTIONS_TABLE', 'Connections')
-sessions_table = os.environ.get('SESSIONS_TABLE', 'Sessions')
-connections_repo = ConnectionsRepository(connections_table)
-sessions_repo = SessionsRepository(sessions_table)
+connections_repo = ConnectionsRepository(get_table_name('CONNECTIONS_TABLE_NAME', CONNECTIONS_TABLE_NAME))
+sessions_repo = SessionsRepository(get_table_name('SESSIONS_TABLE_NAME', SESSIONS_TABLE_NAME))
 
 
 def send_message_to_connection(connection_id: str, message: dict, endpoint_url: str) -> bool:
