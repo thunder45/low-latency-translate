@@ -407,7 +407,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 12_
 
 
-- [ ] 11. Integration testing
+- [x] 11. Integration testing
   - Test end-to-end audio flow
   - Test control message flow
   - Test session status queries
@@ -415,7 +415,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Test performance under load
   - _Requirements: All_
 
-- [ ] 11.1 Test end-to-end audio flow
+- [x] 11.1 Test end-to-end audio flow
   - Speaker connects and creates session
   - Speaker sends audio chunks
   - Verify Transcribe stream initialized
@@ -424,7 +424,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Verify no audio loss or duplication
   - _Requirements: 1-5, 25_
 
-- [ ] 11.2 Test control message flow
+- [x] 11.2 Test control message flow
   - Speaker pauses broadcast
   - Verify session state updated
   - Verify listeners notified
@@ -434,7 +434,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Test mute, volume, state changes
   - _Requirements: 6-10_
 
-- [ ] 11.3 Test session status queries
+- [x] 11.3 Test session status queries
   - Multiple listeners join with different languages
   - Speaker queries status
   - Verify correct listener count
@@ -443,7 +443,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Test periodic updates
   - _Requirements: 11-12_
 
-- [ ] 11.4 Test error scenarios
+- [x] 11.4 Test error scenarios
   - Test invalid audio format
   - Test rate limit violations
   - Test Transcribe stream failures
@@ -462,7 +462,7 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - _Requirements: 21_
 
 
-- [ ] 12. Update documentation
+- [x] 12. Update documentation
   - Update session-management README with new routes
   - Update audio-transcription README with WebSocket integration
   - Document broadcast state model
@@ -471,21 +471,21 @@ This implementation plan converts the WebSocket Audio Integration design into ac
   - Create deployment guide
   - _Requirements: All_
 
-- [ ] 12.1 Update session-management documentation
+- [x] 12.1 Update session-management documentation
   - Document new WebSocket routes
   - Document control message formats
   - Document broadcast state management
   - Update API documentation
   - _Requirements: 6-12, 18-19_
 
-- [ ] 12.2 Update audio-transcription documentation
+- [x] 12.2 Update audio-transcription documentation
   - Document WebSocket audio reception
   - Document Transcribe stream integration
   - Document rate limiting
   - Document error handling
   - _Requirements: 1-5, 13-14, 26_
 
-- [ ] 12.3 Create integration guide
+- [x] 12.3 Create integration guide
   - Document end-to-end flow
   - Document frontend integration requirements
   - Document message formats
