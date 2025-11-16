@@ -121,7 +121,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .language-selector {
           display: flex;
           flex-direction: column;

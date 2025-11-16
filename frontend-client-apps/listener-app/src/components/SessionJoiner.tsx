@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { Validator } from '../../../shared/utils/Validator';
 
 interface SessionJoinerProps {
-  onJoin: (sessionId: string, targetLanguage: string) => void;
-  availableLanguages: string[];
+  onJoin?: (sessionId: string, targetLanguage: string) => void;
+  onSessionJoined?: (sessionId: string, targetLanguage: string) => Promise<void>;
+  onSendMessage?: (message: any) => void;
+  availableLanguages?: string[];
   error?: string | null;
   isJoining?: boolean;
 }
 
 export const SessionJoiner: React.FC<SessionJoinerProps> = ({
   onJoin,
-  availableLanguages,
+  onSessionJoined,
+  availableLanguages = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ar'],
   error,
   isJoining = false
 }) => {
@@ -28,7 +31,7 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const trimmedSessionId = sessionId.trim();
@@ -46,7 +49,13 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
     
     // Clear validation error and submit
     setValidationError(null);
-    onJoin(trimmedSessionId, targetLanguage);
+    
+    // Call the appropriate callback
+    if (onSessionJoined) {
+      await onSessionJoined(trimmedSessionId, targetLanguage);
+    } else if (onJoin) {
+      onJoin(trimmedSessionId, targetLanguage);
+    }
   };
 
   return (
@@ -103,12 +112,12 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
         </button>
       </form>
       
-      <style jsx>{`
+      <style>{`
         .session-joiner {
           max-width: 400px;
           margin: 2rem auto;
           padding: 2rem;
-          background: #ffffff;
+          background: var(--card-bg, #ffffff);
           border-radius: 8px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
@@ -116,7 +125,7 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
         h2 {
           margin: 0 0 1.5rem 0;
           font-size: 24px;
-          color: #333;
+          color: var(--text-primary, #1a1a1a);
           text-align: center;
         }
         
@@ -128,7 +137,7 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
           display: block;
           margin-bottom: 0.5rem;
           font-weight: 500;
-          color: #555;
+          color: var(--text-secondary, #4a4a4a);
           font-size: 14px;
         }
         
@@ -136,10 +145,17 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
         select {
           width: 100%;
           padding: 0.75rem;
-          border: 1px solid #ddd;
+          border: 1px solid var(--border-color, #ddd);
           border-radius: 4px;
           font-size: 16px;
+          background-color: var(--input-bg, #ffffff);
+          color: var(--text-primary, #1a1a1a);
           transition: border-color 0.2s;
+        }
+
+        select option {
+          background-color: var(--input-bg, #ffffff);
+          color: var(--text-primary, #1a1a1a);
         }
         
         input:focus,
@@ -155,13 +171,14 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
         
         input:disabled,
         select:disabled {
-          background-color: #f5f5f5;
+          background-color: var(--input-disabled-bg, #f5f5f5);
           cursor: not-allowed;
+          opacity: 0.6;
         }
         
         .error-message {
           margin-top: 0.5rem;
-          color: #f44336;
+          color: var(--error-text, #f44336);
           font-size: 14px;
         }
         
@@ -183,13 +200,55 @@ export const SessionJoiner: React.FC<SessionJoinerProps> = ({
         }
         
         .join-button:disabled {
-          background-color: #cccccc;
+          background-color: var(--button-disabled-bg, #999);
           cursor: not-allowed;
+          opacity: 0.6;
         }
         
         .join-button:focus {
           outline: none;
           box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+          .session-joiner {
+            background: #1e1e1e;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          }
+
+          h2 {
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          label {
+            color: rgba(255, 255, 255, 0.75);
+          }
+
+          input,
+          select {
+            background-color: #2a2a2a;
+            color: rgba(255, 255, 255, 0.95);
+            border-color: #444;
+          }
+
+          select option {
+            background-color: #2a2a2a;
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          input:disabled,
+          select:disabled {
+            background-color: #1a1a1a;
+          }
+
+          .error-message {
+            color: #ff6b6b;
+          }
+
+          .join-button:disabled {
+            background-color: #555;
+          }
         }
       `}</style>
     </div>

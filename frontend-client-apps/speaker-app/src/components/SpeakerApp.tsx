@@ -19,26 +19,27 @@ export const SpeakerApp: React.FC = () => {
   const [notificationService, setNotificationService] = useState<NotificationService | null>(null);
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null);
   
-  const { sessionId, isConnected } = useSpeakerStore();
+  const { sessionId, isConnected, listenerCount, languageDistribution } = useSpeakerStore();
 
   /**
    * Initialize services when session is created
    */
   const handleSessionCreated = async (
-    newSessionId: string,
+    _sessionId: string,
     sourceLanguage: string,
     qualityTier: 'standard' | 'premium'
   ) => {
     try {
+      // Get configuration from environment
+      const { getConfig } = await import('../../../shared/utils/config');
+      const config = getConfig();
+      
       // Get JWT token from auth service (placeholder)
       const jwtToken = 'placeholder-jwt-token'; // TODO: Get from AuthService
       
-      // Get WebSocket URL from environment
-      const wsUrl = process.env.REACT_APP_WS_URL || 'wss://api.example.com';
-      
       // Create WebSocket client
       const client = new WebSocketClient({
-        url: wsUrl,
+        url: config.websocketUrl,
         token: jwtToken,
         heartbeatInterval: 30000,
         reconnect: true,
@@ -53,14 +54,14 @@ export const SpeakerApp: React.FC = () => {
       setNotificationService(notifService);
       
       // Create speaker service
-      const config: SpeakerServiceConfig = {
-        wsUrl,
+      const serviceConfig: SpeakerServiceConfig = {
+        wsUrl: config.websocketUrl,
         jwtToken,
         sourceLanguage,
         qualityTier,
       };
       
-      const service = new SpeakerService(config);
+      const service = new SpeakerService(serviceConfig);
       setSpeakerService(service);
       
       // Initialize service
@@ -102,7 +103,11 @@ export const SpeakerApp: React.FC = () => {
           />
         ) : (
           <>
-            <SessionDisplay sessionId={sessionId} />
+            <SessionDisplay 
+              sessionId={sessionId} 
+              listenerCount={listenerCount}
+              languageDistribution={languageDistribution}
+            />
             
             <div className="controls-section">
               <BroadcastControlsContainer
@@ -114,7 +119,7 @@ export const SpeakerApp: React.FC = () => {
             <div className="visualizer-section">
               <AudioVisualizer
                 isTransmitting={isConnected}
-                getInputLevel={() => speakerService?.getInputLevel() || 0}
+                inputLevel={speakerService?.getInputLevel() || 0}
               />
             </div>
           </>

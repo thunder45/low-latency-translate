@@ -5,10 +5,12 @@ interface AccessibleButtonProps {
   label: string;
   ariaLabel?: string;
   pressed?: boolean;
+  ariaPressed?: boolean;
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'danger';
   icon?: React.ReactNode;
   children?: React.ReactNode;
+  className?: string;
 }
 
 export function AccessibleButton({
@@ -16,11 +18,18 @@ export function AccessibleButton({
   label,
   ariaLabel,
   pressed,
+  ariaPressed,
   disabled = false,
   variant = 'primary',
   icon,
-  children
+  children,
+  className
 }: AccessibleButtonProps) {
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  // Use ariaPressed if provided, otherwise fall back to pressed
+  const isPressedState = ariaPressed !== undefined ? ariaPressed : pressed;
+
   const getButtonStyle = (): CSSProperties => {
     const baseStyle: CSSProperties = {
       display: 'inline-flex',
@@ -42,19 +51,19 @@ export function AccessibleButton({
     const variants = {
       primary: {
         color: '#fff',
-        backgroundColor: pressed ? '#1565c0' : '#1976d2',
-        boxShadow: pressed ? 'inset 0 2px 4px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
+        backgroundColor: isPressedState ? '#1565c0' : '#1976d2',
+        boxShadow: isPressedState ? 'inset 0 2px 4px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
       },
       secondary: {
         color: '#333',
-        backgroundColor: pressed ? '#e0e0e0' : '#f5f5f5',
+        backgroundColor: isPressedState ? '#e0e0e0' : '#f5f5f5',
         border: '1px solid #ddd',
-        boxShadow: pressed ? 'inset 0 2px 4px rgba(0,0,0,0.1)' : 'none'
+        boxShadow: isPressedState ? 'inset 0 2px 4px rgba(0,0,0,0.1)' : 'none'
       },
       danger: {
         color: '#fff',
-        backgroundColor: pressed ? '#c62828' : '#d32f2f',
-        boxShadow: pressed ? 'inset 0 2px 4px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
+        backgroundColor: isPressedState ? '#c62828' : '#d32f2f',
+        boxShadow: isPressedState ? 'inset 0 2px 4px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
       }
     };
 
@@ -69,14 +78,13 @@ export function AccessibleButton({
     outlineOffset: '2px'
   };
 
-  const [isFocused, setIsFocused] = React.useState(false);
-
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel || label}
-      aria-pressed={pressed !== undefined ? pressed : undefined}
+      aria-pressed={isPressedState !== undefined ? isPressedState : undefined}
+      className={className}
       style={{
         ...getButtonStyle(),
         ...(isFocused ? focusStyle : {})
@@ -84,7 +92,7 @@ export function AccessibleButton({
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onMouseEnter={(e) => {
-        if (!disabled && !pressed) {
+        if (!disabled && !isPressedState) {
           const target = e.currentTarget;
           if (variant === 'primary') {
             target.style.backgroundColor = '#1565c0';
@@ -96,7 +104,7 @@ export function AccessibleButton({
         }
       }}
       onMouseLeave={(e) => {
-        if (!disabled && !pressed) {
+        if (!disabled && !isPressedState) {
           const target = e.currentTarget;
           if (variant === 'primary') {
             target.style.backgroundColor = '#1976d2';

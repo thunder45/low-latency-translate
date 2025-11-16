@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useSpeakerStore } from '../../../shared/store/speakerStore';
 import { SpeakerService } from '../services/SpeakerService';
 

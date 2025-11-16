@@ -1,22 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 interface SpeakerStatusProps {
-  speakerPaused: boolean;
-  speakerMuted: boolean;
+  speakerPaused?: boolean;
+  speakerMuted?: boolean;
+  isPaused?: boolean;
+  isMuted?: boolean;
 }
 
 export const SpeakerStatus: React.FC<SpeakerStatusProps> = ({
   speakerPaused,
-  speakerMuted
+  speakerMuted,
+  isPaused,
+  isMuted
 }) => {
-  const [showPausedIndicator, setShowPausedIndicator] = useState(speakerPaused);
-  const [showMutedIndicator, setShowMutedIndicator] = useState(speakerMuted);
+  // Use isPaused/isMuted if provided, otherwise fall back to speakerPaused/speakerMuted
+  const pausedState = isPaused !== undefined ? isPaused : (speakerPaused ?? false);
+  const mutedState = isMuted !== undefined ? isMuted : (speakerMuted ?? false);
+  
+  const [showPausedIndicator, setShowPausedIndicator] = useState(pausedState);
+  const [showMutedIndicator, setShowMutedIndicator] = useState(mutedState);
   const pausedTimerRef = useRef<NodeJS.Timeout | null>(null);
   const mutedTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle speaker paused state changes with 500ms clear delay
   useEffect(() => {
-    if (speakerPaused) {
+    if (pausedState) {
       // Show indicator immediately when speaker pauses
       setShowPausedIndicator(true);
       
@@ -37,11 +45,11 @@ export const SpeakerStatus: React.FC<SpeakerStatusProps> = ({
         clearTimeout(pausedTimerRef.current);
       }
     };
-  }, [speakerPaused]);
+  }, [pausedState]);
 
   // Handle speaker muted state changes with 500ms clear delay
   useEffect(() => {
-    if (speakerMuted) {
+    if (mutedState) {
       // Show indicator immediately when speaker mutes
       setShowMutedIndicator(true);
       
@@ -62,7 +70,7 @@ export const SpeakerStatus: React.FC<SpeakerStatusProps> = ({
         clearTimeout(mutedTimerRef.current);
       }
     };
-  }, [speakerMuted]);
+  }, [mutedState]);
 
   // Don't render anything if no indicators are active
   if (!showPausedIndicator && !showMutedIndicator) {
@@ -103,7 +111,7 @@ export const SpeakerStatus: React.FC<SpeakerStatusProps> = ({
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .speaker-status {
           display: flex;
           flex-direction: column;

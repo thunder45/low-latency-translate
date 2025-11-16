@@ -18,10 +18,16 @@
     "dev:listener": "npm run dev --workspace=listener-app",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "validate-config": "node scripts/validate-config.js",
+    "validate-config:speaker": "node scripts/validate-config.js --app=speaker",
+    "validate-config:listener": "node scripts/validate-config.js --app=listener"
   },
   "devDependencies": {
-    "prettier": "^3.0.0"
+    "@types/node": "^24.10.1",
+    "prettier": "^3.0.0",
+    "terser": "^5.44.1",
+    "ts-node": "^10.9.2"
   },
   "engines": {
     "node": ">=18.0.0",

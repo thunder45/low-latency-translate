@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AuthService } from '../../../shared/services/AuthService';
-import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
+import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 
 interface LoginFormProps {
   authService: AuthService;
@@ -32,16 +32,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({ authService, onLoginSucces
       }
 
       // Authenticate with Cognito
-      const tokens = await authService.signIn(email, password);
+      const result = await authService.signIn(email, password);
       
-      // Success - redirect to session creation
-      onLoginSuccess(tokens);
+      // Check if authentication was successful
+      if (result.success && result.tokens) {
+        // Extract tokens from result
+        const { idToken, accessToken, refreshToken } = result.tokens;
+        
+        // Success - redirect to session creation
+        onLoginSuccess({ idToken, accessToken, refreshToken });
+      } else {
+        // Authentication failed
+        throw new Error(result.error || 'Authentication failed');
+      }
     } catch (err: any) {
       // Handle authentication errors with user-friendly messages
-      const errorInfo = ErrorHandler.handle({
-        type: ErrorType.AUTHENTICATION_ERROR,
-        message: err.message || 'Authentication failed',
-        originalError: err,
+      const errorInfo = ErrorHandler.handle(err, {
+        component: 'LoginForm',
+        operation: 'signIn',
       });
 
       setError(errorInfo.userMessage);

@@ -7,6 +7,7 @@ export interface QualityWarning {
   type: 'snr_low' | 'clipping' | 'echo' | 'silence';
   message: string;
   timestamp: number;
+  issue: string;
 }
 
 /**

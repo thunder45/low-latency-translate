@@ -75,7 +75,7 @@ export const BufferIndicator: React.FC<BufferIndicatorProps> = ({
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .buffer-indicator {
           padding: 1rem;
           background: #ffffff;

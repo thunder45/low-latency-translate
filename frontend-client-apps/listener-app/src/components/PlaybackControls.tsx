@@ -82,6 +82,7 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       <div className="control-buttons">
         <AccessibleButton
           onClick={onPauseToggle}
+          label={isPaused ? 'Resume' : 'Pause'}
           ariaLabel={isPaused ? 'Resume playback' : 'Pause playback'}
           ariaPressed={isPaused}
           className={`control-button ${isPaused ? 'active' : ''}`}
@@ -101,6 +102,7 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
 
         <AccessibleButton
           onClick={onMuteToggle}
+          label={isMuted ? 'Unmute' : 'Mute'}
           ariaLabel={isMuted ? 'Unmute audio' : 'Mute audio'}
           ariaPressed={isMuted}
           className={`control-button ${isMuted ? 'active' : ''}`}
@@ -142,7 +144,7 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         </span>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .playback-controls {
           display: flex;
           flex-direction: column;

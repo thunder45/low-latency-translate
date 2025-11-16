@@ -126,7 +126,10 @@ export class AuthService {
         return;
       }
 
-      this.currentUser.getSession((error: Error | null, session: CognitoUserSession | null) => {
+      // Capture currentUser in local constant for type safety in callbacks
+      const currentUser = this.currentUser;
+
+      currentUser.getSession((error: Error | null, session: CognitoUserSession | null) => {
         if (error || !session) {
           resolve(null);
           return;
@@ -153,7 +156,7 @@ export class AuthService {
             RefreshToken: session.getRefreshToken().getToken(),
           });
 
-          this.currentUser.refreshSession(refreshToken, (refreshError, newSession) => {
+          currentUser.refreshSession(refreshToken, (refreshError, newSession) => {
             if (refreshError || !newSession) {
               resolve(null);
               return;

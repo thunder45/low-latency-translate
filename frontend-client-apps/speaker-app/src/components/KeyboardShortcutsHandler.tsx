@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useKeyboardShortcuts, KeyboardShortcut } from '../../../shared/hooks/useKeyboardShortcuts';
-import { useSpeakerStore } from '../store/speakerStore';
+import { useSpeakerStore } from '@frontend/shared/store/speakerStore';
 
 export const KeyboardShortcutsHandler: React.FC = () => {
   const { isPaused, isMuted, setPaused, setMuted } = useSpeakerStore();

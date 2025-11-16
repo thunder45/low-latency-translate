@@ -38,13 +38,13 @@ export const PlaybackControlsContainer: React.FC<PlaybackControlsContainerProps>
     console.log('Received notification:', notification);
     
     // Update speaker state based on notifications
-    if (notification.type === 'speakerPaused') {
+    if (notification.type === 'broadcastPaused') {
       setSpeakerPaused(true);
-    } else if (notification.type === 'speakerResumed') {
+    } else if (notification.type === 'broadcastResumed') {
       setSpeakerPaused(false);
-    } else if (notification.type === 'speakerMuted') {
+    } else if (notification.type === 'broadcastMuted') {
       setSpeakerMuted(true);
-    } else if (notification.type === 'speakerUnmuted') {
+    } else if (notification.type === 'broadcastUnmuted') {
       setSpeakerMuted(false);
     }
   }, [setSpeakerPaused, setSpeakerMuted]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useListenerStore } from '../../../shared/store/listenerStore';
 import { ListenerService } from '../services/ListenerService';
 
@@ -107,7 +107,10 @@ export function useListenerControls(listenerService: ListenerService | null) {
     } catch (error) {
       // Rollback on failure
       console.error('Failed to change language:', error);
-      setCurrentLanguage(previousLanguage);
+      // Ensure non-null string before passing to setCurrentLanguage
+      if (previousLanguage !== null) {
+        setCurrentLanguage(previousLanguage);
+      }
     } finally {
       setIsProcessing(false);
     }

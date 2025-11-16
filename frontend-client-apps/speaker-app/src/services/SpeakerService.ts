@@ -1,7 +1,7 @@
 import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
 import { AudioCapture } from '../../../shared/audio/AudioCapture';
 import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
-import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
+import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 import { RetryHandler } from '../../../shared/utils/RetryHandler';
 import { controlsMonitoring } from '../../../shared/utils/ControlsMonitoring';
 
@@ -25,7 +25,6 @@ export class SpeakerService {
   private config: SpeakerServiceConfig;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
-  private inputVolume: number = 75;
 
   constructor(config: SpeakerServiceConfig) {
     this.config = config;
@@ -84,7 +83,10 @@ export class SpeakerService {
         qualityTier: this.config.qualityTier,
       });
     } catch (error) {
-      const appError = ErrorHandler.handle(error as Error, ErrorType.WEBSOCKET_ERROR);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'SpeakerService',
+        operation: 'initialize',
+      });
       throw new Error(appError.userMessage);
     }
   }
@@ -96,8 +98,7 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
-      const preferenceStore = PreferenceStore.getInstance();
+      const { preferenceStore } = await import('../../../shared/services/PreferenceStore');
       
       // Use a default user ID or get from auth
       const userId = 'speaker-user'; // TODO: Get from auth service
@@ -152,7 +153,10 @@ export class SpeakerService {
       // Start session status polling
       this.startStatusPolling();
     } catch (error) {
-      const appError = ErrorHandler.handle(error as Error, ErrorType.AUDIO_ERROR);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'SpeakerService',
+        operation: 'startBroadcast',
+      });
       throw new Error(appError.userMessage);
     }
   }
@@ -316,7 +320,6 @@ export class SpeakerService {
    */
   async setVolume(volume: number): Promise<void> {
     const clampedVolume = Math.max(0, Math.min(100, volume));
-    this.inputVolume = clampedVolume;
     
     // Update audio capture volume (normalize to 0-1)
     this.audioCapture.setVolume(clampedVolume / 100);
@@ -327,8 +330,7 @@ export class SpeakerService {
     // Save preference
     const startTime = Date.now();
     try {
-      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
-      const preferenceStore = PreferenceStore.getInstance();
+      const { preferenceStore } = await import('../../../shared/services/PreferenceStore');
       const userId = 'speaker-user'; // TODO: Get from auth service
       await preferenceStore.saveVolume(userId, clampedVolume);
       
@@ -377,7 +379,10 @@ export class SpeakerService {
       // Clear session state
       useSpeakerStore.getState().reset();
     } catch (error) {
-      const appError = ErrorHandler.handle(error as Error, ErrorType.NETWORK_ERROR);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'SpeakerService',
+        operation: 'endSession',
+      });
       throw new Error(appError.userMessage);
     }
   }
@@ -424,6 +429,7 @@ export class SpeakerService {
         type: message.issue,
         message: this.getQualityWarningMessage(message.issue, message.value),
         timestamp: Date.now(),
+        issue: message.issue,
       };
       
       useSpeakerStore.getState().addQualityWarning(warning);
@@ -460,7 +466,10 @@ export class SpeakerService {
     // Handle errors
     this.wsClient.onError((error) => {
       console.error('WebSocket error:', error);
-      const appError = ErrorHandler.handle(error, ErrorType.WEBSOCKET_ERROR);
+      ErrorHandler.handle(error, {
+        component: 'SpeakerService',
+        operation: 'websocket',
+      });
       // Error will be displayed by UI components
     });
   }

@@ -22,11 +22,11 @@ export const ListenerApp: React.FC = () => {
   
   const {
     sessionId,
-    isConnected,
     isSpeakerPaused,
     isSpeakerMuted,
     bufferedDuration,
     isBuffering,
+    isBufferOverflow,
   } = useListenerStore();
 
   /**
@@ -37,12 +37,13 @@ export const ListenerApp: React.FC = () => {
     targetLanguage: string
   ) => {
     try {
-      // Get WebSocket URL from environment
-      const wsUrl = process.env.REACT_APP_WS_URL || 'wss://api.example.com';
+      // Get configuration from environment
+      const { getConfig } = await import('../../../shared/utils/config');
+      const appConfig = getConfig();
       
       // Create WebSocket client (no auth required for listeners)
       const client = new WebSocketClient({
-        url: wsUrl,
+        url: appConfig.websocketUrl,
         heartbeatInterval: 30000,
         reconnect: true,
         reconnectDelay: 1000,
@@ -56,20 +57,17 @@ export const ListenerApp: React.FC = () => {
       setNotificationService(notifService);
       
       // Create listener service
-      const config: ListenerServiceConfig = {
-        wsUrl,
+      const serviceConfig: ListenerServiceConfig = {
+        wsUrl: appConfig.websocketUrl,
         sessionId: newSessionId,
         targetLanguage,
       };
       
-      const service = new ListenerService(config);
+      const service = new ListenerService(serviceConfig);
       setListenerService(service);
       
-      // Initialize service
+      // Initialize service (audio playback starts automatically when audio is received)
       await service.initialize();
-      
-      // Start playback
-      await service.startPlayback();
     } catch (error) {
       console.error('Failed to initialize listener service:', error);
     }
@@ -112,6 +110,7 @@ export const ListenerApp: React.FC = () => {
               <BufferIndicator
                 bufferedDuration={bufferedDuration}
                 isBuffering={isBuffering}
+                bufferOverflow={isBufferOverflow}
               />
             </div>
             
@@ -126,16 +125,16 @@ export const ListenerApp: React.FC = () => {
               <LanguageSelector
                 currentLanguage={useListenerStore.getState().targetLanguage || 'en'}
                 availableLanguages={[
-                  { code: 'en', name: 'English' },
-                  { code: 'es', name: 'Spanish' },
-                  { code: 'fr', name: 'French' },
-                  { code: 'de', name: 'German' },
-                  { code: 'it', name: 'Italian' },
-                  { code: 'pt', name: 'Portuguese' },
-                  { code: 'ja', name: 'Japanese' },
-                  { code: 'ko', name: 'Korean' },
-                  { code: 'zh', name: 'Chinese' },
-                  { code: 'ar', name: 'Arabic' },
+                  'en',
+                  'es',
+                  'fr',
+                  'de',
+                  'it',
+                  'pt',
+                  'ja',
+                  'ko',
+                  'zh',
+                  'ar',
                 ]}
                 onLanguageChange={async (lang) => {
                   if (listenerService) {

@@ -14,7 +14,6 @@ interface SessionCreatorProps {
  */
 export const SessionCreator: React.FC<SessionCreatorProps> = ({
   jwtToken,
-  onSessionCreated,
   onSendMessage,
 }) => {
   const [sourceLanguage, setSourceLanguage] = useState('en');
@@ -65,23 +64,7 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
     }
   };
 
-  // This method should be called by parent when session creation response is received
-  const handleSessionCreationResponse = (response: any) => {
-    if (response.type === 'sessionCreated') {
-      onSessionCreated(response.sessionId, sourceLanguage, qualityTier);
-    } else if (response.type === 'error') {
-      // Handle specific error codes
-      if (response.code === 401) {
-        setError('Authentication failed. Please log in again');
-      } else if (response.code === 429) {
-        const retryAfter = response.retryAfter || 60;
-        setError(`Too many sessions created. Please wait ${retryAfter} seconds`);
-      } else {
-        setError(response.message || 'Failed to create session');
-      }
-      setIsCreating(false);
-    }
-  };
+
 
   return (
     <div className="session-creator-container">
@@ -150,11 +133,11 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
         .session-creator-container h1 {
           font-size: 2rem;
           margin-bottom: 0.5rem;
-          color: #333;
+          color: var(--text-primary, #1a1a1a);
         }
 
         .session-creator-container p {
-          color: #666;
+          color: var(--text-secondary, #4a4a4a);
           margin-bottom: 2rem;
         }
 
@@ -172,17 +155,23 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
 
         .form-group label {
           font-weight: 600;
-          color: #333;
+          color: var(--text-primary, #1a1a1a);
           font-size: 1rem;
         }
 
         .form-group select {
           padding: 0.75rem;
-          border: 1px solid #ddd;
+          border: 1px solid var(--border-color, #ddd);
           border-radius: 4px;
           font-size: 1rem;
-          background-color: white;
+          background-color: var(--input-bg, #ffffff);
+          color: var(--text-primary, #1a1a1a);
           cursor: pointer;
+        }
+
+        .form-group select option {
+          background-color: var(--input-bg, #ffffff);
+          color: var(--text-primary, #1a1a1a);
         }
 
         .form-group select:focus {
@@ -192,22 +181,23 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
         }
 
         .form-group select:disabled {
-          background-color: #f5f5f5;
+          background-color: var(--input-disabled-bg, #f5f5f5);
           cursor: not-allowed;
+          opacity: 0.6;
         }
 
         .help-text {
           font-size: 0.875rem;
-          color: #666;
+          color: var(--text-secondary, #4a4a4a);
           margin: 0;
         }
 
         .error-message {
           padding: 0.75rem;
-          background-color: #ffebee;
-          color: #c62828;
+          background-color: var(--error-bg, #ffebee);
+          color: var(--error-text, #c62828);
           border-radius: 4px;
-          border-left: 4px solid #c62828;
+          border-left: 4px solid var(--error-border, #c62828);
         }
 
         .create-button {
@@ -227,13 +217,58 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
         }
 
         .create-button:disabled {
-          background-color: #ccc;
+          background-color: var(--button-disabled-bg, #999);
           cursor: not-allowed;
+          opacity: 0.6;
         }
 
         .create-button:focus {
           outline: none;
           box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+          .session-creator-container h1 {
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          .session-creator-container p {
+            color: rgba(255, 255, 255, 0.75);
+          }
+
+          .form-group label {
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          .form-group select {
+            background-color: #2a2a2a;
+            color: rgba(255, 255, 255, 0.95);
+            border-color: #444;
+          }
+
+          .form-group select option {
+            background-color: #2a2a2a;
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          .form-group select:disabled {
+            background-color: #1a1a1a;
+          }
+
+          .help-text {
+            color: rgba(255, 255, 255, 0.65);
+          }
+
+          .error-message {
+            background-color: rgba(198, 40, 40, 0.2);
+            color: #ff6b6b;
+            border-left-color: #ff6b6b;
+          }
+
+          .create-button:disabled {
+            background-color: #555;
+          }
         }
       `}</style>
     </div>

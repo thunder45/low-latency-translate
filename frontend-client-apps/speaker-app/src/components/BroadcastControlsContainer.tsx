@@ -39,7 +39,7 @@ export const BroadcastControlsContainer: React.FC<BroadcastControlsContainerProp
     console.log('Received notification:', notification);
     
     // Handle listener state changes
-    if (notification.type === 'listenerJoined' || notification.type === 'listenerLeft') {
+    if (notification.type === 'listener_joined' || notification.type === 'listener_left') {
       // Listener count updates are handled by SpeakerService via WebSocket
       // This is just for logging/debugging
     }

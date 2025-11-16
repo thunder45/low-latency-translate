@@ -85,6 +85,7 @@ export const BroadcastControls: React.FC<BroadcastControlsProps> = ({
       <div className="controls-row">
         <AccessibleButton
           onClick={onPauseToggle}
+          label={isPaused ? 'Resume' : 'Pause'}
           ariaLabel={isPaused ? 'Resume broadcast' : 'Pause broadcast'}
           ariaPressed={isPaused}
           className={`control-button ${isPaused ? 'active' : ''}`}
@@ -96,6 +97,7 @@ export const BroadcastControls: React.FC<BroadcastControlsProps> = ({
 
         <AccessibleButton
           onClick={onMuteToggle}
+          label={isMuted ? 'Unmute' : 'Mute'}
           ariaLabel={isMuted ? 'Unmute microphone' : 'Mute microphone'}
           ariaPressed={isMuted}
           className={`control-button ${isMuted ? 'active' : ''}`}

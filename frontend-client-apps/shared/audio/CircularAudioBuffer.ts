@@ -12,7 +12,6 @@ export class CircularAudioBuffer {
   private buffer: Float32Array;
   private writePos: number = 0;
   private readPos: number = 0;
-  private maxDuration: number;
   private sampleRate: number;
   private maxSamples: number;
   private availableSamples: number = 0;
@@ -25,7 +24,6 @@ export class CircularAudioBuffer {
    */
   constructor(sampleRate: number, maxDurationMs: number = 30000) {
     this.sampleRate = sampleRate;
-    this.maxDuration = maxDurationMs;
     this.maxSamples = Math.floor((sampleRate * maxDurationMs) / 1000);
     this.buffer = new Float32Array(this.maxSamples);
   }

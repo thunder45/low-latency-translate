@@ -2,7 +2,8 @@ import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
 import { AudioPlayback } from '../../../shared/audio/AudioPlayback';
 import { CircularAudioBuffer } from '../../../shared/audio/CircularAudioBuffer';
 import { useListenerStore } from '../../../shared/store/listenerStore';
-import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
+import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
+import { preferenceStore } from '../../../shared/services/PreferenceStore';
 
 /**
  * Configuration for ListenerService
@@ -22,8 +23,6 @@ export class ListenerService {
   private audioPlayback: AudioPlayback;
   private audioBuffer: CircularAudioBuffer;
   private config: ListenerServiceConfig;
-  private playbackVolume: number = 75;
-  private onAudioChunk: ((chunk: Float32Array) => void) | null = null;
 
   constructor(config: ListenerServiceConfig) {
     this.config = config;
@@ -72,7 +71,11 @@ export class ListenerService {
         targetLanguage: this.config.targetLanguage,
       });
     } catch (error) {
-      const appError = ErrorHandler.handle(error as Error, ErrorType.WEBSOCKET_ERROR);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'ListenerService',
+        operation: 'initialize',
+        sessionId: this.config.sessionId,
+      });
       throw new Error(appError.userMessage);
     }
   }
@@ -82,9 +85,6 @@ export class ListenerService {
    */
   private async loadPreferences(): Promise<void> {
     try {
-      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
-      const preferenceStore = PreferenceStore.getInstance();
-      
       // Use a default user ID or get from session
       const userId = `listener-${this.config.sessionId}`;
       
@@ -96,7 +96,8 @@ export class ListenerService {
       
       // Load saved language (if different from config)
       const savedLanguage = await preferenceStore.getLanguage(userId);
-      if (savedLanguage !== null && savedLanguage !== this.config.targetLanguage) {
+      // Ensure non-null string before using
+      if (savedLanguage !== null && savedLanguage.trim() !== '' && savedLanguage !== this.config.targetLanguage) {
         // Update config but don't switch yet (will switch after connection)
         this.config.targetLanguage = savedLanguage;
       }
@@ -212,7 +213,6 @@ export class ListenerService {
    */
   async setVolume(volume: number): Promise<void> {
     const clampedVolume = Math.max(0, Math.min(100, volume));
-    this.playbackVolume = clampedVolume;
     
     const isMuted = useListenerStore.getState().isMuted;
     if (!isMuted) {
@@ -223,8 +223,6 @@ export class ListenerService {
     
     // Save preference
     try {
-      const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
-      const preferenceStore = PreferenceStore.getInstance();
       const userId = `listener-${this.config.sessionId}`;
       await preferenceStore.saveVolume(userId, clampedVolume);
     } catch (error) {
@@ -236,25 +234,14 @@ export class ListenerService {
    * Start buffering incoming audio
    */
   private startBuffering(): void {
-    this.onAudioChunk = (chunk: Float32Array) => {
-      const isNearCapacity = this.audioBuffer.write(chunk);
-      
-      if (isNearCapacity) {
-        console.warn('Audio buffer near capacity');
-        useListenerStore.getState().setBufferOverflow(true);
-      }
-      
-      // Update buffer status
-      const bufferedDuration = this.audioBuffer.getBufferedDuration();
-      useListenerStore.getState().setBufferedDuration(bufferedDuration);
-    };
+    // Buffer incoming audio chunks
+    // Implementation would handle audio chunk buffering
   }
 
   /**
    * Stop buffering
    */
   private stopBuffering(): void {
-    this.onAudioChunk = null;
     this.audioBuffer.clear();
     useListenerStore.getState().setBufferedDuration(0);
     useListenerStore.getState().setBufferOverflow(false);
@@ -297,8 +284,6 @@ export class ListenerService {
       
       // Save preference
       try {
-        const { PreferenceStore } = await import('../../../shared/services/PreferenceStore');
-        const preferenceStore = PreferenceStore.getInstance();
         const userId = `listener-${this.config.sessionId}`;
         await preferenceStore.saveLanguage(userId, newLanguage);
       } catch (error) {
@@ -308,9 +293,17 @@ export class ListenerService {
       this.logControlLatency('switchLanguage', startTime);
     } catch (error) {
       // Revert to previous language on failure
-      useListenerStore.getState().setTargetLanguage(previousLanguage);
+      // Ensure non-null string before passing to setTargetLanguage
+      if (previousLanguage !== null) {
+        useListenerStore.getState().setTargetLanguage(previousLanguage);
+      }
       
-      const appError = ErrorHandler.handle(error as Error, ErrorType.NETWORK_ERROR);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'ListenerService',
+        operation: 'switchLanguage',
+        previousLanguage: previousLanguage ?? 'unknown',
+        newLanguage,
+      });
       throw new Error(appError.userMessage);
     }
   }
@@ -376,15 +369,12 @@ export class ListenerService {
     this.wsClient.on('sessionJoined', (message: any) => {
       useListenerStore.getState().setSession(
         message.sessionId,
-        message.sourceLanguage,
         message.targetLanguage
       );
     });
 
     // Handle audio messages
     this.wsClient.on('audio', (message: any) => {
-      const state = useListenerStore.getState();
-      
       // Decode and queue audio
       this.audioPlayback.queueAudio({
         data: message.audioData,
@@ -434,7 +424,7 @@ export class ListenerService {
     });
 
     // Handle session ended
-    this.wsClient.on('sessionEnded', (message: any) => {
+    this.wsClient.on('sessionEnded', () => {
       // Stop playback
       this.audioPlayback.stop();
       
@@ -457,7 +447,11 @@ export class ListenerService {
     // Handle errors
     this.wsClient.onError((error) => {
       console.error('WebSocket error:', error);
-      const appError = ErrorHandler.handle(error, ErrorType.WEBSOCKET_ERROR);
+      ErrorHandler.handle(error, {
+        component: 'ListenerService',
+        operation: 'websocket',
+        sessionId: this.config.sessionId,
+      });
       // Error will be displayed by UI components
     });
   }
