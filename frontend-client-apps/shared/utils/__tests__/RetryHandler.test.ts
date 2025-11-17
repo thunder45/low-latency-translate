@@ -44,6 +44,10 @@ describe('RetryHandler', () => {
       const handler = new RetryHandler({ maxAttempts: 3 });
       
       const promise = handler.execute(operation);
+      
+      // Catch the promise to prevent unhandled rejection
+      promise.catch(() => {});
+      
       await vi.runAllTimersAsync();
       
       await expect(promise).rejects.toThrow('persistent failure');
@@ -129,6 +133,10 @@ describe('RetryHandler', () => {
       const handler = new RetryHandler({ maxAttempts: 1 });
       
       const promise = handler.execute(operation);
+      
+      // Catch the promise to prevent unhandled rejection
+      promise.catch(() => {});
+      
       await vi.runAllTimersAsync();
       
       await expect(promise).rejects.toThrow('fail');

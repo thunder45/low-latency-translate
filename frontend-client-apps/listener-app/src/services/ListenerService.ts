@@ -96,10 +96,13 @@ export class ListenerService {
       
       // Load saved language (if different from config)
       const savedLanguage = await preferenceStore.getLanguage(userId);
-      // Ensure non-null string before using
-      if (savedLanguage !== null && savedLanguage.trim() !== '' && savedLanguage !== this.config.targetLanguage) {
-        // Update config but don't switch yet (will switch after connection)
-        this.config.targetLanguage = savedLanguage;
+      // Ensure non-null/undefined string before using
+      if (savedLanguage != null && typeof savedLanguage === 'string') {
+        const trimmedLanguage = savedLanguage.trim();
+        if (trimmedLanguage !== '' && trimmedLanguage !== this.config.targetLanguage) {
+          // Update config but don't switch yet (will switch after connection)
+          this.config.targetLanguage = trimmedLanguage;
+        }
       }
     } catch (error) {
       console.warn('Failed to load preferences:', error);

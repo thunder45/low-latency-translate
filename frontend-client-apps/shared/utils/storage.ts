@@ -69,12 +69,6 @@ export const DEFAULT_LISTENER_PREFERENCES: ListenerPreferences = {
  * Simple secure storage wrapper for localStorage
  */
 export class SecureStorage {
-  private encryptionKey?: string;
-
-  constructor(encryptionKey?: string) {
-    this.encryptionKey = encryptionKey;
-  }
-
   /**
    * Get item from storage
    */
