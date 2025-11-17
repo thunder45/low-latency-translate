@@ -22,22 +22,11 @@ export interface SpeakerServiceConfig {
 export class SpeakerService {
   private wsClient: WebSocketClient;
   private audioCapture: AudioCapture;
-  private config: SpeakerServiceConfig;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
 
-  constructor(config: SpeakerServiceConfig) {
-    this.config = config;
-
-    // Initialize WebSocket client
-    this.wsClient = new WebSocketClient({
-      url: config.wsUrl,
-      token: config.jwtToken,
-      heartbeatInterval: 30000,
-      reconnect: true,
-      reconnectDelay: 1000,
-      maxReconnectAttempts: 5,
-    });
+  constructor(_config: SpeakerServiceConfig, wsClient: WebSocketClient) {
+    this.wsClient = wsClient;
 
     // Initialize audio capture
     this.audioCapture = new AudioCapture({
@@ -62,26 +51,19 @@ export class SpeakerService {
 
   /**
    * Initialize session and start broadcasting
+   * Note: WebSocket client should already be connected before calling this method
    */
   async initialize(): Promise<void> {
     try {
       // Load saved preferences
       await this.loadPreferences();
       
-      // Connect WebSocket
-      await this.wsClient.connect({
-        sourceLanguage: this.config.sourceLanguage,
-        qualityTier: this.config.qualityTier,
-      });
+      // Verify WebSocket is connected
+      if (!this.wsClient.isConnected()) {
+        throw new Error('WebSocket client must be connected before initializing');
+      }
 
       useSpeakerStore.getState().setConnected(true);
-
-      // Send session creation request
-      this.wsClient.send({
-        action: 'createSession',
-        sourceLanguage: this.config.sourceLanguage,
-        qualityTier: this.config.qualityTier,
-      });
     } catch (error) {
       const appError = ErrorHandler.handle(error as Error, {
         component: 'SpeakerService',

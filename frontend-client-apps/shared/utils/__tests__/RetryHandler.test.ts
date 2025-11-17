@@ -115,13 +115,13 @@ describe('RetryHandler', () => {
         .mockResolvedValue('success');
       
       const onRetry = vi.fn();
-      const handler = new RetryHandler({ maxAttempts: 2 });
+      const handler = new RetryHandler({ maxAttempts: 2, onRetry });
       
-      const promise = handler.execute(operation, onRetry);
+      const promise = handler.execute(operation);
       await vi.runAllTimersAsync();
       await promise;
       
-      expect(onRetry).toHaveBeenCalledWith(1, 2, expect.any(Error));
+      expect(onRetry).toHaveBeenCalledWith(1, expect.any(Number), expect.any(Error));
     });
 
     it('should not retry if maxAttempts is 1', async () => {

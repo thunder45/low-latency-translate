@@ -3,6 +3,8 @@
  */
 export const STORAGE_KEYS = {
   // Authentication
+  AUTH_TOKEN: 'auth_token',
+  REFRESH_TOKEN: 'refresh_token',
   AUTH_TOKENS: 'auth_tokens',
   USER_ID: 'user_id',
   
@@ -67,6 +69,12 @@ export const DEFAULT_LISTENER_PREFERENCES: ListenerPreferences = {
  * Simple secure storage wrapper for localStorage
  */
 export class SecureStorage {
+  private encryptionKey?: string;
+
+  constructor(encryptionKey?: string) {
+    this.encryptionKey = encryptionKey;
+  }
+
   /**
    * Get item from storage
    */

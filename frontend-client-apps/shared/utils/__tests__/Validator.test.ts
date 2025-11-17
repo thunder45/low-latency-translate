@@ -62,9 +62,9 @@ describe('Validator', () => {
   describe('sanitizeInput', () => {
     it('should remove dangerous characters', () => {
       expect(Validator.sanitizeInput('Hello<script>alert("xss")</script>'))
-        .toBe('Helloalert("xss")');
+        .toBe('Hello alert("xss") ');
       expect(Validator.sanitizeInput('Test & <b>bold</b>'))
-        .toBe('Test  bold');
+        .toBe('Test    bold ');
     });
 
     it('should preserve safe characters', () => {

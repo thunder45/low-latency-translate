@@ -65,16 +65,20 @@ const localStorageMock = {
 };
 global.localStorage = localStorageMock as any;
 
-// Mock crypto
-global.crypto = {
-  getRandomValues: vi.fn((arr) => {
-    for (let i = 0; i < arr.length; i++) {
-      arr[i] = Math.floor(Math.random() * 256);
-    }
-    return arr;
-  }),
-  subtle: {
-    encrypt: vi.fn(),
-    decrypt: vi.fn(),
-  } as any,
-} as any;
+// Mock crypto (use Object.defineProperty to avoid read-only error)
+Object.defineProperty(global, 'crypto', {
+  value: {
+    getRandomValues: vi.fn((arr) => {
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = Math.floor(Math.random() * 256);
+      }
+      return arr;
+    }),
+    subtle: {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(),
+    } as any,
+  },
+  writable: true,
+  configurable: true,
+});

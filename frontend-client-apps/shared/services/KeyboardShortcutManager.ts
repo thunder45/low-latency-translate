@@ -39,6 +39,7 @@ const RESERVED_SHORTCUTS = new Set([
  * Keyboard Shortcut Manager
  */
 export class KeyboardShortcutManager {
+  private static instance: KeyboardShortcutManager;
   private shortcuts: KeyboardShortcuts;
   private handlers: Map<ShortcutAction, ShortcutHandler> = new Map();
   private isEnabled: boolean = true;
@@ -50,6 +51,16 @@ export class KeyboardShortcutManager {
     
     // Bind keyboard event listener
     this.handleKeyDown = this.handleKeyDown.bind(this);
+  }
+
+  /**
+   * Get singleton instance
+   */
+  static getInstance(): KeyboardShortcutManager {
+    if (!KeyboardShortcutManager.instance) {
+      KeyboardShortcutManager.instance = new KeyboardShortcutManager();
+    }
+    return KeyboardShortcutManager.instance;
   }
   
   /**

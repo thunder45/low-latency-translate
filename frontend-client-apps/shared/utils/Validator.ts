@@ -40,8 +40,14 @@ export class Validator {
       return false;
     }
 
-    // Check if it's a 2-letter code and in our supported set
-    return languageCode.length === 2 && SUPPORTED_LANGUAGE_CODES.has(languageCode.toLowerCase());
+    // Check if it's a 2-letter code with only lowercase letters
+    const pattern = /^[a-z]{2}$/;
+    if (!pattern.test(languageCode)) {
+      return false;
+    }
+
+    // Check if it's in our supported set
+    return SUPPORTED_LANGUAGE_CODES.has(languageCode);
   }
 
   /**
@@ -60,26 +66,21 @@ export class Validator {
   }
 
   /**
-   * Sanitize input by removing potentially dangerous characters
-   * Removes: <, >, &, ", ', /, \, script tags
+   * Sanitize input by removing HTML tags and entities
+   * Removes all HTML tags and common HTML entities to prevent XSS attacks
    * @param input - Input string to sanitize
-   * @returns Sanitized string
+   * @returns Sanitized string with HTML tags and entities removed
    */
   static sanitizeInput(input: string): string {
     if (!input || typeof input !== 'string') {
       return '';
     }
 
+    // Replace HTML tags with space, replace ampersands with space
+    // Do not normalize spaces - preserve double spaces
     return input
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;')
-      .replace(/\//g, '&#x2F;')
-      .replace(/\\/g, '&#x5C;')
-      // Remove any script tags
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&/g, ' ');
   }
 
   /**

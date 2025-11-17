@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
-import { ErrorHandler, ErrorType } from '../../../shared/utils/ErrorHandler';
+
+/**
+ * Session configuration
+ */
+export interface SessionConfig {
+  sourceLanguage: string;
+  qualityTier: 'standard' | 'premium';
+}
 
 interface SessionCreatorProps {
-  jwtToken: string;
-  onSessionCreated: (sessionId: string, sourceLanguage: string, qualityTier: 'standard' | 'premium') => void;
-  onSendMessage: (message: any) => void;
+  onCreateSession: (config: SessionConfig) => Promise<void>;
+  isCreating: boolean;
+  error: string | null;
 }
 
 /**
@@ -13,13 +20,12 @@ interface SessionCreatorProps {
  * Requirements: 2.1, 2.2, 2.4, 2.5
  */
 export const SessionCreator: React.FC<SessionCreatorProps> = ({
-  jwtToken,
-  onSendMessage,
+  onCreateSession,
+  isCreating,
+  error,
 }) => {
   const [sourceLanguage, setSourceLanguage] = useState('en');
   const [qualityTier, setQualityTier] = useState<'standard' | 'premium'>('standard');
-  const [error, setError] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
 
   // Supported source languages (subset for MVP)
   const supportedLanguages = [
@@ -36,32 +42,11 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
   ];
 
   const handleCreateSession = async () => {
-    setError(null);
-    setIsCreating(true);
-
-    try {
-      // Send session creation request via WebSocket
-      const message = {
-        action: 'createSession',
-        token: jwtToken,
-        sourceLanguage,
-        qualityTier,
-      };
-
-      onSendMessage(message);
-
-      // Note: The actual session creation response will be handled by the parent component
-      // which listens to WebSocket messages. This component just sends the request.
-    } catch (err: any) {
-      const errorInfo = ErrorHandler.handle({
-        type: ErrorType.NETWORK_ERROR,
-        message: err.message || 'Failed to create session',
-        originalError: err,
-      });
-
-      setError(errorInfo.userMessage);
-      setIsCreating(false);
-    }
+    // Call parent's create session handler with configuration
+    await onCreateSession({
+      sourceLanguage,
+      qualityTier,
+    });
   };
 
 
@@ -107,9 +92,23 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
           </p>
         </div>
 
+        {isCreating && (
+          <div className="progress-message" role="status" aria-live="polite">
+            <div className="spinner"></div>
+            <span>Creating session...</span>
+          </div>
+        )}
+
         {error && (
           <div className="error-message" role="alert">
-            {error}
+            <p>{error}</p>
+            <button
+              onClick={handleCreateSession}
+              className="retry-button"
+              aria-label="Retry session creation"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -192,12 +191,61 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
           margin: 0;
         }
 
+        .progress-message {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem;
+          background-color: var(--info-bg, #e3f2fd);
+          color: var(--info-text, #1976d2);
+          border-radius: 4px;
+          border-left: 4px solid var(--info-border, #1976d2);
+        }
+
+        .spinner {
+          width: 20px;
+          height: 20px;
+          border: 3px solid var(--spinner-bg, #e0e0e0);
+          border-top-color: var(--spinner-color, #1976d2);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
         .error-message {
           padding: 0.75rem;
           background-color: var(--error-bg, #ffebee);
           color: var(--error-text, #c62828);
           border-radius: 4px;
           border-left: 4px solid var(--error-border, #c62828);
+        }
+
+        .error-message p {
+          margin: 0 0 0.5rem 0;
+        }
+
+        .retry-button {
+          padding: 0.5rem 1rem;
+          background-color: var(--error-text, #c62828);
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .retry-button:hover {
+          background-color: var(--error-hover, #b71c1c);
+        }
+
+        .retry-button:focus {
+          outline: none;
+          box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.3);
         }
 
         .create-button {
@@ -260,10 +308,29 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({
             color: rgba(255, 255, 255, 0.65);
           }
 
+          .progress-message {
+            background-color: rgba(25, 118, 210, 0.2);
+            color: #64b5f6;
+            border-left-color: #64b5f6;
+          }
+
+          .spinner {
+            border-color: #444;
+            border-top-color: #64b5f6;
+          }
+
           .error-message {
             background-color: rgba(198, 40, 40, 0.2);
             color: #ff6b6b;
             border-left-color: #ff6b6b;
+          }
+
+          .retry-button {
+            background-color: #ff6b6b;
+          }
+
+          .retry-button:hover {
+            background-color: #ff5252;
           }
 
           .create-button:disabled {

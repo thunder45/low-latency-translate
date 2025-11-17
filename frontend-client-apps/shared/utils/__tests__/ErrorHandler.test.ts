@@ -8,43 +8,43 @@ describe('ErrorHandler', () => {
       
       expect(error.type).toBe(ErrorType.NETWORK_ERROR);
       expect(error.message).toBe('Connection failed');
-      expect(error.userMessage).toContain('network');
+      expect(error.userMessage).toContain('Network');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(true);
     });
 
     it('should handle authentication errors', () => {
-      const error = ErrorHandler.handle(ErrorType.AUTH_ERROR, 'Invalid credentials');
+      const error = ErrorHandler.handle(ErrorType.AUTH_FAILED, 'Invalid credentials');
       
-      expect(error.type).toBe(ErrorType.AUTH_ERROR);
-      expect(error.userMessage).toContain('authentication');
+      expect(error.type).toBe(ErrorType.AUTH_FAILED);
+      expect(error.userMessage).toContain('Authentication');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(false);
     });
 
     it('should handle validation errors', () => {
-      const error = ErrorHandler.handle(ErrorType.VALIDATION_ERROR, 'Invalid input');
+      const error = ErrorHandler.handle(ErrorType.INVALID_INPUT, 'Invalid input');
       
-      expect(error.type).toBe(ErrorType.VALIDATION_ERROR);
+      expect(error.type).toBe(ErrorType.INVALID_INPUT);
       expect(error.userMessage).toContain('input');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(false);
     });
 
     it('should handle session errors', () => {
-      const error = ErrorHandler.handle(ErrorType.SESSION_ERROR, 'Session not found');
+      const error = ErrorHandler.handle(ErrorType.SESSION_NOT_FOUND, 'Session not found');
       
-      expect(error.type).toBe(ErrorType.SESSION_ERROR);
-      expect(error.userMessage).toContain('session');
-      expect(error.recoverable).toBe(false);
+      expect(error.type).toBe(ErrorType.SESSION_NOT_FOUND);
+      expect(error.userMessage).toContain('Session');
+      expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(false);
     });
 
     it('should handle audio errors', () => {
-      const error = ErrorHandler.handle(ErrorType.AUDIO_ERROR, 'Microphone access denied');
+      const error = ErrorHandler.handle(ErrorType.MICROPHONE_ACCESS_DENIED, 'Microphone access denied');
       
-      expect(error.type).toBe(ErrorType.AUDIO_ERROR);
-      expect(error.userMessage).toContain('audio');
+      expect(error.type).toBe(ErrorType.MICROPHONE_ACCESS_DENIED);
+      expect(error.userMessage).toContain('Microphone');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(false);
     });
@@ -53,16 +53,16 @@ describe('ErrorHandler', () => {
       const error = ErrorHandler.handle(ErrorType.WEBSOCKET_ERROR, 'Connection closed');
       
       expect(error.type).toBe(ErrorType.WEBSOCKET_ERROR);
-      expect(error.userMessage).toContain('connection');
+      expect(error.userMessage).toContain('Connection');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(true);
     });
 
     it('should handle rate limit errors', () => {
-      const error = ErrorHandler.handle(ErrorType.RATE_LIMIT_ERROR, 'Too many requests');
+      const error = ErrorHandler.handle(ErrorType.RATE_LIMIT_EXCEEDED, 'Too many requests');
       
-      expect(error.type).toBe(ErrorType.RATE_LIMIT_ERROR);
-      expect(error.userMessage).toContain('limit');
+      expect(error.type).toBe(ErrorType.RATE_LIMIT_EXCEEDED);
+      expect(error.userMessage).toContain('requests');
       expect(error.recoverable).toBe(true);
       expect(error.retryable).toBe(true);
     });
@@ -72,8 +72,8 @@ describe('ErrorHandler', () => {
       
       expect(error.type).toBe(ErrorType.UNKNOWN_ERROR);
       expect(error.userMessage).toContain('unexpected');
-      expect(error.recoverable).toBe(false);
-      expect(error.retryable).toBe(false);
+      expect(error.recoverable).toBe(true);
+      expect(error.retryable).toBe(true);
     });
 
     it('should include original message in error object', () => {

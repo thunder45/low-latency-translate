@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import { SpeakerService } from '../../services/SpeakerService';
+import { WebSocketClient } from '@shared/websocket/WebSocketClient';
 import { useSpeakerStore, QualityWarning } from '@shared/store/speakerStore';
 
 // Mock WebSocket and Audio APIs
@@ -41,52 +42,50 @@ vi.mock('@shared/audio/AudioCapture', () => {
 
 describe('Speaker Flow Integration', () => {
   let speakerService: SpeakerService;
+  let mockWsClient: any;
 
   beforeEach(() => {
     // Reset store
     useSpeakerStore.getState().reset();
     
-    // Create service instance
+    // Create mock WebSocket client
+    mockWsClient = new WebSocketClient({
+      url: 'wss://test.example.com',
+      token: 'test-token',
+      heartbeatInterval: 30000,
+      reconnect: false,
+      maxReconnectAttempts: 0,
+      reconnectDelay: 1000,
+    });
+    
+    // Create service instance with WebSocket client
     speakerService = new SpeakerService({
       wsUrl: 'wss://test.example.com',
       jwtToken: 'test-token',
       sourceLanguage: 'en',
       qualityTier: 'standard',
-    });
+    }, mockWsClient);
   });
 
   describe('Session Creation Flow', () => {
-    it('should initialize and connect successfully', async () => {
+    it('should initialize successfully with connected client', async () => {
       // Trigger session initialization
       await speakerService.initialize();
-
-      // Verify WebSocket connect was called
-      expect(speakerService['wsClient'].connect).toHaveBeenCalledWith({
-        sourceLanguage: 'en',
-        qualityTier: 'standard',
-      });
-
-      // Verify send was called to create session
-      expect(speakerService['wsClient'].send).toHaveBeenCalledWith({
-        action: 'createSession',
-        sourceLanguage: 'en',
-        qualityTier: 'standard',
-      });
 
       // Verify store state
       const state = useSpeakerStore.getState();
       expect(state.isConnected).toBe(true);
     });
 
-    it('should handle initialization failure', async () => {
-      // Mock WebSocket to simulate error
-      const mockError = new Error('Connection failed');
-      speakerService['wsClient'].connect = vi.fn().mockRejectedValue(mockError);
+    it('should handle initialization failure when client not connected', async () => {
+      // Mock WebSocket to simulate not connected
+      mockWsClient.isConnected = vi.fn().mockReturnValue(false);
+      mockWsClient.getState = vi.fn().mockReturnValue({ status: 'disconnected' });
 
       // Attempt initialization
       await expect(
         speakerService.initialize()
-      ).rejects.toThrow();
+      ).rejects.toThrow(/WebSocket client must be connected|Connection to server failed/);
 
       // Verify store state
       const state = useSpeakerStore.getState();

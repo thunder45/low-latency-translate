@@ -35,6 +35,18 @@ const STORAGE_KEYS = {
  * Preference Store for managing user preferences
  */
 export class PreferenceStore {
+  private static instance: PreferenceStore;
+
+  /**
+   * Get singleton instance
+   */
+  static getInstance(): PreferenceStore {
+    if (!PreferenceStore.instance) {
+      PreferenceStore.instance = new PreferenceStore();
+    }
+    return PreferenceStore.instance;
+  }
+
   /**
    * Save volume preference
    * 

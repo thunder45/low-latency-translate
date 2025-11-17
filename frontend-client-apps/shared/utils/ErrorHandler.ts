@@ -70,24 +70,32 @@ export interface RecoveryAction {
 export class ErrorHandler {
   /**
    * Handle error and return user-friendly error object
-   * @param error - Error to handle
-   * @param context - Additional context about the error
+   * @param errorOrType - Error to handle or ErrorType enum
+   * @param messageOrContext - Error message (if errorOrType is ErrorType) or context (if errorOrType is error)
    * @returns AppError object with user-friendly message
    */
-  static handle(error: unknown, context?: Record<string, unknown>): AppError {
+  static handle(errorOrType: unknown, messageOrContext?: string | Record<string, unknown>): AppError {
+    // If first arg is ErrorType enum, create error directly
+    if (typeof errorOrType === 'string' && Object.values(ErrorType).includes(errorOrType as ErrorType)) {
+      const type = errorOrType as ErrorType;
+      const message = typeof messageOrContext === 'string' ? messageOrContext : 'Error occurred';
+      return this.createErrorFromType(type, message);
+    }
+
     // If it's already an AppError, return it
-    if (this.isAppError(error)) {
-      return error;
+    if (this.isAppError(errorOrType)) {
+      return errorOrType;
     }
 
     // Handle different error types
-    if (error instanceof Error) {
-      return this.handleStandardError(error, context);
+    if (errorOrType instanceof Error) {
+      const context = typeof messageOrContext === 'object' ? messageOrContext : undefined;
+      return this.handleStandardError(errorOrType, context);
     }
 
     // Handle string errors
-    if (typeof error === 'string') {
-      return this.createError(ErrorType.UNKNOWN_ERROR, error, error);
+    if (typeof errorOrType === 'string') {
+      return this.createError(ErrorType.UNKNOWN_ERROR, errorOrType, errorOrType);
     }
 
     // Handle unknown errors
@@ -167,6 +175,158 @@ export class ErrorHandler {
       retryable,
       details,
     };
+  }
+
+  /**
+   * Create AppError from ErrorType enum
+   * Maps each ErrorType to appropriate AppError properties
+   */
+  private static createErrorFromType(type: ErrorType, message: string): AppError {
+    // Map ErrorType to user-friendly messages and properties
+    const errorMap: Record<ErrorType, { userMessage: string; recoverable: boolean; retryable: boolean }> = {
+      // Network errors
+      [ErrorType.NETWORK_ERROR]: {
+        userMessage: 'Network connection failed. Please check your internet connection and try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      [ErrorType.WEBSOCKET_ERROR]: {
+        userMessage: 'Connection to server failed. Attempting to reconnect...',
+        recoverable: true,
+        retryable: true,
+      },
+      [ErrorType.CONNECTION_TIMEOUT]: {
+        userMessage: 'Connection timed out. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      
+      // Authentication errors
+      [ErrorType.AUTH_FAILED]: {
+        userMessage: 'Authentication failed. Please sign in again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.AUTH_EXPIRED]: {
+        userMessage: 'Your session has expired. Please sign in again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.AUTH_INVALID]: {
+        userMessage: 'Invalid authentication. Please sign in again.',
+        recoverable: true,
+        retryable: false,
+      },
+      
+      // Session errors
+      [ErrorType.SESSION_NOT_FOUND]: {
+        userMessage: 'Session not found. Please check the session ID and try again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.SESSION_FULL]: {
+        userMessage: 'Session is full. Please try again later.',
+        recoverable: true,
+        retryable: true,
+      },
+      [ErrorType.SESSION_ENDED]: {
+        userMessage: 'Session has ended.',
+        recoverable: false,
+        retryable: false,
+      },
+      [ErrorType.SESSION_CREATE_FAILED]: {
+        userMessage: 'Failed to create session. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      
+      // Audio errors
+      [ErrorType.MICROPHONE_ACCESS_DENIED]: {
+        userMessage: 'Microphone access denied. Please allow microphone access in your browser settings.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.MICROPHONE_NOT_FOUND]: {
+        userMessage: 'No microphone found. Please connect a microphone and try again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.AUDIO_PROCESSING_ERROR]: {
+        userMessage: 'Audio processing error. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      [ErrorType.AUDIO_PLAYBACK_ERROR]: {
+        userMessage: 'Audio playback error. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      
+      // Validation errors
+      [ErrorType.INVALID_INPUT]: {
+        userMessage: 'Invalid input. Please check your input and try again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.INVALID_SESSION_ID]: {
+        userMessage: 'Invalid session ID format. Please check and try again.',
+        recoverable: true,
+        retryable: false,
+      },
+      [ErrorType.INVALID_LANGUAGE]: {
+        userMessage: 'Invalid language selection. Please choose a supported language.',
+        recoverable: true,
+        retryable: false,
+      },
+      
+      // Rate limiting
+      [ErrorType.RATE_LIMIT_EXCEEDED]: {
+        userMessage: 'Too many requests. Please wait a moment and try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      
+      // Server errors
+      [ErrorType.SERVER_ERROR]: {
+        userMessage: 'A server error occurred. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+      [ErrorType.SERVICE_UNAVAILABLE]: {
+        userMessage: 'Service is temporarily unavailable. Please try again later.',
+        recoverable: true,
+        retryable: true,
+      },
+      
+      // Browser compatibility
+      [ErrorType.BROWSER_NOT_SUPPORTED]: {
+        userMessage: 'Your browser is not supported. Please use a modern browser like Chrome, Firefox, or Safari.',
+        recoverable: false,
+        retryable: false,
+      },
+      [ErrorType.FEATURE_NOT_SUPPORTED]: {
+        userMessage: 'This feature is not supported in your browser.',
+        recoverable: false,
+        retryable: false,
+      },
+      
+      // Unknown
+      [ErrorType.UNKNOWN_ERROR]: {
+        userMessage: 'An unexpected error occurred. Please try again.',
+        recoverable: true,
+        retryable: true,
+      },
+    };
+
+    const errorConfig = errorMap[type] || errorMap[ErrorType.UNKNOWN_ERROR];
+    
+    return this.createError(
+      type,
+      message,
+      errorConfig.userMessage,
+      errorConfig.recoverable,
+      errorConfig.retryable
+    );
   }
 
   /**

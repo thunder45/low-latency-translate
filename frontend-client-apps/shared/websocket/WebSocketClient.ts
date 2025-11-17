@@ -170,11 +170,21 @@ export class WebSocketClient {
    * Build WebSocket URL with query parameters
    */
   private buildUrl(queryParams: Record<string, string>): string {
-    const params = new URLSearchParams(queryParams);
+    const params = new URLSearchParams();
+    
+    // Add token if provided
     if (this.config.token) {
       params.set('token', this.config.token);
     }
-    return `${this.config.url}?${params.toString()}`;
+    
+    // Add other query params
+    Object.entries(queryParams).forEach(([key, value]) => {
+      params.set(key, value);
+    });
+    
+    // Only add query string if there are params
+    const queryString = params.toString();
+    return queryString ? `${this.config.url}?${queryString}` : this.config.url;
   }
 
   /**
