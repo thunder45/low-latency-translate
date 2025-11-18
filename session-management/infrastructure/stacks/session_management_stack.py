@@ -16,6 +16,7 @@ from aws_cdk import (
     aws_sns as sns,
     aws_events as events,
     aws_events_targets as targets,
+    aws_cognito as cognito,
 )
 from constructs import Construct
 
@@ -39,6 +40,9 @@ class SessionManagementStack(Stack):
         self.config = config
         self.env_name = env_name
         self.audio_transcription_stack = audio_transcription_stack
+
+        # Import existing Cognito User Pool
+        self.user_pool = self._import_user_pool()
 
         # Create DynamoDB tables
         self.sessions_table = self._create_sessions_table()
@@ -70,6 +74,15 @@ class SessionManagementStack(Stack):
 
         # Outputs
         self._create_outputs()
+
+    def _import_user_pool(self) -> cognito.UserPool:
+        """Import existing Cognito User Pool."""
+        user_pool = cognito.UserPool.from_user_pool_id(
+            self,
+            'UserPool',
+            user_pool_id=self.config.get('cognitoUserPoolId', ''),
+        )
+        return user_pool
 
     def _create_sessions_table(self) -> dynamodb.Table:
         """Create Sessions DynamoDB table."""

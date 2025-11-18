@@ -7,6 +7,7 @@ import sys
 import json
 from aws_cdk import App, Environment
 from stacks.session_management_stack import SessionManagementStack
+from stacks.http_api_stack import HttpApiStack
 
 # Add audio-transcription infrastructure to path for cross-stack reference
 audio_transcription_infra_path = os.path.join(
@@ -61,5 +62,21 @@ session_management_stack = SessionManagementStack(
 # Add dependency to ensure AudioTranscriptionStack is created first
 if audio_transcription_stack:
     session_management_stack.add_dependency(audio_transcription_stack)
+
+# Create HttpApiStack for session management HTTP API
+http_api_stack = HttpApiStack(
+    app,
+    f"SessionHttpApi-{env_name}",
+    sessions_table=session_management_stack.sessions_table,
+    connections_table=session_management_stack.connections_table,
+    user_pool=session_management_stack.user_pool,
+    shared_layer=session_management_stack.shared_layer,
+    env_name=env_name,
+    config=config,
+    env=env,
+)
+
+# Add dependency to ensure SessionManagementStack is created first
+http_api_stack.add_dependency(session_management_stack)
 
 app.synth()
