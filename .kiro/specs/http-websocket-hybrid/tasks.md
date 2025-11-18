@@ -265,8 +265,8 @@ For optimal implementation flow, consider executing tasks in these phases:
   - _Priority: P1_
   - _Effort: 1 hour_
 
-- [ ] 14. Write unit tests for SessionHttpService
-- [ ] 14.1 Test createSession with valid config
+- [x] 14. Write unit tests for SessionHttpService
+- [x] 14.1 Test createSession with valid config
   - Mock fetch API
   - Verify POST request to /sessions
   - Verify Authorization header included
@@ -274,27 +274,27 @@ For optimal implementation flow, consider executing tasks in these phases:
   - Verify response parsed correctly
   - _Requirements: 7.2_
 
-- [ ] 14.2 Test createSession with invalid config
+- [x] 14.2 Test createSession with invalid config
   - Test missing sourceLanguage
   - Test invalid qualityTier
   - Verify 400 error thrown
   - Verify error message descriptive
   - _Requirements: 7.6_
 
-- [ ] 14.3 Test getSession with existing session
+- [x] 14.3 Test getSession with existing session
   - Mock fetch API
   - Verify GET request to /sessions/{sessionId}
   - Verify no Authorization header (public)
   - Verify response parsed correctly
   - _Requirements: 7.3_
 
-- [ ] 14.4 Test getSession with non-existent session
+- [x] 14.4 Test getSession with non-existent session
   - Mock 404 response
   - Verify error thrown
   - Verify error message includes "not found"
   - _Requirements: 7.6_
 
-- [ ] 14.5 Test updateSession with ownership
+- [x] 14.5 Test updateSession with ownership
   - Mock fetch API
   - Verify PATCH request to /sessions/{sessionId}
   - Verify Authorization header included
@@ -302,32 +302,32 @@ For optimal implementation flow, consider executing tasks in these phases:
   - Verify response parsed correctly
   - _Requirements: 7.4_
 
-- [ ] 14.6 Test updateSession without ownership
+- [x] 14.6 Test updateSession without ownership
   - Mock 403 response
   - Verify error thrown
   - Verify error message includes "not authorized"
   - _Requirements: 7.6_
 
-- [ ] 14.7 Test deleteSession with ownership
+- [x] 14.7 Test deleteSession with ownership
   - Mock fetch API
   - Verify DELETE request to /sessions/{sessionId}
   - Verify Authorization header included
   - Verify void return on success
   - _Requirements: 7.5_
 
-- [ ] 14.8 Test token refresh before requests
+- [x] 14.8 Test token refresh before requests
   - Mock expired token
   - Verify refreshTokens called
   - Verify new token used in request
   - _Requirements: 7.7_
 
-- [ ] 14.9 Test error handling for all status codes
+- [x] 14.9 Test error handling for all status codes
   - Test 400, 401, 403, 404, 500, 503 responses
   - Verify appropriate errors thrown
   - Verify error messages user-friendly
   - _Requirements: 7.6_
 
-- [ ] 14.10 Test retry logic for 5xx errors
+- [x] 14.10 Test retry logic for 5xx errors
   - Mock 500 response, then success
   - Verify 3 retry attempts
   - Verify exponential backoff
