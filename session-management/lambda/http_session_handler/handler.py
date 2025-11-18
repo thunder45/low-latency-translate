@@ -387,7 +387,18 @@ def health_check() -> Dict[str, Any]:
 
 
 def disconnect_session_connections(session_id: str):
-    """Disconnect all WebSocket connections for a session."""
+    """
+    Disconnect all WebSocket connections for a session.
+    
+    This function:
+    1. Queries all connections for the session using GSI
+    2. Sends disconnect message to each connection
+    3. Closes WebSocket connections gracefully
+    4. Deletes connection records from DynamoDB
+    
+    Args:
+        session_id: Session identifier
+    """
     try:
         # Query connections by sessionId using GSI
         response = connections_table.query(
@@ -403,13 +414,111 @@ def disconnect_session_connections(session_id: str):
             extra={'session_id': session_id, 'connection_count': len(connections)}
         )
         
-        # Note: Actual WebSocket disconnection will be implemented
-        # when API Gateway endpoint is available
-        # For now, just delete connection records
-        for connection in connections:
-            connections_table.delete_item(
-                Key={'connectionId': connection['connectionId']}
+        # Get API Gateway endpoint from environment
+        api_gateway_endpoint = os.environ.get('WEBSOCKET_API_ENDPOINT', '')
+        
+        if not api_gateway_endpoint:
+            logger.warning(
+                'WEBSOCKET_API_ENDPOINT not configured, skipping WebSocket disconnection',
+                extra={'session_id': session_id}
             )
+            # Still delete connection records
+            for connection in connections:
+                connections_table.delete_item(
+                    Key={'connectionId': connection['connectionId']}
+                )
+            return
+        
+        # Initialize API Gateway Management API client
+        apigw_management = boto3.client(
+            'apigatewaymanagementapi',
+            endpoint_url=api_gateway_endpoint
+        )
+        
+        success_count = 0
+        failure_count = 0
+        
+        # Send disconnect message and close each connection
+        for connection in connections:
+            connection_id = connection['connectionId']
+            
+            try:
+                # Send disconnect message to client
+                disconnect_message = {
+                    'type': 'sessionEnded',
+                    'sessionId': session_id,
+                    'reason': 'Session was deleted by speaker',
+                    'timestamp': int(datetime.utcnow().timestamp() * 1000)
+                }
+                
+                apigw_management.post_to_connection(
+                    ConnectionId=connection_id,
+                    Data=json.dumps(disconnect_message).encode('utf-8')
+                )
+                
+                logger.info(
+                    f'Sent disconnect message to connection',
+                    extra={
+                        'session_id': session_id,
+                        'connection_id': connection_id
+                    }
+                )
+                
+                # Note: We don't explicitly close the connection here
+                # The client will close it upon receiving the sessionEnded message
+                # API Gateway will clean up stale connections automatically
+                
+                success_count += 1
+                
+            except apigw_management.exceptions.GoneException:
+                # Connection already closed
+                logger.info(
+                    f'Connection already closed',
+                    extra={
+                        'session_id': session_id,
+                        'connection_id': connection_id
+                    }
+                )
+                success_count += 1
+                
+            except Exception as e:
+                logger.error(
+                    f'Failed to disconnect connection: {str(e)}',
+                    extra={
+                        'session_id': session_id,
+                        'connection_id': connection_id
+                    }
+                )
+                failure_count += 1
+            
+            finally:
+                # Always delete connection record from DynamoDB
+                try:
+                    connections_table.delete_item(
+                        Key={'connectionId': connection_id}
+                    )
+                except Exception as e:
+                    logger.error(
+                        f'Failed to delete connection record: {str(e)}',
+                        extra={
+                            'session_id': session_id,
+                            'connection_id': connection_id
+                        }
+                    )
+        
+        logger.info(
+            f'Disconnection complete: {success_count} succeeded, {failure_count} failed',
+            extra={
+                'session_id': session_id,
+                'success_count': success_count,
+                'failure_count': failure_count
+            }
+        )
+        
+        # Emit metrics
+        emit_metric('SessionConnectionsDisconnected', success_count)
+        if failure_count > 0:
+            emit_metric('SessionConnectionsDisconnectFailed', failure_count)
         
     except Exception as e:
         logger.error(

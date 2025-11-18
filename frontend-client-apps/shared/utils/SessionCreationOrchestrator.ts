@@ -1,6 +1,7 @@
 import { WebSocketClient } from '../websocket/WebSocketClient';
 import { WebSocketMessage } from '../websocket/types';
 import { CognitoAuthService } from '../services/CognitoAuthService';
+import { SessionHttpService, SessionConfig, SessionMetadata, HttpError } from '../services/SessionHttpService';
 import { AuthTokens } from './storage';
 
 /**
@@ -16,6 +17,7 @@ export interface TokenStorage {
  */
 export interface SessionCreationConfig {
   wsUrl: string;
+  httpApiUrl?: string; // Optional HTTP API URL for hybrid mode
   jwtToken: string;
   refreshToken?: string;
   sourceLanguage: string;
@@ -24,6 +26,7 @@ export interface SessionCreationConfig {
   retryAttempts?: number;
   authService?: CognitoAuthService;
   tokenStorage?: TokenStorage;
+  useHttpSessionCreation?: boolean; // Feature flag for HTTP-based session creation
 }
 
 /**
@@ -148,9 +151,115 @@ export class SessionCreationOrchestrator {
   }
 
   /**
+   * Create session via HTTP API (hybrid mode)
+   */
+  private async createSessionViaHttp(): Promise<SessionCreationResult> {
+    if (!this.config.httpApiUrl) {
+      return {
+        success: false,
+        error: 'HTTP API URL not configured',
+        errorCode: 'CONFIG_ERROR',
+      };
+    }
+
+    try {
+      // Create HTTP service
+      const httpService = new SessionHttpService({
+        apiBaseUrl: this.config.httpApiUrl,
+        authService: this.config.authService,
+        tokenStorage: this.config.tokenStorage,
+        timeout: this.config.timeout,
+      });
+
+      // Create session via HTTP
+      const sessionConfig: SessionConfig = {
+        sourceLanguage: this.config.sourceLanguage,
+        qualityTier: this.config.qualityTier,
+      };
+
+      console.log('[SessionOrchestrator] Creating session via HTTP API...');
+      const sessionMetadata: SessionMetadata = await httpService.createSession(sessionConfig);
+      console.log('[SessionOrchestrator] Session created:', sessionMetadata.sessionId);
+
+      // Connect WebSocket with sessionId
+      const wsClient = await this.connectWebSocketWithSession(sessionMetadata.sessionId);
+
+      return {
+        success: true,
+        sessionId: sessionMetadata.sessionId,
+        wsClient: wsClient,
+      };
+    } catch (error) {
+      console.error('[SessionOrchestrator] HTTP session creation failed:', error);
+
+      if (error instanceof HttpError) {
+        return {
+          success: false,
+          error: error.message,
+          errorCode: error.code,
+        };
+      }
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.CREATION_FAILED,
+        errorCode: 'HTTP_CREATION_FAILED',
+      };
+    }
+  }
+
+  /**
+   * Connect WebSocket with existing sessionId (hybrid mode)
+   */
+  private async connectWebSocketWithSession(sessionId: string): Promise<WebSocketClient> {
+    const wsClient = new WebSocketClient({
+      url: this.config.wsUrl,
+      token: this.config.jwtToken,
+      heartbeatInterval: 30000,
+      reconnect: false,
+      maxReconnectAttempts: 0,
+      reconnectDelay: 1000,
+    });
+
+    this.wsClient = wsClient;
+
+    // Connect with sessionId query parameter
+    const connectPromise = wsClient.connect({
+      sessionId: sessionId,
+    });
+    const timeoutPromise = this.createTimeoutPromise(
+      this.config.timeout!,
+      ERROR_MESSAGES.CONNECTION_TIMEOUT
+    );
+
+    try {
+      await Promise.race([connectPromise, timeoutPromise]);
+      return wsClient;
+    } catch (error) {
+      wsClient.disconnect();
+      throw error;
+    }
+  }
+
+  /**
    * Create session with retry logic
    */
   async createSession(): Promise<SessionCreationResult> {
+    // Use HTTP-based session creation if feature flag is enabled
+    if (this.config.useHttpSessionCreation) {
+      console.log('[SessionOrchestrator] Using HTTP-based session creation');
+      return this.createSessionViaHttp();
+    }
+
+    // Fall back to WebSocket-based session creation (legacy)
+    console.log('[SessionOrchestrator] Using WebSocket-based session creation (legacy)');
+    return this.createSessionViaWebSocket();
+  }
+
+  /**
+   * Create session via WebSocket (legacy method)
+   */
+  private async createSessionViaWebSocket(): Promise<SessionCreationResult> {
     let lastError: string = ERROR_MESSAGES.UNKNOWN_ERROR;
     let lastErrorCode: string = 'UNKNOWN_ERROR';
     let authRetryDone = false;

@@ -101,33 +101,112 @@ def lambda_handler(event, context):
     )
     
     try:
-        # Handle $connect events - just validate and accept connection
+        # Handle $connect events - validate sessionId and session status
         if event_type == 'CONNECT':
             # Check connection attempt rate limit
             rate_limit_service.check_connection_attempt_limit(ip_address)
+            
+            # Extract sessionId from query parameters (REQUIRED for hybrid architecture)
+            query_params = event.get('queryStringParameters') or {}
+            session_id = query_params.get('sessionId', '').strip()
+            
+            # SessionId is now REQUIRED for all connections
+            if not session_id:
+                logger.warning(
+                    message="Connection rejected: missing sessionId parameter",
+                    correlation_id=connection_id,
+                    operation='lambda_handler',
+                    error_code='MISSING_SESSION_ID',
+                    ip_address=ip_address
+                )
+                metrics_publisher.emit_connection_error('MISSING_SESSION_ID')
+                return error_response(
+                    status_code=400,
+                    error_code='MISSING_SESSION_ID',
+                    message='sessionId query parameter is required'
+                )
+            
+            # Validate sessionId format
+            try:
+                validate_session_id_format(session_id)
+            except ValidationError as e:
+                logger.warning(
+                    message=f"Connection rejected: invalid sessionId format: {session_id}",
+                    correlation_id=connection_id,
+                    operation='lambda_handler',
+                    error_code='INVALID_SESSION_ID',
+                    ip_address=ip_address,
+                    sessionId=session_id
+                )
+                metrics_publisher.emit_connection_error('INVALID_SESSION_ID')
+                return error_response(
+                    status_code=400,
+                    error_code='INVALID_SESSION_ID',
+                    message='Invalid sessionId format'
+                )
+            
+            # Validate session exists and is active
+            session = sessions_repo.get_session(session_id)
+            
+            if not session:
+                logger.warning(
+                    message=f"Connection rejected: session not found: {session_id}",
+                    correlation_id=f"{session_id}-{connection_id}",
+                    operation='lambda_handler',
+                    error_code='SESSION_NOT_FOUND',
+                    ip_address=ip_address,
+                    sessionId=session_id
+                )
+                metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
+                return error_response(
+                    status_code=404,
+                    error_code='SESSION_NOT_FOUND',
+                    message='Session does not exist'
+                )
+            
+            if not session.get('isActive', False):
+                logger.warning(
+                    message=f"Connection rejected: session is not active: {session_id}",
+                    correlation_id=f"{session_id}-{connection_id}",
+                    operation='lambda_handler',
+                    error_code='SESSION_INACTIVE',
+                    ip_address=ip_address,
+                    sessionId=session_id
+                )
+                metrics_publisher.emit_connection_error('SESSION_INACTIVE')
+                return error_response(
+                    status_code=403,
+                    error_code='SESSION_INACTIVE',
+                    message='Session is not active'
+                )
             
             # Extract user context from authorizer (speaker only)
             authorizer_context = event['requestContext'].get('authorizer', {})
             user_id = authorizer_context.get('userId')
             
-            if user_id:
-                logger.info(
-                    message=f"Speaker connection accepted for user {user_id}",
-                    correlation_id=connection_id,
-                    operation='lambda_handler',
-                    user_id=user_id,
-                    ip_address=ip_address
-                )
-            else:
-                logger.info(
-                    message="Anonymous connection accepted (listener)",
-                    correlation_id=connection_id,
-                    operation='lambda_handler',
-                    ip_address=ip_address
-                )
+            # Determine role based on authentication
+            # Speaker: authenticated user who owns the session
+            # Listener: anonymous or authenticated user who doesn't own the session
+            speaker_user_id = session.get('speakerUserId', '')
+            is_speaker = user_id and user_id == speaker_user_id
+            role = 'speaker' if is_speaker else 'listener'
             
-            # Accept connection - don't create session yet!
-            # Session creation happens via MESSAGE event
+            logger.info(
+                message=f"{role.capitalize()} connection accepted for session {session_id}",
+                correlation_id=f"{session_id}-{connection_id}",
+                operation='lambda_handler',
+                user_id=user_id,
+                ip_address=ip_address,
+                sessionId=session_id,
+                role=role
+            )
+            
+            # Store sessionId in connection record for later use
+            # Note: We don't create the full connection record here yet
+            # That happens in joinSession MESSAGE event for listeners
+            # For speakers, the connection was already created during HTTP session creation
+            
+            # Accept connection
             return success_response(status_code=200, body={})
         
         # Handle MESSAGE events
@@ -198,7 +277,9 @@ def lambda_handler(event, context):
             error_code='RATE_LIMIT_EXCEEDED',
             ip_address=ip_address
         )
-        metrics_publisher.emit_rate_limit_exceeded(action)
+        # Emit rate limit metric (action may not be defined for CONNECT events)
+        action_name = locals().get('action', 'connect')
+        metrics_publisher.emit_rate_limit_exceeded(action_name)
         return rate_limit_error_response(e.retry_after)
     
     except UnsupportedLanguageError as e:

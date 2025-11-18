@@ -117,14 +117,25 @@ export const SpeakerApp: React.FC = () => {
       const jwtToken = tokens.idToken;
 
       
+      // Log which session creation method is being used
+      if (appConfig.useHttpSessionCreation) {
+        console.log('[SpeakerApp] Using HTTP-based session creation (hybrid mode)');
+      } else {
+        console.log('[SpeakerApp] Using WebSocket-based session creation (legacy mode)');
+      }
+
       // Create orchestrator with real JWT token
       const newOrchestrator = new SessionCreationOrchestrator({
         wsUrl: appConfig.websocketUrl,
+        httpApiUrl: appConfig.httpApiUrl, // Optional HTTP API URL
         jwtToken, // Real JWT token from Cognito
         sourceLanguage: config.sourceLanguage,
         qualityTier: config.qualityTier,
         timeout: 5000,
         retryAttempts: 3,
+        useHttpSessionCreation: appConfig.useHttpSessionCreation, // Feature flag
+        authService: authService, // Pass auth service for token refresh
+        tokenStorage: tokenStorage, // Pass token storage for token refresh
       });
       
       setOrchestrator(newOrchestrator);
