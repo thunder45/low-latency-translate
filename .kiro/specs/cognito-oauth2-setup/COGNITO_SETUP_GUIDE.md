@@ -52,16 +52,14 @@ This guide walks you through configuring AWS Cognito User Pool for OAuth2 authen
    - Add these URLs (one per line):
      ```
      http://localhost:3000/callback
-     http://localhost:5173/callback
      https://your-production-domain.com/callback
      ```
-   - Note: Port 3000 is for production build, 5173 is for Vite dev server
+   - Note: Port 3000 is configured in vite.config.ts
 
 4. **Configure Allowed Sign-out URLs**
    - Add these URLs (one per line):
      ```
      http://localhost:3000/
-     http://localhost:5173/
      https://your-production-domain.com/
      ```
 
@@ -156,7 +154,7 @@ npm run dev
 ```
 
 Then:
-1. Open http://localhost:5173 in your browser
+1. Open http://localhost:3000 in your browser
 2. Click "Create Session" or any action requiring auth
 3. You should be redirected to the Cognito hosted UI
 4. After login, you should be redirected back to your app

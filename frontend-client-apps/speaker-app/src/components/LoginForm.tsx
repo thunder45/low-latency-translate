@@ -73,12 +73,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps): JSX.Element {
       // Store tokens
       const tokenStorage = TokenStorage.getInstance();
       await tokenStorage.initialize(config.encryptionKey);
-      await tokenStorage.storeTokens({
-        accessToken: tokens.accessToken,
-        idToken: tokens.idToken,
-        refreshToken: tokens.refreshToken,
-        expiresAt: Date.now() + tokens.expiresIn * 1000,
-      });
+      await tokenStorage.storeTokens(tokens);
 
       // Clear password from memory
       setState(prev => ({ ...prev, password: '', isLoading: false }));

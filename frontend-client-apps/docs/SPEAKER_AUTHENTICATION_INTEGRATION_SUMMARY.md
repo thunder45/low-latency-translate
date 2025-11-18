@@ -77,8 +77,8 @@ November 17, 2025
   userPoolId: 'us-east-1_WoaXmyQLQ',
   clientId: '38t8057tbi0o6873qt441kuo3n',
   region: 'us-east-1',
-  redirectUri: 'http://localhost:5173/callback',
-  logoutUri: 'http://localhost:5173/',
+  redirectUri: 'http://localhost:3000/callback',
+  logoutUri: 'http://localhost:3000/',
 }
 ```
 
@@ -143,8 +143,8 @@ VITE_COGNITO_CLIENT_ID=38t8057tbi0o6873qt441kuo3n
 VITE_AWS_REGION=us-east-1
 
 # OAuth Redirect URIs
-VITE_COGNITO_REDIRECT_URI=http://localhost:5173/callback
-VITE_COGNITO_LOGOUT_URI=http://localhost:5173/
+VITE_COGNITO_REDIRECT_URI=http://localhost:3000/callback
+VITE_COGNITO_LOGOUT_URI=http://localhost:3000/
 
 # Security
 VITE_ENCRYPTION_KEY=your-32-character-encryption-key-here
@@ -287,8 +287,8 @@ await authService.initialize(cognitoConfig, encryptionKey);
 
 **App Client**:
 - Enabled Identity Providers: Cognito User Pool
-- Callback URLs: `http://localhost:5173/callback`, `https://your-domain.com/callback`
-- Sign out URLs: `http://localhost:5173/`, `https://your-domain.com/`
+- Callback URLs: `http://localhost:3000/callback`, `https://your-domain.com/callback`
+- Sign out URLs: `http://localhost:3000/`, `https://your-domain.com/`
 - OAuth 2.0 Flows: Authorization code grant
 - OAuth Scopes: openid, email, profile
 
@@ -299,8 +299,8 @@ await authService.initialize(cognitoConfig, encryptionKey);
 ### Environment-Specific Configuration
 
 **Development**:
-- Redirect URI: `http://localhost:5173/callback`
-- Logout URI: `http://localhost:5173/`
+- Redirect URI: `http://localhost:3000/callback`
+- Logout URI: `http://localhost:3000/`
 
 **Staging**:
 - Redirect URI: `https://staging.your-domain.com/callback`

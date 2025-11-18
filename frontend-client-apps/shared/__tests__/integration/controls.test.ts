@@ -10,24 +10,32 @@ import { PreferenceStore } from '../../services/PreferenceStore';
 import { KeyboardShortcutManager } from '../../services/KeyboardShortcutManager';
 import { CircularAudioBuffer } from '../../audio/CircularAudioBuffer';
 
-describe('Speaker Controls Integration', () => {
-  const mockStorage: Record<string, string> = {};
+// Mock localStorage
+const mockStorage: Record<string, string> = {};
+const localStorageMock = {
+  getItem: vi.fn((key: string) => mockStorage[key] || null),
+  setItem: vi.fn((key: string, value: string) => {
+    mockStorage[key] = value;
+  }),
+  removeItem: vi.fn((key: string) => {
+    delete mockStorage[key];
+  }),
+  clear: vi.fn(() => {
+    Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
+  }),
+  length: 0,
+  key: vi.fn(),
+};
 
+Object.defineProperty(global, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+});
+
+describe('Speaker Controls Integration', () => {
   beforeEach(() => {
     // Clear mock storage
     Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
-    
-    // Setup localStorage mock
-    vi.mocked(localStorage.getItem).mockImplementation((key: string) => mockStorage[key] || null);
-    vi.mocked(localStorage.setItem).mockImplementation((key: string, value: string) => {
-      mockStorage[key] = value;
-    });
-    vi.mocked(localStorage.removeItem).mockImplementation((key: string) => {
-      delete mockStorage[key];
-    });
-    vi.mocked(localStorage.clear).mockImplementation(() => {
-      Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
-    });
     
     // Clear monitoring data
     controlsMonitoring.clear();

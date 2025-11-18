@@ -75,7 +75,7 @@ SUPPORTED_LANGUAGES = os.environ.get('SUPPORTED_LANGUAGES', 'en,es,fr,de,pt,it,j
 
 def lambda_handler(event, context):
     """
-    Handle WebSocket events: $connect and control messages.
+    Handle WebSocket events: $connect and MESSAGE events.
     
     Args:
         event: API Gateway WebSocket event
@@ -101,30 +101,36 @@ def lambda_handler(event, context):
     )
     
     try:
-        # Handle $connect events
+        # Handle $connect events - just validate and accept connection
         if event_type == 'CONNECT':
-            query_params = event.get('queryStringParameters') or {}
-            action = query_params.get('action', '')
-            
-            # Validate action parameter
-            validate_action(action)
-            
             # Check connection attempt rate limit
             rate_limit_service.check_connection_attempt_limit(ip_address)
             
-            # Route to appropriate handler
-            if action == 'createSession':
-                return handle_create_session(event, connection_id, query_params, ip_address)
-            elif action == 'joinSession':
-                return handle_join_session(event, connection_id, query_params, ip_address)
-            else:
-                return error_response(
-                    status_code=400,
-                    error_code='INVALID_ACTION',
-                    message=f'Unsupported action: {action}'
+            # Extract user context from authorizer (speaker only)
+            authorizer_context = event['requestContext'].get('authorizer', {})
+            user_id = authorizer_context.get('userId')
+            
+            if user_id:
+                logger.info(
+                    message=f"Speaker connection accepted for user {user_id}",
+                    correlation_id=connection_id,
+                    operation='lambda_handler',
+                    user_id=user_id,
+                    ip_address=ip_address
                 )
+            else:
+                logger.info(
+                    message="Anonymous connection accepted (listener)",
+                    correlation_id=connection_id,
+                    operation='lambda_handler',
+                    ip_address=ip_address
+                )
+            
+            # Accept connection - don't create session yet!
+            # Session creation happens via MESSAGE event
+            return success_response(status_code=200, body={})
         
-        # Handle control messages (MESSAGE events)
+        # Handle MESSAGE events
         elif event_type == 'MESSAGE':
             # Parse message body
             try:
@@ -137,8 +143,28 @@ def lambda_handler(event, context):
                     message='Invalid JSON in message body'
                 )
             
-            # Route control messages
-            return route_control_message(connection_id, action, body)
+            # Route to appropriate handler
+            if action == 'createSession':
+                return handle_create_session_message(event, connection_id, body, ip_address)
+            elif action == 'joinSession':
+                return handle_join_session_message(event, connection_id, body, ip_address)
+            elif action:
+                # Route other control messages (pauseBroadcast, muteBroadcast, etc.)
+                return route_control_message(connection_id, action, body)
+            else:
+                # Handle missing or empty action - $default route
+                logger.warning(
+                    message="Message received with no action specified",
+                    correlation_id=connection_id,
+                    operation='lambda_handler',
+                    event_type=event_type
+                )
+                return success_response(status_code=200, body={
+                    'type': 'error',
+                    'code': 'MISSING_ACTION',
+                    'message': 'Message must include an action parameter',
+                    'timestamp': int(time.time() * 1000)
+                })
         
         else:
             return error_response(
@@ -209,14 +235,14 @@ def lambda_handler(event, context):
         )
 
 
-def handle_create_session(event, connection_id, query_params, ip_address):
+def handle_create_session_message(event, connection_id, body, ip_address):
     """
-    Handle speaker session creation.
+    Handle speaker session creation via MESSAGE event.
     
     Args:
         event: Lambda event
         connection_id: WebSocket connection ID
-        query_params: Query string parameters
+        body: Message body dict
         ip_address: Client IP address
     
     Returns:
@@ -224,22 +250,25 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     """
     start_time = time.time()
     
-    # Extract and validate parameters
-    source_language = query_params.get('sourceLanguage', '')
-    quality_tier = query_params.get('qualityTier', 'standard')
+    # Extract and validate parameters from message body
+    source_language = body.get('sourceLanguage', '')
+    quality_tier = body.get('qualityTier', 'standard')
     
     validate_language_code(source_language, 'sourceLanguage')
     validate_quality_tier(quality_tier)
     
     # Extract and validate partial results configuration
-    partial_results_enabled = query_params.get('partialResults', 'true').lower() == 'true'
-    min_stability = query_params.get('minStability', '0.85')
-    max_buffer_timeout = query_params.get('maxBufferTimeout', '5.0')
+    partial_results_enabled = body.get('partialResults', True)
+    if isinstance(partial_results_enabled, str):
+        partial_results_enabled = partial_results_enabled.lower() == 'true'
+    
+    min_stability = body.get('minStability', 0.85)
+    max_buffer_timeout = body.get('maxBufferTimeout', 5.0)
     
     # Validate configuration parameters
     try:
-        min_stability_threshold = float(min_stability)
-        max_buffer_timeout_seconds = float(max_buffer_timeout)
+        min_stability_threshold = float(min_stability) if not isinstance(min_stability, float) else min_stability
+        max_buffer_timeout_seconds = float(max_buffer_timeout) if not isinstance(max_buffer_timeout, float) else max_buffer_timeout
         
         # Validate ranges
         if not 0.70 <= min_stability_threshold <= 0.95:
@@ -251,19 +280,25 @@ def handle_create_session(event, connection_id, query_params, ip_address):
             raise ValueError(
                 f"maxBufferTimeout must be between 2.0 and 10.0, got {max_buffer_timeout_seconds}"
             )
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         logger.warning(
             message=f"Invalid partial results configuration: {str(e)}",
             correlation_id=connection_id,
-            operation='handle_create_session',
+            operation='handle_create_session_message',
             error_code='INVALID_CONFIGURATION'
         )
         metrics_publisher.emit_connection_error('INVALID_CONFIGURATION')
-        return error_response(
-            status_code=400,
-            error_code='INVALID_CONFIGURATION',
-            message=str(e)
-        )
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'INVALID_CONFIGURATION',
+            'message': str(e),
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
     
     # Extract user context from authorizer
     authorizer_context = event['requestContext'].get('authorizer', {})
@@ -273,20 +308,26 @@ def handle_create_session(event, connection_id, query_params, ip_address):
         logger.error(
             message="Missing userId in authorizer context",
             correlation_id=connection_id,
-            operation='handle_create_session',
+            operation='handle_create_session_message',
             error_code='UNAUTHORIZED'
         )
         metrics_publisher.emit_connection_error('UNAUTHORIZED')
-        return error_response(
-            status_code=401,
-            error_code='UNAUTHORIZED',
-            message='Authentication required'
-        )
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'UNAUTHORIZED',
+            'message': 'Authentication required',
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
     
     logger.info(
         message=f"Creating session for user {user_id}",
         correlation_id=connection_id,
-        operation='handle_create_session',
+        operation='handle_create_session_message',
         user_id=user_id,
         sourceLanguage=source_language,
         qualityTier=quality_tier
@@ -325,7 +366,7 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     logger.info(
         message="Session created successfully",
         correlation_id=session_id,
-        operation='handle_create_session',
+        operation='handle_create_session_message',
         duration_ms=duration_ms,
         user_id=user_id
     )
@@ -333,23 +374,261 @@ def handle_create_session(event, connection_id, query_params, ip_address):
     # Emit metrics
     metrics_publisher.emit_session_creation_latency(duration_ms, user_id)
     
-    # Return success response
-    return success_response(
-        status_code=200,
-        body={
-            'type': 'sessionCreated',
-            'sessionId': session_id,
-            'sourceLanguage': source_language,
-            'qualityTier': quality_tier,
-            'partialResultsEnabled': partial_results_enabled,
-            'minStabilityThreshold': min_stability_threshold,
-            'maxBufferTimeout': max_buffer_timeout_seconds,
-            'connectionId': connection_id,
+    # Send message via post_to_connection (asynchronously)
+    success_msg = {
+        'type': 'sessionCreated',
+        'sessionId': session_id,
+        'sourceLanguage': source_language,
+        'qualityTier': quality_tier,
+        'partialResultsEnabled': partial_results_enabled,
+        'minStabilityThreshold': min_stability_threshold,
+        'maxBufferTimeout': max_buffer_timeout_seconds,
+        'connectionId': connection_id,
+        'timestamp': int(time.time() * 1000)
+    }
+    
+    # Send message to client
+    send_result = send_to_connection(connection_id, success_msg)
+    
+    if not send_result:
+        logger.error(
+            message="CRITICAL: Failed to send sessionCreated message",
+            correlation_id=session_id,
+            connection_id=connection_id,
+            operation='handle_create_session_message'
+        )
+        # Connection is likely already gone, but still mark success
+        # since session was created successfully
+    else:
+        logger.info(
+            message="SUCCESS: sessionCreated message sent to connection",
+            correlation_id=session_id,
+            connection_id=connection_id,
+            operation='handle_create_session_message',
+            timestamp_ms=int(time.time() * 1000)
+        )
+    
+    logger.info(
+        message="Lambda completing immediately after message send",
+        correlation_id=session_id,
+        operation='handle_create_session_message'
+    )
+    
+    # Return success response to keep connection open
+    return success_response(status_code=200, body={})
+
+
+def handle_join_session_message(event, connection_id, body, ip_address):
+    """
+    Handle listener joining session via MESSAGE event.
+    
+    Args:
+        event: Lambda event
+        connection_id: WebSocket connection ID
+        body: Message body dict
+        ip_address: Client IP address
+    
+    Returns:
+        API Gateway response
+    """
+    start_time = time.time()
+    
+    # Extract and validate parameters from message body
+    session_id = body.get('sessionId', '')
+    target_language = body.get('targetLanguage', '')
+    
+    validate_session_id_format(session_id)
+    validate_language_code(target_language, 'targetLanguage')
+    
+    logger.info(
+        message="Listener joining session",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_join_session_message',
+        sessionId=session_id,
+        targetLanguage=target_language
+    )
+    
+    # Check rate limit for listener joins
+    rate_limit_service.check_listener_join_limit(ip_address)
+    
+    # Validate session exists and is active
+    session = sessions_repo.get_session(session_id)
+    
+    if not session:
+        logger.warning(
+            message=f"Session not found: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'SESSION_NOT_FOUND',
+            'message': 'Session does not exist or is inactive',
+            'details': {'sessionId': session_id},
             'timestamp': int(time.time() * 1000)
         }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    if not session.get('isActive', False):
+        logger.warning(
+            message=f"Session is inactive: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'SESSION_NOT_FOUND',
+            'message': 'Session does not exist or is inactive',
+            'details': {'sessionId': session_id},
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    # Validate language support
+    source_language = session['sourceLanguage']
+    try:
+        language_validator.validate_target_language(source_language, target_language)
+    except UnsupportedLanguageError as e:
+        logger.warning(
+            message=f"Unsupported language: {e.message}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            error_code='UNSUPPORTED_LANGUAGE',
+            languageCode=e.language_code
+        )
+        metrics_publisher.emit_connection_error('UNSUPPORTED_LANGUAGE')
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'UNSUPPORTED_LANGUAGE',
+            'message': e.message,
+            'details': {'languageCode': e.language_code},
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    # Check session capacity
+    current_listener_count = session.get('listenerCount', 0)
+    if current_listener_count >= MAX_LISTENERS_PER_SESSION:
+        logger.warning(
+            message=f"Session at capacity: {session_id} ({current_listener_count} listeners)",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            error_code='SESSION_FULL',
+            sessionId=session_id,
+            listenerCount=current_listener_count
+        )
+        metrics_publisher.emit_connection_error('SESSION_FULL')
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'SESSION_FULL',
+            'message': f'Session has reached maximum capacity of {MAX_LISTENERS_PER_SESSION} listeners',
+            'details': {
+                'sessionId': session_id,
+                'maxListeners': MAX_LISTENERS_PER_SESSION
+            },
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    # Create connection record
+    connections_repo.create_connection(
+        connection_id=connection_id,
+        session_id=session_id,
+        role='listener',
+        target_language=target_language,
+        ip_address=ip_address,
+        session_max_duration_hours=SESSION_MAX_DURATION_HOURS
     )
+    
+    # Atomically increment listener count
+    try:
+        new_listener_count = sessions_repo.increment_listener_count(session_id)
+    except ConditionalCheckFailedError:
+        # Session became inactive or was deleted
+        logger.warning(
+            message=f"Session became inactive during join: {session_id}",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            error_code='SESSION_NOT_FOUND',
+            sessionId=session_id
+        )
+        # Clean up connection record
+        connections_repo.delete_connection(connection_id)
+        metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
+        
+        # Send error message to client
+        error_msg = {
+            'type': 'error',
+            'code': 'SESSION_NOT_FOUND',
+            'message': 'Session is no longer active',
+            'details': {'sessionId': session_id},
+            'timestamp': int(time.time() * 1000)
+        }
+        send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    
+    logger.info(
+        message="Listener joined successfully",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_join_session_message',
+        duration_ms=duration_ms,
+        sessionId=session_id,
+        targetLanguage=target_language,
+        listenerCount=new_listener_count
+    )
+    
+    # Emit metrics
+    metrics_publisher.emit_listener_join_latency(duration_ms, session_id)
+    
+    # Send message via post_to_connection (asynchronously)
+    success_msg = {
+        'type': 'sessionJoined',
+        'sessionId': session_id,
+        'targetLanguage': target_language,
+        'sourceLanguage': source_language,
+        'connectionId': connection_id,
+        'timestamp': int(time.time() * 1000)
+    }
+    
+    # Send message to client
+    send_result = send_to_connection(connection_id, success_msg)
+    
+    logger.info(
+        message=f"Session joined, message sent: {send_result}",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_join_session_message'
+    )
+    
+    # Return success response to keep connection open
+    return success_response(status_code=200, body={})
 
 
+# Keep old function for backwards compatibility (not used anymore)
 def handle_join_session(event, connection_id, query_params, ip_address):
     """
     Handle listener joining session.
@@ -608,7 +887,9 @@ def route_control_message(connection_id: str, action: str, body: Dict[str, Any])
         )
         
         # Route to handler
-        if action == 'pauseBroadcast':
+        if action == 'heartbeat':
+            return handle_heartbeat(connection_id, session_id)
+        elif action == 'pauseBroadcast':
             return handle_pause_broadcast(connection_id, session_id)
         elif action == 'resumeBroadcast':
             return handle_resume_broadcast(connection_id, session_id)
@@ -689,9 +970,21 @@ def send_to_connection(connection_id: str, message: Dict[str, Any]) -> bool:
         return False
     
     try:
+        data = json.dumps(message, cls=DecimalEncoder).encode('utf-8')
+        logger.info(
+            message=f"Sending message to connection {connection_id}: {message.get('type', 'unknown')}",
+            correlation_id=connection_id,
+            operation='send_to_connection',
+            message_type=message.get('type')
+        )
         apigw_management_client.post_to_connection(
             ConnectionId=connection_id,
-            Data=json.dumps(message, cls=DecimalEncoder).encode('utf-8')
+            Data=data
+        )
+        logger.info(
+            message=f"Successfully sent message to connection {connection_id}",
+            correlation_id=connection_id,
+            operation='send_to_connection'
         )
         return True
     except apigw_management_client.exceptions.GoneException:
@@ -1424,6 +1717,36 @@ def handle_speaker_state_change(connection_id: str, session_id: str, body: Dict[
             message='Failed to update speaker state'
         )
 
+
+
+def handle_heartbeat(connection_id: str, session_id: str) -> Dict[str, Any]:
+    """
+    Handle heartbeat message from client.
+    
+    Args:
+        connection_id: WebSocket connection ID
+        session_id: Session identifier
+        
+    Returns:
+        API Gateway response
+    """
+    logger.debug(
+        message="Heartbeat received",
+        correlation_id=f"{session_id}-{connection_id}",
+        operation='handle_heartbeat',
+        sessionId=session_id
+    )
+    
+    # Send heartbeat acknowledgment
+    ack_msg = {
+        'type': 'heartbeatAck',
+        'timestamp': int(time.time() * 1000)
+    }
+    
+    send_to_connection(connection_id, ack_msg)
+    
+    # Return success to keep connection open
+    return success_response(status_code=200, body={})
 
 
 def handle_pause_playback(connection_id: str, session_id: str) -> Dict[str, Any]:

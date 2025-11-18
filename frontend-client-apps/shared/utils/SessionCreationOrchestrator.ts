@@ -1,6 +1,7 @@
 import { WebSocketClient } from '../websocket/WebSocketClient';
 import { WebSocketMessage } from '../websocket/types';
-import { CognitoAuthService, AuthTokens } from '../services/CognitoAuthService';
+import { CognitoAuthService } from '../services/CognitoAuthService';
+import { AuthTokens } from './storage';
 
 /**
  * Token storage interface
@@ -278,8 +279,12 @@ export class SessionCreationOrchestrator {
 
     this.wsClient = wsClient;
 
-    // Connect with timeout
-    const connectPromise = wsClient.connect();
+    // Connect with timeout and required query parameters
+    const connectPromise = wsClient.connect({
+      action: 'createSession',
+      sourceLanguage: this.config.sourceLanguage,
+      qualityTier: this.config.qualityTier,
+    });
     const timeoutPromise = this.createTimeoutPromise(
       this.config.timeout!,
       ERROR_MESSAGES.CONNECTION_TIMEOUT
@@ -338,6 +343,7 @@ export class SessionCreationOrchestrator {
         if (responseReceived) return;
         responseReceived = true;
 
+        console.warn('[SessionOrchestrator] Session creation timed out after', this.config.timeout, 'ms');
         wsClient.off('sessionCreated');
         wsClient.off('error');
 
@@ -352,15 +358,25 @@ export class SessionCreationOrchestrator {
       try {
         // Validate connection state before sending
         if (!wsClient.isConnected()) {
+          console.error('[SessionOrchestrator] WebSocket not connected, cannot send message');
           throw new Error('WebSocket not connected');
         }
+        
+        console.log('[SessionOrchestrator] Sending createSession message:', {
+          action: 'createSession',
+          sourceLanguage: this.config.sourceLanguage,
+          qualityTier: this.config.qualityTier,
+        });
         
         wsClient.send({
           action: 'createSession',
           sourceLanguage: this.config.sourceLanguage,
           qualityTier: this.config.qualityTier,
         });
+        
+        console.log('[SessionOrchestrator] Message sent successfully');
       } catch (error) {
+        console.error('[SessionOrchestrator] Error sending message:', error);
         if (responseReceived) return;
         responseReceived = true;
         clearTimeout(timeoutId);

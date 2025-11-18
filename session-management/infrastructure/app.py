@@ -25,7 +25,8 @@ except ImportError:
 app = App()
 
 # Get environment from context (default to dev)
-env_name = app.node.try_get_context("env") or "dev"
+# Support both 'env' and 'environment' parameter names for consistency
+env_name = app.node.try_get_context("env") or app.node.try_get_context("environment") or "dev"
 
 # Load environment-specific configuration
 config_path = os.path.join(os.path.dirname(__file__), "config", f"{env_name}.json")

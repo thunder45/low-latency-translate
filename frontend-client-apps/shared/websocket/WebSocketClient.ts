@@ -48,21 +48,25 @@ export class WebSocketClient {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
+          console.log('[WebSocketClient] WebSocket connection opened, readyState:', this.ws?.readyState);
           this.updateState({
             status: 'connected',
             reconnectAttempts: 0,
           });
           this.startHeartbeat();
           this.onConnectHandlers.forEach((handler) => handler());
+          console.log('[WebSocketClient] onopen handlers completed, resolving connect promise');
           resolve();
         };
 
         this.ws.onmessage = (event) => {
+          console.log('[WebSocketClient] Raw message received:', event.data, 'at', Date.now());
           try {
             const message = JSON.parse(event.data);
+            console.log('[WebSocketClient] Parsed message type:', message.type, 'full message:', message);
             this.handleMessage(message);
           } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+            console.error('[WebSocketClient] Failed to parse WebSocket message:', error, 'raw data:', event.data);
           }
         };
 
@@ -89,9 +93,15 @@ export class WebSocketClient {
    * Send message to server
    */
   send(message: WebSocketMessage): void {
+    console.log('[WebSocketClient] send() called, readyState:', this.ws?.readyState, 'message:', message);
+    
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      const payload = JSON.stringify(message);
+      console.log('[WebSocketClient] Sending payload:', payload);
+      this.ws.send(payload);
+      console.log('[WebSocketClient] Payload sent successfully');
     } else {
+      console.error('[WebSocketClient] Cannot send - WebSocket not open. ReadyState:', this.ws?.readyState);
       throw new Error('WebSocket not connected');
     }
   }
@@ -165,7 +175,21 @@ export class WebSocketClient {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.state.status === 'connected' && this.ws?.readyState === WebSocket.OPEN;
+    const stateConnected = this.state.status === 'connected';
+    const wsOpen = this.ws?.readyState === WebSocket.OPEN;
+    const result = stateConnected && wsOpen;
+    
+    // Add detailed logging when there's a mismatch
+    if (stateConnected !== wsOpen) {
+      console.warn('[WebSocketClient] Connection state mismatch!', {
+        stateStatus: this.state.status,
+        wsReadyState: this.ws?.readyState,
+        wsOpen,
+        result
+      });
+    }
+    
+    return result;
   }
 
   /**
@@ -269,6 +293,8 @@ export class WebSocketClient {
    * Handle connection close with specific error codes
    */
   private handleConnectionClose(event: CloseEvent): void {
+    console.log(`[WebSocketClient] WebSocket closed with code: ${event.code}, reason: "${event.reason}", wasClean: ${event.wasClean}`);
+    
     // WebSocket close codes:
     // NORMAL_CLOSURE = Normal closure
     // ABNORMAL_CLOSURE = Abnormal closure (no close frame)
@@ -321,6 +347,8 @@ export class WebSocketClient {
    * Handle disconnection
    */
   private handleDisconnect(): void {
+    console.log('[WebSocketClient] handleDisconnect() called');
+    console.trace('[WebSocketClient] handleDisconnect stack trace');
     this.stopHeartbeat();
     this.updateState({ status: 'disconnected' });
     this.onDisconnectHandlers.forEach((handler) => handler());

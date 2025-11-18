@@ -10,16 +10,7 @@ import {
   InitiateAuthCommandOutput,
   AuthFlowType,
 } from '@aws-sdk/client-cognito-identity-provider';
-
-/**
- * Authentication tokens returned from Cognito
- */
-export interface AuthTokens {
-  accessToken: string;
-  idToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}
+import { AuthTokens } from '../utils/storage';
 
 /**
  * Cognito configuration
@@ -109,11 +100,12 @@ export class CognitoAuthService {
         );
       }
 
+      // Convert expiresIn (duration) to expiresAt (absolute timestamp)
       return {
         accessToken: AccessToken,
         idToken: IdToken,
         refreshToken: RefreshToken,
-        expiresIn: ExpiresIn,
+        expiresAt: Date.now() + (ExpiresIn * 1000),
       };
     } catch (error: any) {
       // Handle specific Cognito errors
@@ -212,11 +204,12 @@ export class CognitoAuthService {
       }
 
       // Refresh token is not returned in refresh response, use the existing one
+      // Convert expiresIn (duration) to expiresAt (absolute timestamp)
       return {
         accessToken: AccessToken,
         idToken: IdToken,
         refreshToken: refreshToken, // Keep the same refresh token
-        expiresIn: ExpiresIn,
+        expiresAt: Date.now() + (ExpiresIn * 1000),
       };
     } catch (error: any) {
       if (error instanceof AuthError) {

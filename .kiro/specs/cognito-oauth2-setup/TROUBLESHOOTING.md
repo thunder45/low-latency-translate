@@ -29,13 +29,11 @@ This error occurs when the Hosted UI is not properly enabled for your app client
 **Allowed callback URLs** (add all of these):
 ```
 http://localhost:3000/callback
-http://localhost:5173/callback
 ```
 
 **Allowed sign-out URLs** (add all of these):
 ```
 http://localhost:3000/
-http://localhost:5173/
 ```
 
 **Identity providers**:

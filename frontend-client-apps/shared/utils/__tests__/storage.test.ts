@@ -1,27 +1,38 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SecureStorage, STORAGE_KEYS } from '../storage';
 
+// Mock localStorage
+const mockStorage: Record<string, string> = {};
+const localStorageMock = {
+  getItem: vi.fn((key: string) => mockStorage[key] || null),
+  setItem: vi.fn((key: string, value: string) => {
+    mockStorage[key] = value;
+  }),
+  removeItem: vi.fn((key: string) => {
+    delete mockStorage[key];
+  }),
+  clear: vi.fn(() => {
+    Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
+  }),
+  length: 0,
+  key: vi.fn(),
+};
+
+Object.defineProperty(global, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+});
+
 describe('SecureStorage', () => {
   let storage: SecureStorage;
-  const mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
     // Clear mock storage
     Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
     
-    // Setup localStorage mock to use mockStorage
-    vi.mocked(localStorage.getItem).mockImplementation((key: string) => mockStorage[key] || null);
-    vi.mocked(localStorage.setItem).mockImplementation((key: string, value: string) => {
-      mockStorage[key] = value;
-    });
-    vi.mocked(localStorage.removeItem).mockImplementation((key: string) => {
-      delete mockStorage[key];
-    });
-    vi.mocked(localStorage.clear).mockImplementation(() => {
-      Object.keys(mockStorage).forEach(key => delete mockStorage[key]);
-    });
-    
+    // Clear all mocks
     vi.clearAllMocks();
+    
     storage = new SecureStorage('test-encryption-key');
   });
 
@@ -50,7 +61,7 @@ describe('SecureStorage', () => {
 
     it('should handle encryption errors gracefully', async () => {
       // Mock setItem to throw error
-      vi.mocked(localStorage.setItem).mockImplementation(() => {
+      localStorageMock.setItem.mockImplementationOnce(() => {
         throw new Error('Storage quota exceeded');
       });
       
@@ -66,7 +77,7 @@ describe('SecureStorage', () => {
       await storage.set(STORAGE_KEYS.SPEAKER_PREFERENCES, 'test');
       
       // Mock getItem to return invalid JSON
-      vi.mocked(localStorage.getItem).mockReturnValue('invalid-json{');
+      localStorageMock.getItem.mockReturnValueOnce('invalid-json{');
       
       const value = await storage.get(STORAGE_KEYS.SPEAKER_PREFERENCES);
       expect(value).toBeNull();

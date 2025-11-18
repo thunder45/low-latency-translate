@@ -84,10 +84,11 @@ export class TokenStorage {
     );
     
     // Derive encryption key using PBKDF2
+    // Cast salt to BufferSource to satisfy TypeScript
     return crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt,
+        salt: salt as BufferSource,
         iterations: AUTH_CONSTANTS.PBKDF2_ITERATIONS,
         hash: 'SHA-256',
       },
@@ -284,10 +285,10 @@ export class TokenStorage {
       // Parse encrypted data
       const encryptedData = JSON.parse(storedData) as EncryptedData;
       if (!encryptedData.encrypted || !encryptedData.iv) {
-        throw new StorageError(
-          STORAGE_ERROR_CODES.INVALID_DATA,
-          'Invalid encrypted data format'
-        );
+        // Clear invalid data and return null
+        console.warn('[TokenStorage] Invalid encrypted data format, clearing storage');
+        await this.clearTokens();
+        return null;
       }
 
       // Decrypt tokens
@@ -296,18 +297,29 @@ export class TokenStorage {
 
       // Validate decrypted tokens
       if (!tokens.idToken || !tokens.accessToken || !tokens.refreshToken || !tokens.expiresAt) {
-        throw new StorageError(
-          STORAGE_ERROR_CODES.INVALID_DATA,
-          'Invalid token structure after decryption'
-        );
+        // Clear invalid tokens and return null
+        console.warn('[TokenStorage] Invalid token structure after decryption, clearing storage');
+        await this.clearTokens();
+        return null;
       }
 
       return tokens;
     } catch (error) {
+      // If decryption fails (including StorageError.DECRYPTION_FAILED),
+      // clear corrupted/stale data and return null instead of throwing
+      if (error instanceof StorageError && error.code === STORAGE_ERROR_CODES.DECRYPTION_FAILED) {
+        console.warn('[TokenStorage] Decryption failed (likely stale data), clearing storage');
+        await this.clearTokens();
+        return null;
+      }
+      
+      // Re-throw other storage errors (STORAGE_UNAVAILABLE, MISSING_KEY)
       if (error instanceof StorageError) {
         throw error;
       }
-      // If decryption fails, clear corrupted data
+      
+      // For unexpected errors, clear data and return null
+      console.error('[TokenStorage] Unexpected error retrieving tokens:', error);
       await this.clearTokens();
       return null;
     }

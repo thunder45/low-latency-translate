@@ -12,6 +12,21 @@ session-management/lambda/authorizer/pycparser/
 session-management/lambda/authorizer/pycparser-*.dist-info/
 session-management/lambda/authorizer/_cffi_backend.*
 
+# Additional Lambda dependencies
+session-management/lambda/authorizer/PyJWT-*.dist-info/
+session-management/lambda/authorizer/bin/
+session-management/lambda/authorizer/certifi-*.dist-info/
+session-management/lambda/authorizer/certifi/
+session-management/lambda/authorizer/charset_normalizer-*.dist-info/
+session-management/lambda/authorizer/charset_normalizer/
+session-management/lambda/authorizer/idna-*.dist-info/
+session-management/lambda/authorizer/idna/
+session-management/lambda/authorizer/jwt/
+session-management/lambda/authorizer/requests-*.dist-info/
+session-management/lambda/authorizer/requests/
+session-management/lambda/authorizer/urllib3-*.dist-info/
+session-management/lambda/authorizer/urllib3/
+
 session-management/lambda/refresh_handler/cryptography/
 session-management/lambda/refresh_handler/cryptography-*.dist-info/
 session-management/lambda/refresh_handler/cffi/
@@ -22,3 +37,6 @@ session-management/lambda/refresh_handler/_cffi_backend.*
 
 # Lambda Layer (generated from shared/)
 session-management/lambda_layer/
+
+# Test files with sensitive data
+test-authorizer-event.json

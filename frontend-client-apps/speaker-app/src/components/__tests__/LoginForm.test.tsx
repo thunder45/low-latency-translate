@@ -20,9 +20,14 @@ vi.mock('../../../../shared/services/CognitoAuthService', () => ({
 }));
 
 vi.mock('../../../../shared/services/TokenStorage', () => ({
-  TokenStorage: vi.fn().mockImplementation(() => ({
-    storeTokens: vi.fn(),
-  })),
+  TokenStorage: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn(),
+      storeTokens: vi.fn(),
+      getTokens: vi.fn(),
+      clearTokens: vi.fn(),
+    })),
+  },
 }));
 
 vi.mock('../../../../shared/utils/config', () => ({

@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-unit test-integration test-e2e test-resilience coverage lint format type-check security-check deploy-dev deploy-staging deploy-prod destroy-dev synth bootstrap validate validate-cdk logs-dev clean
+.PHONY: help install install-dev test test-unit test-integration test-e2e test-resilience coverage lint format type-check security-check deploy-dev deploy-staging deploy-prod destroy-dev destroy-staging destroy-prod synth bootstrap validate validate-cdk logs-dev clean
 
 # Default target - show help
 help:
@@ -28,6 +28,8 @@ help:
 	@echo '    deploy-staging   - Deploy to staging'
 	@echo '    deploy-prod      - Deploy to production'
 	@echo '    destroy-dev      - Destroy dev stack'
+	@echo '    destroy-staging  - Destroy staging stack'
+	@echo '    destroy-prod     - Destroy prod stack (with confirmation)'
 	@echo '    synth            - Synthesize CloudFormation template'
 	@echo '    bootstrap        - Bootstrap CDK (first time only)'
 	@echo ''
@@ -113,6 +115,16 @@ deploy-prod:
 # Destroy dev stack
 destroy-dev:
 	cd infrastructure && cdk destroy --context env=dev --force
+
+# Destroy staging stack
+destroy-staging:
+	cd infrastructure && cdk destroy --context env=staging --force
+
+# Destroy production stack (requires manual confirmation)
+destroy-prod:
+	@echo "WARNING: You are about to destroy the PRODUCTION environment!"
+	@echo "This action cannot be undone. Type 'yes' to continue:"
+	@read -r confirm && [ "$$confirm" = "yes" ] && cd infrastructure && cdk destroy --context env=prod --force || echo "Aborted."
 
 # Synthesize CloudFormation template
 synth:

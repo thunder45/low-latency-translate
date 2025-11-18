@@ -195,8 +195,8 @@ VITE_COGNITO_CLIENT_ID=38t8057tbi0o6873qt441kuo3n
 VITE_AWS_REGION=us-east-1
 
 # OAuth Redirect URIs
-VITE_COGNITO_REDIRECT_URI=http://localhost:5173/callback
-VITE_COGNITO_LOGOUT_URI=http://localhost:5173/
+VITE_COGNITO_REDIRECT_URI=http://localhost:3000/callback
+VITE_COGNITO_LOGOUT_URI=http://localhost:3000/
 
 # Security (32+ characters)
 VITE_ENCRYPTION_KEY=your-secure-32-character-key-here
@@ -206,8 +206,8 @@ VITE_ENCRYPTION_KEY=your-secure-32-character-key-here
 
 **App Client Configuration**:
 - ✅ Enabled Identity Providers: Cognito User Pool
-- ✅ Callback URLs: `http://localhost:5173/callback`
-- ✅ Sign out URLs: `http://localhost:5173/`
+- ✅ Callback URLs: `http://localhost:3000/callback`
+- ✅ Sign out URLs: `http://localhost:3000/`
 - ✅ OAuth 2.0 Flows: Authorization code grant
 - ✅ OAuth Scopes: openid, email, profile
 

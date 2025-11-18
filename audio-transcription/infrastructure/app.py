@@ -14,7 +14,8 @@ from stacks.audio_transcription_stack import AudioTranscriptionStack
 app = cdk.App()
 
 # Get environment from context or default to 'dev'
-env_name = app.node.try_get_context('environment') or 'dev'
+# Support both 'environment' and 'env' parameter names
+env_name = app.node.try_get_context('environment') or app.node.try_get_context('env') or 'dev'
 
 # Load environment-specific configuration
 config_file = f'config/{env_name}.json'

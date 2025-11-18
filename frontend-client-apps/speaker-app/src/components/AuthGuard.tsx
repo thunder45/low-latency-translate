@@ -125,16 +125,11 @@ export function AuthGuard({ children, fallback }: AuthGuardProps): JSX.Element {
       const tokenStorage = TokenStorage.getInstance();
       await tokenStorage.initialize(config.encryptionKey);
 
-      await tokenStorage.storeTokens({
-        accessToken: tokens.accessToken,
-        idToken: tokens.idToken,
-        refreshToken: tokens.refreshToken,
-        expiresAt: Date.now() + tokens.expiresIn * 1000,
-      });
+      await tokenStorage.storeTokens(tokens);
 
       // Schedule next refresh
       scheduleTokenRefresh(
-        new Date(Date.now() + tokens.expiresIn * 1000),
+        new Date(tokens.expiresAt),
         tokens.refreshToken
       );
 

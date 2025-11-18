@@ -303,11 +303,226 @@ describe('SessionCreationOrchestrator', () => {
   });
 });
 
+  describe('bug fixes', () => {
+    let orchestrator: SessionCreationOrchestrator;
+    let mockWsClient: any;
+
+    beforeEach(() => {
+      // Reset mocks
+      vi.clearAllMocks();
+
+      // Create mock WebSocket client
+      mockWsClient = {
+        connect: vi.fn(),
+        send: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        disconnect: vi.fn(),
+        isConnected: vi.fn().mockReturnValue(true),
+      };
+
+      // Mock WebSocketClient constructor
+      (WebSocketClient as any).mockImplementation(() => mockWsClient);
+    });
+
+    afterEach(() => {
+      if (orchestrator) {
+        orchestrator.abort();
+      }
+    });
+
+    it('should use tokens.expiresAt directly without recalculation (Task 5 fix)', async () => {
+      // This test validates the fix for token expiry calculation bug
+      // The bug was: timeUntilExpiry = (Date.now() + expiresIn * 1000) - Date.now()
+      // The fix: timeUntilExpiry = expiresAt - Date.now()
+      
+      const now = Date.now();
+      const expiresAt = now + (10 * 60 * 1000); // 10 minutes from now
+      
+      const mockTokenStorage = {
+        getTokens: vi.fn().mockResolvedValue({
+          idToken: 'test-token',
+          accessToken: 'test-access-token',
+          refreshToken: 'test-refresh-token',
+          expiresAt, // Absolute timestamp
+        }),
+        storeTokens: vi.fn(),
+      };
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'test-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        tokenStorage: mockTokenStorage,
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Mock successful session creation response
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'sessionCreated') {
+          setTimeout(() => {
+            handler({
+              type: 'sessionCreated',
+              sessionId: 'test-session-123',
+              sourceLanguage: 'en',
+              qualityTier: 'standard',
+              timestamp: Date.now(),
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      // Token should not be refreshed since it's 10 minutes from expiry
+      // This validates that expiresAt is used directly
+    });
+
+    it('should validate WebSocket connection state before sending (Task 6 fix)', async () => {
+      // This test validates the fix for WebSocket state validation
+      // The bug was: no check if WebSocket is connected before send()
+      // The fix: check isConnected() before send() and throw error if not connected
+      
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'test-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+      
+      // Mock isConnected to return false (simulating disconnected state)
+      mockWsClient.isConnected.mockReturnValue(false);
+
+      const result = await orchestrator.createSession();
+
+      // Should fail because WebSocket is not connected
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not connected');
+      expect(mockWsClient.send).not.toHaveBeenCalled();
+    });
+
+    it('should throw error if send fails due to connection state (Task 6 fix)', async () => {
+      // Additional test for WebSocket state validation
+      // Ensures error is properly caught and promise is rejected
+      
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'test-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+      
+      // Mock isConnected to return true initially
+      mockWsClient.isConnected.mockReturnValue(true);
+      
+      // Mock send to throw error (connection dropped between check and send)
+      mockWsClient.send.mockImplementation(() => {
+        throw new Error('WebSocket not connected');
+      });
+
+      const result = await orchestrator.createSession();
+
+      // Should fail and cleanup properly
+      expect(result.success).toBe(false);
+      expect(mockWsClient.disconnect).toHaveBeenCalled();
+    });
+
+    it('should correctly calculate time until expiry from absolute timestamp', async () => {
+      // Comprehensive test for token expiry calculation
+      // Validates that expiresAt is treated as absolute timestamp
+      
+      const now = Date.now();
+      const expiresAt = now + (3 * 60 * 1000); // 3 minutes from now (less than 5 min threshold)
+      
+      const mockAuthService = {
+        refreshTokens: vi.fn().mockResolvedValue({
+          idToken: 'new-token',
+          accessToken: 'new-access-token',
+          refreshToken: 'refresh-token',
+          expiresAt: now + (60 * 60 * 1000), // 1 hour from now
+        }),
+      };
+
+      const mockTokenStorage = {
+        getTokens: vi.fn().mockResolvedValue({
+          idToken: 'old-token',
+          accessToken: 'old-access-token',
+          refreshToken: 'refresh-token',
+          expiresAt, // 3 minutes from now
+        }),
+        storeTokens: vi.fn(),
+      };
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'old-token',
+        refreshToken: 'refresh-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        authService: mockAuthService,
+        tokenStorage: mockTokenStorage,
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Mock successful session creation response
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'sessionCreated') {
+          setTimeout(() => {
+            handler({
+              type: 'sessionCreated',
+              sessionId: 'test-session-123',
+              sourceLanguage: 'en',
+              qualityTier: 'standard',
+              timestamp: Date.now(),
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      // Should trigger refresh because token expires in 3 minutes (< 5 min threshold)
+      expect(mockAuthService.refreshTokens).toHaveBeenCalled();
+      expect(mockTokenStorage.storeTokens).toHaveBeenCalled();
+    });
+  });
+
   describe('token refresh', () => {
+    let orchestrator: SessionCreationOrchestrator;
+    let mockWsClient: any;
     let mockAuthService: any;
     let mockTokenStorage: any;
 
     beforeEach(() => {
+      // Reset mocks
+      vi.clearAllMocks();
+
+      // Create mock WebSocket client
+      mockWsClient = {
+        connect: vi.fn(),
+        send: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        disconnect: vi.fn(),
+        isConnected: vi.fn().mockReturnValue(true),
+      };
+
+      // Mock WebSocketClient constructor
+      (WebSocketClient as any).mockImplementation(() => mockWsClient);
+
       mockAuthService = {
         refreshTokens: vi.fn(),
       };
@@ -316,6 +531,12 @@ describe('SessionCreationOrchestrator', () => {
         getTokens: vi.fn(),
         storeTokens: vi.fn(),
       };
+    });
+
+    afterEach(() => {
+      if (orchestrator) {
+        orchestrator.abort();
+      }
     });
 
     it('should refresh token if close to expiry before connecting', async () => {

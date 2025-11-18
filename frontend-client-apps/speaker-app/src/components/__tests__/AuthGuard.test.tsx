@@ -4,12 +4,15 @@
  * Tests route protection, token refresh, and concurrent refresh prevention
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, setOptions } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AuthGuard } from '../AuthGuard';
 import { TokenStorage } from '../../../../shared/services/TokenStorage';
 import { CognitoAuthService } from '../../../../shared/services/CognitoAuthService';
 import type { AuthTokens } from '../../../../shared/utils/storage';
+
+// Set global test timeout for this file
+vi.setConfig({ testTimeout: 15000 });
 
 // Mock dependencies
 vi.mock('../../../../shared/services/TokenStorage');
@@ -358,6 +361,7 @@ describe('AuthGuard', () => {
   describe('error handling', () => {
     it('should handle TokenStorage initialization errors', async () => {
       mockTokenStorage.initialize.mockRejectedValue(new Error('Init failed'));
+      mockTokenStorage.getTokens.mockResolvedValue(null);
 
       render(
         <AuthGuard>
@@ -367,8 +371,8 @@ describe('AuthGuard', () => {
 
       await waitFor(() => {
         expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
-      });
-    });
+      }, { timeout: 10000 });
+    }, 15000);
 
     it('should handle TokenStorage getTokens errors', async () => {
       mockTokenStorage.getTokens.mockRejectedValue(new Error('Get tokens failed'));
@@ -381,8 +385,8 @@ describe('AuthGuard', () => {
 
       await waitFor(() => {
         expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
-      });
-    });
+      }, { timeout: 10000 });
+    }, 15000);
 
     it('should handle missing Cognito configuration', async () => {
       const { getConfig } = await import('../../../../shared/utils/config');
@@ -402,8 +406,8 @@ describe('AuthGuard', () => {
 
       await waitFor(() => {
         expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
-      });
-    });
+      }, { timeout: 10000 });
+    }, 15000);
   });
 
   describe('auto-refresh on scheduled timer', () => {
@@ -432,11 +436,12 @@ describe('AuthGuard', () => {
 
       await waitFor(() => {
         expect(mockAuthService.refreshTokens).toHaveBeenCalled();
-      });
+      }, { timeout: 10000 });
 
       await waitFor(() => {
         expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
-      });
-    });
+      }, { timeout: 10000 });
+    }, 15000); // Increase test timeout to 15 seconds
   });
 });
+

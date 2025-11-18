@@ -198,6 +198,7 @@ class SessionManagementStack(Stack):
                 "RATE_LIMITS_TABLE": self.rate_limits_table.table_name,
                 "SESSION_MAX_DURATION_HOURS": str(self.config.get("sessionMaxDurationHours", 2)),
                 "MAX_LISTENERS_PER_SESSION": str(self.config.get("maxListenersPerSession", 500)),
+                # API_GATEWAY_ENDPOINT will be added after WebSocket API is created
             },
             log_retention=log_retention,
         )
@@ -428,6 +429,24 @@ class SessionManagementStack(Stack):
             target=f"integrations/{disconnect_integration.ref}",
         )
 
+        # Create createSession route (for speakers)
+        create_session_route = apigwv2.CfnRoute(
+            self,
+            "CreateSessionRoute",
+            api_id=api.ref,
+            route_key="createSession",
+            target=f"integrations/{connect_integration.ref}",
+        )
+        
+        # Create joinSession route (for listeners)
+        join_session_route = apigwv2.CfnRoute(
+            self,
+            "JoinSessionRoute",
+            api_id=api.ref,
+            route_key="joinSession",
+            target=f"integrations/{connect_integration.ref}",
+        )
+
         # Create heartbeat custom route
         heartbeat_route = apigwv2.CfnRoute(
             self,
@@ -558,6 +577,15 @@ class SessionManagementStack(Stack):
                 target=f"integrations/{send_audio_integration.ref}",
             )
 
+        # Create $default route to handle unmatched messages (CRITICAL for connection stability)
+        default_route = apigwv2.CfnRoute(
+            self,
+            "DefaultRoute",
+            api_id=api.ref,
+            route_key="$default",
+            target=f"integrations/{connect_integration.ref}",
+        )
+
         # Create deployment
         deployment = apigwv2.CfnDeployment(
             self,
@@ -566,6 +594,9 @@ class SessionManagementStack(Stack):
         )
         deployment.add_dependency(connect_route)
         deployment.add_dependency(disconnect_route)
+        deployment.add_dependency(default_route)  # CRITICAL: Add $default route dependency
+        deployment.add_dependency(create_session_route)
+        deployment.add_dependency(join_session_route)
         deployment.add_dependency(heartbeat_route)
         deployment.add_dependency(refresh_route)
         # Add dependencies for new routes
