@@ -399,8 +399,8 @@ For optimal implementation flow, consider executing tasks in these phases:
   - _Priority: P0_
   - _Effort: 4-5 hours total_
 
-- [ ] 16. Write integration tests for HTTP + WebSocket
-- [ ] 16.1 Test end-to-end session creation and connection
+- [x] 16. Write integration tests for HTTP + WebSocket
+- [x] 16.1 Test end-to-end session creation and connection
   - Create session via HTTP POST
   - Verify session created in DynamoDB
   - Connect WebSocket with sessionId
@@ -409,26 +409,26 @@ For optimal implementation flow, consider executing tasks in these phases:
   - Verify audio processed
   - _Requirements: 1.1-1.5, 5.1-5.4, 6.1-6.3_
 
-- [ ] 16.2 Test WebSocket connection with non-existent session
+- [x] 16.2 Test WebSocket connection with non-existent session
   - Attempt WebSocket connection with invalid sessionId
   - Verify connection rejected with 404
   - _Requirements: 5.5_
 
-- [ ] 16.3 Test WebSocket connection with ended session
+- [x] 16.3 Test WebSocket connection with ended session
   - Create session via HTTP
   - Delete session via HTTP
   - Attempt WebSocket connection
   - Verify connection rejected with 403
   - _Requirements: 5.6_
 
-- [ ] 16.4 Test session update while WebSocket connected
+- [x] 16.4 Test session update while WebSocket connected
   - Create session and connect WebSocket
   - Update session status to paused via HTTP
   - Send audio data
   - Verify audio buffered (not processed immediately)
   - _Requirements: 3.1-3.5, 6.4_
 
-- [ ] 16.5 Test JWT authentication and authorization
+- [x] 16.5 Test JWT authentication and authorization
   - Test HTTP requests without token (401)
   - Test HTTP requests with expired token (401)
   - Test HTTP requests with valid token (200/201)
