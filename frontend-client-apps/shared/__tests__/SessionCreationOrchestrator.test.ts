@@ -302,3 +302,262 @@ describe('SessionCreationOrchestrator', () => {
     });
   });
 });
+
+  describe('token refresh', () => {
+    let mockAuthService: any;
+    let mockTokenStorage: any;
+
+    beforeEach(() => {
+      mockAuthService = {
+        refreshTokens: vi.fn(),
+      };
+
+      mockTokenStorage = {
+        getTokens: vi.fn(),
+        storeTokens: vi.fn(),
+      };
+    });
+
+    it('should refresh token if close to expiry before connecting', async () => {
+      const expiresIn = 4 * 60; // 4 minutes (less than 5 minute threshold)
+      
+      mockTokenStorage.getTokens.mockResolvedValue({
+        idToken: 'old-token',
+        accessToken: 'old-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn,
+      });
+
+      mockAuthService.refreshTokens.mockResolvedValue({
+        idToken: 'new-token',
+        accessToken: 'new-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 3600,
+      });
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'old-token',
+        refreshToken: 'refresh-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        authService: mockAuthService,
+        tokenStorage: mockTokenStorage,
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Mock successful session creation response
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'sessionCreated') {
+          setTimeout(() => {
+            handler({
+              type: 'sessionCreated',
+              sessionId: 'test-session-123',
+              sourceLanguage: 'en',
+              qualityTier: 'standard',
+              timestamp: Date.now(),
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      expect(mockAuthService.refreshTokens).toHaveBeenCalledWith('refresh-token');
+      expect(mockTokenStorage.storeTokens).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idToken: 'new-token',
+        })
+      );
+    });
+
+    it('should not refresh token if not close to expiry', async () => {
+      const expiresIn = 30 * 60; // 30 minutes (more than 5 minute threshold)
+      
+      mockTokenStorage.getTokens.mockResolvedValue({
+        idToken: 'current-token',
+        accessToken: 'current-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn,
+      });
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'current-token',
+        refreshToken: 'refresh-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        authService: mockAuthService,
+        tokenStorage: mockTokenStorage,
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Mock successful session creation response
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'sessionCreated') {
+          setTimeout(() => {
+            handler({
+              type: 'sessionCreated',
+              sessionId: 'test-session-123',
+              sourceLanguage: 'en',
+              qualityTier: 'standard',
+              timestamp: Date.now(),
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      expect(mockAuthService.refreshTokens).not.toHaveBeenCalled();
+    });
+
+    it('should retry with refreshed token on auth error', async () => {
+      mockTokenStorage.getTokens.mockResolvedValue({
+        idToken: 'old-token',
+        accessToken: 'old-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 3600,
+      });
+
+      mockAuthService.refreshTokens.mockResolvedValue({
+        idToken: 'new-token',
+        accessToken: 'new-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 3600,
+      });
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'old-token',
+        refreshToken: 'refresh-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        authService: mockAuthService,
+        tokenStorage: mockTokenStorage,
+      });
+
+      let attemptCount = 0;
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // First attempt: auth error, second attempt: success
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'auth_error') {
+          if (attemptCount === 0) {
+            setTimeout(() => {
+              handler({
+                type: 'auth_error',
+                message: 'Authentication failed',
+              });
+            }, 10);
+          }
+        }
+        if (type === 'sessionCreated') {
+          if (attemptCount === 1) {
+            setTimeout(() => {
+              handler({
+                type: 'sessionCreated',
+                sessionId: 'test-session-123',
+                sourceLanguage: 'en',
+                qualityTier: 'standard',
+                timestamp: Date.now(),
+              });
+            }, 10);
+          }
+        }
+      });
+
+      // Track connection attempts
+      mockWsClient.connect.mockImplementation(() => {
+        attemptCount++;
+        return Promise.resolve();
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      expect(mockAuthService.refreshTokens).toHaveBeenCalledWith('refresh-token');
+      expect(mockTokenStorage.storeTokens).toHaveBeenCalled();
+      expect(mockWsClient.connect).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fail if token refresh fails on auth error', async () => {
+      mockTokenStorage.getTokens.mockResolvedValue({
+        idToken: 'old-token',
+        accessToken: 'old-access-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 3600,
+      });
+
+      mockAuthService.refreshTokens.mockRejectedValue(new Error('Refresh failed'));
+
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'old-token',
+        refreshToken: 'refresh-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        authService: mockAuthService,
+        tokenStorage: mockTokenStorage,
+      });
+
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Trigger auth error
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'auth_error') {
+          setTimeout(() => {
+            handler({
+              type: 'auth_error',
+              message: 'Authentication failed',
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Authentication failed. Please log in again.');
+      expect(result.errorCode).toBe('AUTH_FAILED');
+    });
+
+    it('should use existing token if no auth service provided', async () => {
+      orchestrator = new SessionCreationOrchestrator({
+        wsUrl: 'wss://test.example.com',
+        jwtToken: 'existing-token',
+        sourceLanguage: 'en',
+        qualityTier: 'standard',
+        // No authService or tokenStorage
+      });
+
+      // Mock successful connection
+      mockWsClient.connect.mockResolvedValue(undefined);
+
+      // Mock successful session creation response
+      mockWsClient.on.mockImplementation((type: string, handler: Function) => {
+        if (type === 'sessionCreated') {
+          setTimeout(() => {
+            handler({
+              type: 'sessionCreated',
+              sessionId: 'test-session-123',
+              sourceLanguage: 'en',
+              qualityTier: 'standard',
+              timestamp: Date.now(),
+            });
+          }, 10);
+        }
+      });
+
+      const result = await orchestrator.createSession();
+
+      expect(result.success).toBe(true);
+      // Should use existing token without refresh
+    });
+  });

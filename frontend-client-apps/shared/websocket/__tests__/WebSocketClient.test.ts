@@ -221,3 +221,113 @@ describe('WebSocketClient', () => {
     });
   });
 });
+
+  describe('error handling', () => {
+    beforeEach(async () => {
+      const connectPromise = client.connect();
+      await vi.advanceTimersByTimeAsync(10);
+      await connectPromise;
+    });
+
+    it('should emit connection_error event on error', () => {
+      const handler = vi.fn();
+      client.on('connection_error', handler);
+      
+      const ws = (client as any).ws as MockWebSocket;
+      const error = new Event('error');
+      ws.simulateError(error);
+      
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'connection_error',
+          message: 'Failed to connect to server',
+        })
+      );
+    });
+
+    it('should emit auth_error event on close code 1008', async () => {
+      const handler = vi.fn();
+      client.on('auth_error', handler);
+      
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1008, 'Policy violation');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'auth_error',
+          message: 'Authentication failed. Please log in again.',
+          code: 1008,
+        })
+      );
+    });
+
+    it('should emit connection_failed event on close code 1006', async () => {
+      const handler = vi.fn();
+      client.on('connection_failed', handler);
+      
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1006, '');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'connection_failed',
+          message: 'Connection failed. Please check your network.',
+          code: 1006,
+        })
+      );
+    });
+
+    it('should emit disconnected event on normal close code 1000', async () => {
+      const handler = vi.fn();
+      client.on('disconnected', handler);
+      
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1000, 'Normal closure');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'disconnected',
+          code: 1000,
+          reason: 'Normal closure',
+        })
+      );
+    });
+
+    it('should not attempt reconnection on auth error (code 1008)', async () => {
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1008, 'Policy violation');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Should be disconnected, not reconnecting
+      expect(client.getState().status).toBe('disconnected');
+      
+      // Advance time to verify no reconnection attempt
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(client.getState().status).toBe('disconnected');
+    });
+
+    it('should attempt reconnection on connection failure (code 1006)', async () => {
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1006, '');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Should be reconnecting
+      expect(client.getState().status).toBe('reconnecting');
+    });
+
+    it('should not attempt reconnection on normal close (code 1000)', async () => {
+      const ws = (client as any).ws as MockWebSocket;
+      ws.simulateClose(1000, 'Normal closure');
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Should be disconnected, not reconnecting
+      expect(client.getState().status).toBe('disconnected');
+      
+      // Advance time to verify no reconnection attempt
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(client.getState().status).toBe('disconnected');
+    });
+  });

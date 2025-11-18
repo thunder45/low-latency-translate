@@ -1,201 +1,195 @@
-import React, { useState } from 'react';
-import { AuthService } from '../../../shared/services/AuthService';
-import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
+/**
+ * Login Form Component
+ * Provides username/password authentication UI
+ */
+
+import React, { useState, FormEvent, KeyboardEvent } from 'react';
+import { CognitoAuthService } from '../../../shared/services/CognitoAuthService';
+import { TokenStorage } from '../../../shared/services/TokenStorage';
+import { getConfig } from '../../../shared/utils/config';
+import './LoginForm.css';
 
 interface LoginFormProps {
-  authService: AuthService;
-  onLoginSuccess: (tokens: { idToken: string; accessToken: string; refreshToken: string }) => void;
+  onLoginSuccess: () => void;
 }
 
-/**
- * Login form component for speaker authentication
- * 
- * Requirements: 1.1, 1.3, 1.5
- */
-export const LoginForm: React.FC<LoginFormProps> = ({ authService, onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+interface LoginFormState {
+  username: string;
+  password: string;
+  isLoading: boolean;
+  error: string | null;
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+export function LoginForm({ onLoginSuccess }: LoginFormProps): JSX.Element {
+  const [state, setState] = useState<LoginFormState>({
+    username: '',
+    password: '',
+    isLoading: false,
+    error: null,
+  });
 
-    try {
-      // Validate inputs
-      if (!email || !password) {
-        setError('Please enter both email and password');
-        setIsLoading(false);
-        return;
-      }
+  /**
+   * Handle form submission
+   */
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await performLogin();
+  };
 
-      // Authenticate with Cognito
-      const result = await authService.signIn(email, password);
-      
-      // Check if authentication was successful
-      if (result.success && result.tokens) {
-        // Extract tokens from result
-        const { idToken, accessToken, refreshToken } = result.tokens;
-        
-        // Success - redirect to session creation
-        onLoginSuccess({ idToken, accessToken, refreshToken });
-      } else {
-        // Authentication failed
-        throw new Error(result.error || 'Authentication failed');
-      }
-    } catch (err: any) {
-      // Handle authentication errors with user-friendly messages
-      const errorInfo = ErrorHandler.handle(err, {
-        component: 'LoginForm',
-        operation: 'signIn',
-      });
-
-      setError(errorInfo.userMessage);
-      setIsLoading(false);
+  /**
+   * Handle Enter key press in input fields
+   */
+  const handleKeyPress = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      performLogin();
     }
   };
 
+  /**
+   * Perform login operation
+   */
+  const performLogin = async () => {
+    // Clear previous error
+    setState(prev => ({ ...prev, error: null, isLoading: true }));
+
+    try {
+      const config = getConfig();
+
+      if (!config.cognito) {
+        throw new Error('Authentication not configured');
+      }
+
+      // Create auth service
+      const authService = new CognitoAuthService({
+        userPoolId: config.cognito.userPoolId,
+        clientId: config.cognito.clientId,
+        region: config.awsRegion,
+      });
+
+      // Authenticate
+      const tokens = await authService.login(state.username, state.password);
+
+      // Store tokens
+      const tokenStorage = TokenStorage.getInstance();
+      await tokenStorage.initialize(config.encryptionKey);
+      await tokenStorage.storeTokens({
+        accessToken: tokens.accessToken,
+        idToken: tokens.idToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: Date.now() + tokens.expiresIn * 1000,
+      });
+
+      // Clear password from memory
+      setState(prev => ({ ...prev, password: '', isLoading: false }));
+
+      // Notify success
+      onLoginSuccess();
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Extract user-friendly error message
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      
+      if (error.userMessage) {
+        errorMessage = error.userMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setState(prev => ({
+        ...prev,
+        password: '', // Clear password on error
+        isLoading: false,
+        error: errorMessage,
+      }));
+    }
+  };
+
+  /**
+   * Handle username input change
+   */
+  const handleUsernameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setState(prev => ({ ...prev, username: event.target.value }));
+  };
+
+  /**
+   * Handle password input change
+   */
+  const handlePasswordChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setState(prev => ({ ...prev, password: event.target.value }));
+  };
+
   return (
-    <div className="login-form-container">
-      <h1>Speaker Login</h1>
-      <p>Sign in to create and manage broadcast sessions</p>
+    <div className="login-container">
+      <div className="login-card">
+        <h1 className="login-title">Speaker Login</h1>
+        <p className="login-subtitle">Sign in to start broadcasting</p>
 
-      <form onSubmit={handleSubmit} className="login-form">
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your.email@example.com"
-            disabled={isLoading}
-            required
-            aria-label="Email address"
-            autoComplete="email"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            disabled={isLoading}
-            required
-            aria-label="Password"
-            autoComplete="current-password"
-          />
-        </div>
-
-        {error && (
-          <div className="error-message" role="alert">
-            {error}
+        <form onSubmit={handleSubmit} className="login-form">
+          <div className="form-group">
+            <label htmlFor="username" className="form-label">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              className="form-input"
+              value={state.username}
+              onChange={handleUsernameChange}
+              onKeyPress={handleKeyPress}
+              disabled={state.isLoading}
+              required
+              autoComplete="username"
+              aria-label="Username"
+              aria-required="true"
+              placeholder="Enter your username"
+            />
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="submit-button"
-          aria-label="Sign in"
-        >
-          {isLoading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+          <div className="form-group">
+            <label htmlFor="password" className="form-label">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="form-input"
+              value={state.password}
+              onChange={handlePasswordChange}
+              onKeyPress={handleKeyPress}
+              disabled={state.isLoading}
+              required
+              autoComplete="current-password"
+              aria-label="Password"
+              aria-required="true"
+              placeholder="Enter your password"
+            />
+          </div>
 
-      <style>{`
-        .login-form-container {
-          max-width: 400px;
-          margin: 0 auto;
-          padding: 2rem;
-        }
+          {state.error && (
+            <div className="error-message" role="alert" aria-live="polite">
+              {state.error}
+            </div>
+          )}
 
-        .login-form-container h1 {
-          font-size: 2rem;
-          margin-bottom: 0.5rem;
-          color: #333;
-        }
-
-        .login-form-container p {
-          color: #666;
-          margin-bottom: 2rem;
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .form-group label {
-          font-weight: 600;
-          color: #333;
-        }
-
-        .form-group input {
-          padding: 0.75rem;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 1rem;
-        }
-
-        .form-group input:focus {
-          outline: none;
-          border-color: #4CAF50;
-          box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
-        }
-
-        .form-group input:disabled {
-          background-color: #f5f5f5;
-          cursor: not-allowed;
-        }
-
-        .error-message {
-          padding: 0.75rem;
-          background-color: #ffebee;
-          color: #c62828;
-          border-radius: 4px;
-          border-left: 4px solid #c62828;
-        }
-
-        .submit-button {
-          padding: 0.75rem 1.5rem;
-          background-color: #4CAF50;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          font-size: 1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        }
-
-        .submit-button:hover:not(:disabled) {
-          background-color: #45a049;
-        }
-
-        .submit-button:disabled {
-          background-color: #ccc;
-          cursor: not-allowed;
-        }
-
-        .submit-button:focus {
-          outline: none;
-          box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
-        }
-      `}</style>
+          <button
+            type="submit"
+            className="login-button"
+            disabled={state.isLoading || !state.username || !state.password}
+            aria-label={state.isLoading ? 'Logging in...' : 'Log in'}
+          >
+            {state.isLoading ? (
+              <>
+                <span className="spinner" aria-hidden="true"></span>
+                Logging in...
+              </>
+            ) : (
+              'Log In'
+            )}
+          </button>
+        </form>
+      </div>
     </div>
   );
-};
+}

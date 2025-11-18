@@ -7,6 +7,7 @@ import {
   ErrorEventHandler,
   StateChangeHandler,
 } from './types';
+import { WebSocketCloseCode } from '../constants/auth';
 
 /**
  * WebSocket client with automatic reconnection and heartbeat management
@@ -67,13 +68,14 @@ export class WebSocketClient {
 
         this.ws.onerror = (error) => {
           console.error('WebSocket error:', error);
+          this.handleConnectionError(error);
           const err = new Error('WebSocket connection error');
           this.onErrorHandlers.forEach((handler) => handler(err));
           reject(err);
         };
 
-        this.ws.onclose = () => {
-          this.handleDisconnect();
+        this.ws.onclose = (event) => {
+          this.handleConnectionClose(event);
         };
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Failed to create WebSocket');
@@ -249,6 +251,73 @@ export class WebSocketClient {
   }
 
   /**
+   * Handle connection error
+   */
+  private handleConnectionError(error: Event): void {
+    // WebSocket errors don't provide detailed info, but we can infer from close code
+    const handler = this.messageHandlers.get('connection_error');
+    if (handler) {
+      handler({
+        type: 'connection_error',
+        message: 'Failed to connect to server',
+        error,
+      });
+    }
+  }
+
+  /**
+   * Handle connection close with specific error codes
+   */
+  private handleConnectionClose(event: CloseEvent): void {
+    // WebSocket close codes:
+    // NORMAL_CLOSURE = Normal closure
+    // ABNORMAL_CLOSURE = Abnormal closure (no close frame)
+    // POLICY_VIOLATION = Policy violation (auth failure)
+    // SERVER_ERROR = Server error
+    
+    if (event.code === WebSocketCloseCode.POLICY_VIOLATION) {
+      // Authentication failure
+      const handler = this.messageHandlers.get('auth_error');
+      if (handler) {
+        handler({
+          type: 'auth_error',
+          message: 'Authentication failed. Please log in again.',
+          code: event.code,
+          reason: event.reason,
+        });
+      }
+    } else if (event.code === WebSocketCloseCode.ABNORMAL_CLOSURE) {
+      // Connection failed (could be network or auth)
+      const handler = this.messageHandlers.get('connection_failed');
+      if (handler) {
+        handler({
+          type: 'connection_failed',
+          message: 'Connection failed. Please check your network.',
+          code: event.code,
+        });
+      }
+    } else {
+      // Other errors
+      const handler = this.messageHandlers.get('disconnected');
+      if (handler) {
+        handler({
+          type: 'disconnected',
+          code: event.code,
+          reason: event.reason,
+        });
+      }
+    }
+
+    // Call the standard disconnect handler
+    this.handleDisconnect();
+
+    // Attempt reconnection if not a normal closure and not an auth error
+    if (event.code !== WebSocketCloseCode.NORMAL_CLOSURE && event.code !== WebSocketCloseCode.POLICY_VIOLATION && this.config.reconnect && this.state.reconnectAttempts < this.config.maxReconnectAttempts) {
+      this.attemptReconnect();
+    }
+  }
+
+  /**
    * Handle disconnection
    */
   private handleDisconnect(): void {
@@ -256,9 +325,7 @@ export class WebSocketClient {
     this.updateState({ status: 'disconnected' });
     this.onDisconnectHandlers.forEach((handler) => handler());
 
-    if (this.config.reconnect && this.state.reconnectAttempts < this.config.maxReconnectAttempts) {
-      this.attemptReconnect();
-    } else if (this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
+    if (this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.updateState({ status: 'failed' });
     }
   }

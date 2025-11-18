@@ -54,16 +54,32 @@ global.WebSocket = vi.fn().mockImplementation(() => ({
   CLOSED: 3,
 })) as any;
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-  length: 0,
-  key: vi.fn(),
+// Mock localStorage with actual storage
+const createLocalStorageMock = () => {
+  let store: Record<string, string> = {};
+  
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+    get length() {
+      return Object.keys(store).length;
+    },
+    key: (index: number) => {
+      const keys = Object.keys(store);
+      return keys[index] || null;
+    },
+  };
 };
-global.localStorage = localStorageMock as any;
+
+global.localStorage = createLocalStorageMock() as any;
 
 // Mock crypto (use Object.defineProperty to avoid read-only error)
 Object.defineProperty(global, 'crypto', {
@@ -75,8 +91,16 @@ Object.defineProperty(global, 'crypto', {
       return arr;
     }),
     subtle: {
-      encrypt: vi.fn(),
-      decrypt: vi.fn(),
+      importKey: vi.fn().mockResolvedValue({ type: 'secret' }),
+      deriveKey: vi.fn().mockResolvedValue({ type: 'secret', algorithm: { name: 'AES-GCM' } }),
+      encrypt: vi.fn().mockImplementation(async (algorithm, key, data) => {
+        // Simple mock encryption - just return the data with some transformation
+        return new Uint8Array(data).buffer;
+      }),
+      decrypt: vi.fn().mockImplementation(async (algorithm, key, data) => {
+        // Simple mock decryption - just return the data
+        return new Uint8Array(data).buffer;
+      }),
     } as any,
   },
   writable: true,

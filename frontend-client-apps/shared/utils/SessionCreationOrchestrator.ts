@@ -1,5 +1,14 @@
 import { WebSocketClient } from '../websocket/WebSocketClient';
 import { WebSocketMessage } from '../websocket/types';
+import { CognitoAuthService, AuthTokens } from '../services/CognitoAuthService';
+
+/**
+ * Token storage interface
+ */
+export interface TokenStorage {
+  getTokens(): Promise<AuthTokens | null>;
+  storeTokens(tokens: AuthTokens): Promise<void>;
+}
 
 /**
  * Configuration for session creation
@@ -7,10 +16,13 @@ import { WebSocketMessage } from '../websocket/types';
 export interface SessionCreationConfig {
   wsUrl: string;
   jwtToken: string;
+  refreshToken?: string;
   sourceLanguage: string;
   qualityTier: 'standard' | 'premium';
   timeout?: number;
   retryAttempts?: number;
+  authService?: CognitoAuthService;
+  tokenStorage?: TokenStorage;
 }
 
 /**
@@ -101,11 +113,46 @@ export class SessionCreationOrchestrator {
   }
 
   /**
+   * Check if token needs refresh and refresh if necessary
+   */
+  private async ensureValidToken(): Promise<string> {
+    // If no auth service or token storage, use existing token
+    if (!this.config.authService || !this.config.tokenStorage) {
+      return this.config.jwtToken;
+    }
+
+    try {
+      const tokens = await this.config.tokenStorage.getTokens();
+      if (!tokens) {
+        throw new Error('No tokens available');
+      }
+
+      // Check if token is expired or close to expiry (within 5 minutes)
+      // Use stored expiresAt directly (absolute timestamp, not duration)
+      const timeUntilExpiry = tokens.expiresAt - Date.now();
+
+      if (timeUntilExpiry < 5 * 60 * 1000) {
+        console.log('Token close to expiry, refreshing...');
+        const newTokens = await this.config.authService.refreshTokens(tokens.refreshToken);
+        await this.config.tokenStorage.storeTokens(newTokens);
+        return newTokens.idToken;
+      }
+
+      return tokens.idToken;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      // Fall back to existing token
+      return this.config.jwtToken;
+    }
+  }
+
+  /**
    * Create session with retry logic
    */
   async createSession(): Promise<SessionCreationResult> {
     let lastError: string = ERROR_MESSAGES.UNKNOWN_ERROR;
     let lastErrorCode: string = 'UNKNOWN_ERROR';
+    let authRetryDone = false;
 
     for (let attempt = 1; attempt <= this.retryConfig.maxAttempts; attempt++) {
       if (this.aborted) {
@@ -117,6 +164,10 @@ export class SessionCreationOrchestrator {
       }
 
       try {
+        // Ensure we have a valid token before connecting
+        const token = await this.ensureValidToken();
+        this.config.jwtToken = token;
+
         // Attempt to connect WebSocket
         const wsClient = await this.connectWebSocket();
         
@@ -129,11 +180,43 @@ export class SessionCreationOrchestrator {
           };
         }
 
+        // Set up auth error handler
+        let authErrorReceived = false;
+        wsClient.on('auth_error', () => {
+          authErrorReceived = true;
+        });
+
         // Send session creation request and wait for response
         const result = await this.sendCreationRequest(wsClient);
         
         if (result.success) {
           return result;
+        }
+
+        // If auth error and we haven't tried refreshing yet, try once more
+        if (authErrorReceived && !authRetryDone && this.config.authService && this.config.tokenStorage) {
+          authRetryDone = true;
+          wsClient.disconnect();
+          
+          try {
+            console.log('Auth error detected, attempting token refresh...');
+            const tokens = await this.config.tokenStorage.getTokens();
+            if (tokens) {
+              const newTokens = await this.config.authService.refreshTokens(tokens.refreshToken);
+              await this.config.tokenStorage.storeTokens(newTokens);
+              this.config.jwtToken = newTokens.idToken;
+              
+              // Retry immediately with new token
+              continue;
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            return {
+              success: false,
+              error: 'Authentication failed. Please log in again.',
+              errorCode: 'AUTH_FAILED',
+            };
+          }
         }
 
         // If creation failed, clean up and prepare for retry
@@ -267,6 +350,11 @@ export class SessionCreationOrchestrator {
 
       // Send creation request
       try {
+        // Validate connection state before sending
+        if (!wsClient.isConnected()) {
+          throw new Error('WebSocket not connected');
+        }
+        
         wsClient.send({
           action: 'createSession',
           sourceLanguage: this.config.sourceLanguage,
