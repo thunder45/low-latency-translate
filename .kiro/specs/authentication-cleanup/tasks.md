@@ -218,87 +218,87 @@ For optimal implementation flow, consider executing tasks in these phases:
   - Test that tokens are never logged
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 10. Write comprehensive TokenStorage tests
+- [x] 10. Write comprehensive TokenStorage tests
   - **Depends on**: Tasks 2 (constants), 3 (PBKDF2 implementation)
   - **Tests**: TokenStorage encryption, PBKDF2, token validation
   - _Priority: P0_
   - _Effort: 4-5 hours_
 
-- [ ] 10.1 Create TokenStorage.test.ts file
+- [x] 10.1 Create TokenStorage.test.ts file
   - Set up test file with Vitest
   - Mock Web Crypto API
   - Mock localStorage
   - Create test fixtures for tokens
   - _Requirements: 2.1-2.10_
 
-- [ ] 10.2 Write encryption/decryption tests
+- [x] 10.2 Write encryption/decryption tests
   - Test encryption produces different output than input
   - Test decryption returns original plaintext
   - Test round-trip encryption/decryption
   - Test unique IV generation for each encryption
   - _Requirements: 2.1, 2.2, 2.8_
 
-- [ ] 10.3 Write PBKDF2 key derivation tests
+- [x] 10.3 Write PBKDF2 key derivation tests
   - Test key derivation with correct parameters
   - Test key length is 256 bits
   - Test iterations count is 100,000
   - Test salt is correctly applied
   - _Requirements: 2.7, 5.1, 5.2_
 
-- [ ] 10.4 Write token validation tests
+- [x] 10.4 Write token validation tests
   - Test storing valid tokens succeeds
   - Test storing expired tokens fails
   - Test expiresAt validation (absolute timestamp)
   - Test retrieving stored tokens
   - _Requirements: 2.4, 2.9, 5.9_
 
-- [ ] 10.5 Write error handling tests
+- [x] 10.5 Write error handling tests
   - Test invalid encrypted data throws error
   - Test error messages don't expose sensitive data
   - Test localStorage unavailable handling
   - Test concurrent operations maintain integrity
   - _Requirements: 2.3, 2.6, 2.10_
 
-- [ ] 10.6 Write token clearing tests
+- [x] 10.6 Write token clearing tests
   - Test clearTokens() removes all data
   - Test no tokens retrievable after clear
   - Test clear works even if no tokens stored
   - _Requirements: 2.5_
 
-- [ ] 11. Write comprehensive AuthGuard tests
+- [x] 11. Write comprehensive AuthGuard tests
   - **Depends on**: Tasks 2 (constants), 4 (concurrent refresh protection)
   - **Tests**: Route protection, token refresh, concurrent refresh prevention
   - _Priority: P0_
   - _Effort: 3-4 hours_
 
-- [ ] 11.1 Create AuthGuard.test.tsx file
+- [x] 11.1 Create AuthGuard.test.tsx file
   - Set up test file with Vitest and React Testing Library
   - Mock TokenStorage
   - Mock CognitoAuthService
   - Mock React Router Navigate component
   - _Requirements: 3.1-3.10_
 
-- [ ] 11.2 Write authentication state tests
+- [x] 11.2 Write authentication state tests
   - Test unauthenticated user redirects to login
   - Test authenticated user renders children
   - Test loading state displays spinner
   - Test token validation on initialization
   - _Requirements: 3.1, 3.2, 3.7_
 
-- [ ] 11.3 Write token refresh tests
+- [x] 11.3 Write token refresh tests
   - Test refresh triggered when token expires
   - Test refresh triggered when close to expiry
   - Test successful refresh maintains session
   - Test failed refresh redirects to login
   - _Requirements: 3.3, 3.4, 3.5, 3.9_
 
-- [ ] 11.4 Write concurrent refresh protection tests
+- [x] 11.4 Write concurrent refresh protection tests
   - Test multiple rapid refresh calls use same promise
   - Test only one refresh operation executes
   - Test subsequent calls wait for first to complete
   - _Requirements: 3.6, 5.3_
 
-- [ ] 11.5 Write timer management tests
+- [x] 11.5 Write timer management tests
   - Test refresh scheduled 5 minutes before expiry
   - Test timer cleanup on component unmount
   - Test timer cleared before scheduling new one
