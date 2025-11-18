@@ -17,7 +17,7 @@ export interface TokenStorage {
  */
 export interface SessionCreationConfig {
   wsUrl: string;
-  httpApiUrl?: string; // Optional HTTP API URL for hybrid mode
+  httpApiUrl: string; // HTTP API URL for session management
   jwtToken: string;
   refreshToken?: string;
   sourceLanguage: string;
@@ -26,7 +26,6 @@ export interface SessionCreationConfig {
   retryAttempts?: number;
   authService?: CognitoAuthService;
   tokenStorage?: TokenStorage;
-  useHttpSessionCreation?: boolean; // Feature flag for HTTP-based session creation
 }
 
 /**
@@ -151,17 +150,9 @@ export class SessionCreationOrchestrator {
   }
 
   /**
-   * Create session via HTTP API (hybrid mode)
+   * Create session via HTTP API
    */
   private async createSessionViaHttp(): Promise<SessionCreationResult> {
-    if (!this.config.httpApiUrl) {
-      return {
-        success: false,
-        error: 'HTTP API URL not configured',
-        errorCode: 'CONFIG_ERROR',
-      };
-    }
-
     try {
       // Create HTTP service
       const httpService = new SessionHttpService({
@@ -243,21 +234,16 @@ export class SessionCreationOrchestrator {
 
   /**
    * Create session with retry logic
+   * Always uses HTTP-based session creation
    */
   async createSession(): Promise<SessionCreationResult> {
-    // Use HTTP-based session creation if feature flag is enabled
-    if (this.config.useHttpSessionCreation) {
-      console.log('[SessionOrchestrator] Using HTTP-based session creation');
-      return this.createSessionViaHttp();
-    }
-
-    // Fall back to WebSocket-based session creation (legacy)
-    console.log('[SessionOrchestrator] Using WebSocket-based session creation (legacy)');
-    return this.createSessionViaWebSocket();
+    console.log('[SessionOrchestrator] Creating session via HTTP API');
+    return this.createSessionViaHttp();
   }
 
   /**
-   * Create session via WebSocket (legacy method)
+   * Create session via WebSocket (legacy method - deprecated)
+   * Kept for reference but no longer used
    */
   private async createSessionViaWebSocket(): Promise<SessionCreationResult> {
     let lastError: string = ERROR_MESSAGES.UNKNOWN_ERROR;

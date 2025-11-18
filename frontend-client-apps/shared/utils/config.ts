@@ -5,8 +5,7 @@
 
 export interface AppConfig {
   websocketUrl: string;
-  httpApiUrl?: string; // Optional HTTP API URL for hybrid session management
-  useHttpSessionCreation?: boolean; // Feature flag for HTTP-based session creation
+  httpApiUrl: string; // HTTP API URL for session management
   awsRegion: string;
   encryptionKey: string;
   cognito?: {
@@ -28,6 +27,10 @@ function validateConfig(): void {
 
   if (!import.meta.env.VITE_WEBSOCKET_URL) {
     errors.push('VITE_WEBSOCKET_URL is required');
+  }
+
+  if (!import.meta.env.VITE_HTTP_API_URL) {
+    errors.push('VITE_HTTP_API_URL is required');
   }
 
   if (!import.meta.env.VITE_AWS_REGION) {
@@ -92,17 +95,10 @@ export function getConfig(): AppConfig {
 
   const config: AppConfig = {
     websocketUrl,
+    httpApiUrl: import.meta.env.VITE_HTTP_API_URL,
     awsRegion: import.meta.env.VITE_AWS_REGION,
     encryptionKey,
   };
-
-  // Optional HTTP API URL for hybrid session management
-  if (import.meta.env.VITE_HTTP_API_URL) {
-    config.httpApiUrl = import.meta.env.VITE_HTTP_API_URL;
-  }
-
-  // Feature flag for HTTP-based session creation (default: false for backward compatibility)
-  config.useHttpSessionCreation = import.meta.env.VITE_USE_HTTP_SESSION_CREATION === 'true';
 
   // Optional Cognito config (required for speaker app)
   if (import.meta.env.VITE_COGNITO_USER_POOL_ID && import.meta.env.VITE_COGNITO_CLIENT_ID) {
