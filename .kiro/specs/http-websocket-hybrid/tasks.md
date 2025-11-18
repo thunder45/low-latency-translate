@@ -336,8 +336,8 @@ For optimal implementation flow, consider executing tasks in these phases:
   - _Effort: 4-5 hours total_
 
 
-- [ ] 15. Write unit tests for Session Handler Lambda
-- [ ] 15.1 Test create_session with valid input
+- [x] 15. Write unit tests for Session Handler Lambda
+- [x] 15.1 Test create_session with valid input
   - Mock DynamoDB put_item
   - Verify session ID generated
   - Verify session record created
@@ -345,53 +345,53 @@ For optimal implementation flow, consider executing tasks in these phases:
   - Verify response contains session metadata
   - _Requirements: 1.3, 1.4, 1.5_
 
-- [ ] 15.2 Test create_session with invalid language
+- [x] 15.2 Test create_session with invalid language
   - Test invalid language code
   - Verify 400 response returned
   - Verify error message descriptive
   - _Requirements: 1.6_
 
-- [ ] 15.3 Test create_session with missing fields
+- [x] 15.3 Test create_session with missing fields
   - Test missing sourceLanguage
   - Verify 400 response returned
   - _Requirements: 1.6_
 
-- [ ] 15.4 Test get_session with existing session
+- [x] 15.4 Test get_session with existing session
   - Mock DynamoDB get_item
   - Verify session retrieved
   - Verify 200 response returned
   - _Requirements: 2.2_
 
-- [ ] 15.5 Test get_session with non-existent session
+- [x] 15.5 Test get_session with non-existent session
   - Mock DynamoDB get_item returning None
   - Verify 404 response returned
   - _Requirements: 2.3_
 
-- [ ] 15.6 Test update_session with ownership
+- [x] 15.6 Test update_session with ownership
   - Mock DynamoDB get_item and update_item
   - Verify ownership checked
   - Verify session updated
   - Verify 200 response returned
   - _Requirements: 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 15.7 Test update_session without ownership
+- [x] 15.7 Test update_session without ownership
   - Mock session with different speakerId
   - Verify 403 response returned
   - _Requirements: 3.6_
 
-- [ ] 15.8 Test delete_session with ownership
+- [x] 15.8 Test delete_session with ownership
   - Mock DynamoDB get_item and update_item
   - Verify ownership checked
   - Verify session marked as ended
   - Verify 204 response returned
   - _Requirements: 4.2, 4.3, 4.5_
 
-- [ ] 15.9 Test delete_session without ownership
+- [x] 15.9 Test delete_session without ownership
   - Mock session with different speakerId
   - Verify 403 response returned
   - _Requirements: 4.6_
 
-- [ ] 15.10 Test DynamoDB error handling
+- [x] 15.10 Test DynamoDB error handling
   - Mock ClientError from DynamoDB
   - Verify 500 response returned
   - Verify error logged
@@ -437,32 +437,32 @@ For optimal implementation flow, consider executing tasks in these phases:
   - _Priority: P0_
   - _Effort: 3-4 hours total_
 
-- [ ] 17. Write performance tests
-- [ ] 17.1 Test HTTP session creation latency
+- [ ]* 17. Write performance tests
+- [ ]* 17.1 Test HTTP session creation latency
   - Create 100 sessions concurrently
   - Measure p50, p95, p99 latency
   - Verify p95 <2 seconds
   - _Requirements: 11.1_
 
-- [ ] 17.2 Test HTTP session retrieval latency
+- [ ]* 17.2 Test HTTP session retrieval latency
   - Retrieve 1000 sessions concurrently
   - Measure p50, p95, p99 latency
   - Verify p95 <500 milliseconds
   - _Requirements: 11.2_
 
-- [ ] 17.3 Test HTTP session update latency
+- [ ]* 17.3 Test HTTP session update latency
   - Update 100 sessions concurrently
   - Measure p50, p95, p99 latency
   - Verify p95 <1 second
   - _Requirements: 11.3_
 
-- [ ] 17.4 Test WebSocket connection latency
+- [ ]* 17.4 Test WebSocket connection latency
   - Connect 100 WebSockets concurrently
   - Measure p50, p95, p99 latency
   - Verify p95 <1 second
   - _Requirements: 11.4_
 
-- [ ] 17.5 Test audio streaming latency
+- [ ]* 17.5 Test audio streaming latency
   - Send audio data over WebSocket
   - Measure processing latency
   - Verify p95 <100 milliseconds
