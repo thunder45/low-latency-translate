@@ -31,8 +31,18 @@ class AudioTranscriptionStack(Stack):
     - IAM roles with least privilege permissions
     """
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        env_name: str = 'dev',
+        config: dict = None,
+        **kwargs
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        
+        self.env_name = env_name
+        self.config = config or {}
 
         # Create SNS topic for alarms
         alarm_topic = sns.Topic(

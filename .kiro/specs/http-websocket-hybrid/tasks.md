@@ -471,7 +471,7 @@ For optimal implementation flow, consider executing tasks in these phases:
   - _Effort: 2-3 hours total_
 
 
-- [ ] 18. Deploy HTTP API to dev environment
+- [x] 18. Deploy HTTP API to dev environment
   - Update session-management/infrastructure/app.py to include HttpApiStack
   - Configure environment variables for dev
   - Deploy CDK stack to dev

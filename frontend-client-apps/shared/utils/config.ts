@@ -154,6 +154,7 @@ export function getConfigWithFallback(): AppConfig {
   } catch (error) {
     console.warn('Configuration validation failed, using development fallbacks:', error);
     return {
+      httpApiUrl: 'https://your-http-api-id.execute-api.us-east-1.amazonaws.com',
       websocketUrl: 'wss://vphqnkfxtf.execute-api.us-east-1.amazonaws.com/prod',
       awsRegion: 'us-east-1',
       encryptionKey: 'dev-encryption-key-32-chars-min',

@@ -33,9 +33,11 @@ AudioTranscriptionStack(
     stack_name=f'audio-transcription-{env_name}',
     description=f'Audio Transcription infrastructure for {env_name} environment',
     env=cdk.Environment(
-        account=os.getenv('CDK_DEFAULT_ACCOUNT'),
-        region=os.getenv('CDK_DEFAULT_REGION', 'us-east-1')
+        account=config.get('account', os.getenv('CDK_DEFAULT_ACCOUNT')),
+        region=config.get('region', 'us-east-1')
     ),
+    env_name=env_name,
+    config=config,
     tags={
         'Environment': env_name,
         'Component': 'AudioTranscription',

@@ -1,0 +1,47 @@
+{
+  "account": "193020606184",
+  "region": "us-east-1",
+  "environment": "dev",
+  "lambda": {
+    "memory_size": 1024,
+    "timeout": 60,
+    "log_level": "DEBUG"
+  },
+  "partial_results": {
+    "enabled": true,
+    "min_stability_threshold": 0.85,
+    "max_buffer_timeout": 5.0,
+    "pause_threshold": 2.0,
+    "orphan_timeout": 15.0,
+    "max_rate_per_second": 5,
+    "dedup_cache_ttl": 10
+  },
+  "audio_quality": {
+    "enabled": true,
+    "snr_threshold_db": 20.0,
+    "snr_update_interval_ms": 500,
+    "snr_window_size_s": 5.0,
+    "clipping_threshold_percent": 1.0,
+    "clipping_amplitude_percent": 98.0,
+    "clipping_window_ms": 100,
+    "echo_threshold_db": -15.0,
+    "echo_min_delay_ms": 10,
+    "echo_max_delay_ms": 500,
+    "echo_update_interval_s": 1.0,
+    "silence_threshold_db": -50.0,
+    "silence_duration_threshold_s": 5.0,
+    "enable_high_pass": false,
+    "enable_noise_gate": false,
+    "cloudwatch_metrics_enabled": true,
+    "eventbridge_events_enabled": true
+  },
+  "alarms": {
+    "latency_threshold_ms": 5000,
+    "dropped_results_threshold": 100,
+    "orphaned_results_threshold": 10,
+    "snr_threshold_db": 15.0,
+    "snr_evaluation_periods": 2,
+    "clipping_threshold_percent": 5.0,
+    "clipping_evaluation_periods": 3
+  }
+}

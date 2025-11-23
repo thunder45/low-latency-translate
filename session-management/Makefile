@@ -24,12 +24,16 @@ help:
 	@echo '    security-check   - Run bandit security scan'
 	@echo ''
 	@echo '  Deployment:'
-	@echo '    deploy-dev       - Deploy to dev environment'
-	@echo '    deploy-staging   - Deploy to staging'
-	@echo '    deploy-prod      - Deploy to production'
-	@echo '    destroy-dev      - Destroy dev stack'
-	@echo '    destroy-staging  - Destroy staging stack'
-	@echo '    destroy-prod     - Destroy prod stack (with confirmation)'
+	@echo '    deploy-dev       - Deploy both stacks to dev environment'
+	@echo '    deploy-websocket-dev - Deploy WebSocket stack only (dev)'
+	@echo '    deploy-http-dev  - Deploy HTTP API stack only (dev)'
+	@echo '    deploy-staging   - Deploy both stacks to staging'
+	@echo '    deploy-prod      - Deploy both stacks to production'
+	@echo '    destroy-dev      - Destroy both dev stacks'
+	@echo '    destroy-websocket-dev - Destroy WebSocket stack only (dev)'
+	@echo '    destroy-http-dev - Destroy HTTP API stack only (dev)'
+	@echo '    destroy-staging  - Destroy both staging stacks'
+	@echo '    destroy-prod     - Destroy both prod stacks (with confirmation)'
 	@echo '    synth            - Synthesize CloudFormation template'
 	@echo '    bootstrap        - Bootstrap CDK (first time only)'
 	@echo ''
@@ -100,31 +104,47 @@ type-check:
 security-check:
 	bandit -r lambda/ shared/ -ll
 
-# Deploy to dev environment
+# Deploy to dev environment (both WebSocket and HTTP API stacks)
 deploy-dev:
-	cd infrastructure && cdk deploy --context env=dev --require-approval never
+	cd infrastructure && cdk deploy --all --context env=dev --require-approval never
 
-# Deploy to staging environment
+# Deploy WebSocket stack only (dev)
+deploy-websocket-dev:
+	cd infrastructure && cdk deploy SessionManagement-dev --context env=dev --require-approval never
+
+# Deploy HTTP API stack only (dev)
+deploy-http-dev:
+	cd infrastructure && cdk deploy SessionHttpApi-dev --context env=dev --require-approval never
+
+# Deploy to staging environment (both stacks)
 deploy-staging:
-	cd infrastructure && cdk deploy --context env=staging --require-approval broadening
+	cd infrastructure && cdk deploy --all --context env=staging --require-approval broadening
 
-# Deploy to production environment
+# Deploy to production environment (both stacks)
 deploy-prod:
-	cd infrastructure && cdk deploy --context env=prod --require-approval broadening
+	cd infrastructure && cdk deploy --all --context env=prod --require-approval broadening
 
-# Destroy dev stack
+# Destroy dev stacks (both WebSocket and HTTP API)
 destroy-dev:
-	cd infrastructure && cdk destroy --context env=dev --force
+	cd infrastructure && cdk destroy --all --context env=dev --force
 
-# Destroy staging stack
+# Destroy WebSocket stack only (dev)
+destroy-websocket-dev:
+	cd infrastructure && cdk destroy SessionManagement-dev --context env=dev --force
+
+# Destroy HTTP API stack only (dev)
+destroy-http-dev:
+	cd infrastructure && cdk destroy SessionHttpApi-dev --context env=dev --force
+
+# Destroy staging stacks (both)
 destroy-staging:
-	cd infrastructure && cdk destroy --context env=staging --force
+	cd infrastructure && cdk destroy --all --context env=staging --force
 
-# Destroy production stack (requires manual confirmation)
+# Destroy production stacks (requires manual confirmation)
 destroy-prod:
 	@echo "WARNING: You are about to destroy the PRODUCTION environment!"
 	@echo "This action cannot be undone. Type 'yes' to continue:"
-	@read -r confirm && [ "$$confirm" = "yes" ] && cd infrastructure && cdk destroy --context env=prod --force || echo "Aborted."
+	@read -r confirm && [ "$$confirm" = "yes" ] && cd infrastructure && cdk destroy --all --context env=prod --force || echo "Aborted."
 
 # Synthesize CloudFormation template
 synth:

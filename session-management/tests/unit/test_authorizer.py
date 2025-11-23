@@ -10,14 +10,20 @@ from jwt import PyJWKClient
 
 # Import the handler module
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../lambda/authorizer'))
-from handler import (
-    lambda_handler,
-    extract_token,
-    validate_token,
-    generate_policy,
-    get_jwks_client,
-)
+import importlib.util
+
+# Use importlib to avoid 'lambda' keyword issue
+handler_path = os.path.join(os.path.dirname(__file__), '../../lambda/authorizer/handler.py')
+spec = importlib.util.spec_from_file_location('handler', handler_path)
+handler = importlib.util.module_from_spec(spec)
+sys.modules['handler'] = handler
+spec.loader.exec_module(handler)
+
+lambda_handler = handler.lambda_handler
+extract_token = handler.extract_token
+validate_token = handler.validate_token
+generate_policy = handler.generate_policy
+get_jwks_client = handler.get_jwks_client
 
 
 @pytest.fixture

@@ -9,8 +9,6 @@ from aws_cdk import (
     Duration,
     CfnOutput,
     aws_apigatewayv2 as apigwv2,
-    aws_apigatewayv2_integrations as integrations,
-    aws_apigatewayv2_authorizers as authorizers,
     aws_lambda as lambda_,
     aws_iam as iam,
     aws_logs as logs,
@@ -107,84 +105,119 @@ class HttpApiStack(Stack):
         
         return function
     
-    def _create_http_api(self) -> apigwv2.HttpApi:
-        """Create HTTP API Gateway with CORS configuration."""
-        api = apigwv2.HttpApi(
+    def _create_http_api(self) -> apigwv2.CfnApi:
+        """Create HTTP API Gateway using stable CDK constructs."""
+        api = apigwv2.CfnApi(
             self,
             'SessionHttpApi',
-            api_name=f'session-management-http-api-{self.env_name}',
+            name=f'session-management-http-api-{self.env_name}',
             description='HTTP API for session management CRUD operations',
-            cors_preflight=apigwv2.CorsPreflightOptions(
+            protocol_type='HTTP',
+            cors_configuration=apigwv2.CfnApi.CorsProperty(
                 allow_origins=['*'],  # Configure for production
-                allow_methods=[
-                    apigwv2.CorsHttpMethod.GET,
-                    apigwv2.CorsHttpMethod.POST,
-                    apigwv2.CorsHttpMethod.PATCH,
-                    apigwv2.CorsHttpMethod.DELETE,
-                    apigwv2.CorsHttpMethod.OPTIONS,
-                ],
+                allow_methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
                 allow_headers=['Content-Type', 'Authorization'],
-                max_age=Duration.hours(1),
+                max_age=3600,
             ),
         )
         
         return api
     
-    def _create_jwt_authorizer(self) -> authorizers.HttpJwtAuthorizer:
+    def _create_jwt_authorizer(self) -> apigwv2.CfnAuthorizer:
         """Create JWT authorizer using Cognito User Pool."""
-        authorizer = authorizers.HttpJwtAuthorizer(
+        authorizer = apigwv2.CfnAuthorizer(
+            self,
             'JwtAuthorizer',
-            f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool.user_pool_id}',
+            api_id=self.http_api.ref,
+            authorizer_type='JWT',
+            name=f'session-jwt-authorizer-{self.env_name}',
             identity_source=['$request.header.Authorization'],
-            jwt_audience=[self.config.get('cognitoClientId', '')],
+            jwt_configuration=apigwv2.CfnAuthorizer.JWTConfigurationProperty(
+                issuer=f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool.user_pool_id}',
+                audience=[self.config.get('cognitoClientId', '')],
+            ),
         )
         
         return authorizer
     
     def _add_routes(self):
-        """Add HTTP routes to the API."""
+        """Add HTTP routes to the API using stable CDK constructs."""
         # Create Lambda integration
-        integration = integrations.HttpLambdaIntegration(
+        integration = apigwv2.CfnIntegration(
+            self,
             'SessionHandlerIntegration',
-            self.session_handler,
+            api_id=self.http_api.ref,
+            integration_type='AWS_PROXY',
+            integration_uri=f'arn:aws:apigateway:{self.region}:lambda:path/2015-03-31/functions/{self.session_handler.function_arn}/invocations',
+            payload_format_version='2.0',
+            timeout_in_millis=10000,
+        )
+        
+        # Grant API Gateway permission to invoke Lambda
+        self.session_handler.add_permission(
+            'HttpApiInvokePermission',
+            principal=iam.ServicePrincipal('apigateway.amazonaws.com'),
+            source_arn=f'arn:aws:execute-api:{self.region}:{self.account}:{self.http_api.ref}/*',
         )
         
         # POST /sessions - Create session (requires authentication)
-        self.http_api.add_routes(
-            path='/sessions',
-            methods=[apigwv2.HttpMethod.POST],
-            integration=integration,
-            authorizer=self.jwt_authorizer,
+        apigwv2.CfnRoute(
+            self,
+            'CreateSessionRoute',
+            api_id=self.http_api.ref,
+            route_key='POST /sessions',
+            authorization_type='JWT',
+            authorizer_id=self.jwt_authorizer.ref,
+            target=f'integrations/{integration.ref}',
         )
         
         # GET /sessions/{sessionId} - Get session (public, no auth required)
-        self.http_api.add_routes(
-            path='/sessions/{sessionId}',
-            methods=[apigwv2.HttpMethod.GET],
-            integration=integration,
+        apigwv2.CfnRoute(
+            self,
+            'GetSessionRoute',
+            api_id=self.http_api.ref,
+            route_key='GET /sessions/{sessionId}',
+            target=f'integrations/{integration.ref}',
         )
         
         # PATCH /sessions/{sessionId} - Update session (requires authentication)
-        self.http_api.add_routes(
-            path='/sessions/{sessionId}',
-            methods=[apigwv2.HttpMethod.PATCH],
-            integration=integration,
-            authorizer=self.jwt_authorizer,
+        apigwv2.CfnRoute(
+            self,
+            'UpdateSessionRoute',
+            api_id=self.http_api.ref,
+            route_key='PATCH /sessions/{sessionId}',
+            authorization_type='JWT',
+            authorizer_id=self.jwt_authorizer.ref,
+            target=f'integrations/{integration.ref}',
         )
         
         # DELETE /sessions/{sessionId} - Delete session (requires authentication)
-        self.http_api.add_routes(
-            path='/sessions/{sessionId}',
-            methods=[apigwv2.HttpMethod.DELETE],
-            integration=integration,
-            authorizer=self.jwt_authorizer,
+        apigwv2.CfnRoute(
+            self,
+            'DeleteSessionRoute',
+            api_id=self.http_api.ref,
+            route_key='DELETE /sessions/{sessionId}',
+            authorization_type='JWT',
+            authorizer_id=self.jwt_authorizer.ref,
+            target=f'integrations/{integration.ref}',
         )
         
         # GET /health - Health check (public, no auth required)
-        self.http_api.add_routes(
-            path='/health',
-            methods=[apigwv2.HttpMethod.GET],
-            integration=integration,
+        apigwv2.CfnRoute(
+            self,
+            'HealthCheckRoute',
+            api_id=self.http_api.ref,
+            route_key='GET /health',
+            target=f'integrations/{integration.ref}',
+        )
+        
+        # Create stage for the API
+        apigwv2.CfnStage(
+            self,
+            'HttpApiStage',
+            api_id=self.http_api.ref,
+            stage_name='$default',
+            auto_deploy=True,
         )
     
     def _create_outputs(self):
@@ -192,7 +225,7 @@ class HttpApiStack(Stack):
         CfnOutput(
             self,
             'HttpApiEndpoint',
-            value=self.http_api.url or '',
+            value=f'https://{self.http_api.ref}.execute-api.{self.region}.amazonaws.com',
             description='HTTP API endpoint URL',
             export_name=f'SessionHttpApiEndpoint-{self.env_name}',
         )
@@ -200,7 +233,7 @@ class HttpApiStack(Stack):
         CfnOutput(
             self,
             'HttpApiId',
-            value=self.http_api.http_api_id,
+            value=self.http_api.ref,
             description='HTTP API ID',
             export_name=f'SessionHttpApiId-{self.env_name}',
         )

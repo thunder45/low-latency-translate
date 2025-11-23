@@ -164,9 +164,9 @@ def lambda_handler(event, context):
                     message='Session does not exist'
                 )
             
-            if not session.get('isActive', False):
+            if session.get('status') != 'active':
                 logger.warning(
-                    message=f"Connection rejected: session is not active: {session_id}",
+                    message=f"Connection rejected: session is not active: {session_id}, status: {session.get('status')}",
                     correlation_id=f"{session_id}-{connection_id}",
                     operation='lambda_handler',
                     error_code='SESSION_INACTIVE',
@@ -187,7 +187,7 @@ def lambda_handler(event, context):
             # Determine role based on authentication
             # Speaker: authenticated user who owns the session
             # Listener: anonymous or authenticated user who doesn't own the session
-            speaker_user_id = session.get('speakerUserId', '')
+            speaker_user_id = session.get('speakerId', '')
             is_speaker = user_id and user_id == speaker_user_id
             role = 'speaker' if is_speaker else 'listener'
             

@@ -122,29 +122,46 @@ export class SpeakerService {
    */
   async startBroadcast(): Promise<void> {
     try {
+      console.log('[SpeakerService] Starting audio capture...');
       await this.audioCapture.start();
+      console.log('[SpeakerService] Audio capture started successfully');
 
       // Register audio chunk handler
       this.audioCapture.onChunk((chunk) => {
         const state = useSpeakerStore.getState();
         
         // Only send if not paused or muted
-        if (!state.isPaused && !state.isMuted && this.wsClient.isConnected()) {
-          this.wsClient.send({
-            action: 'sendAudio',
-            audioData: chunk.data,
-            timestamp: chunk.timestamp,
-            chunkId: chunk.chunkId,
-            duration: chunk.duration,
-          });
-          
-          useSpeakerStore.getState().setTransmitting(true);
+        // Note: Don't require active WebSocket connection since connection may be temporary
+        if (!state.isPaused && !state.isMuted) {
+          try {
+            if (this.wsClient.isConnected()) {
+              this.wsClient.send({
+                action: 'sendAudio',
+                audioData: chunk.data,
+                timestamp: chunk.timestamp,
+                chunkId: chunk.chunkId,
+                duration: chunk.duration,
+              });
+              
+              useSpeakerStore.getState().setTransmitting(true);
+            } else {
+              console.warn('[SpeakerService] WebSocket not connected, audio chunk not sent');
+              useSpeakerStore.getState().setTransmitting(false);
+            }
+          } catch (error) {
+            console.warn('[SpeakerService] Failed to send audio chunk:', error);
+          }
         }
       });
 
-      // Start session status polling
+      console.log('[SpeakerService] Audio chunk handler registered');
+
+      // Start session status polling (only if WebSocket is connected)
       this.startStatusPolling();
+      
+      console.log('[SpeakerService] Broadcasting started successfully');
     } catch (error) {
+      console.error('[SpeakerService] Failed to start broadcast:', error);
       const appError = ErrorHandler.handle(error as Error, {
         component: 'SpeakerService',
         operation: 'startBroadcast',

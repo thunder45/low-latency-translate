@@ -6,10 +6,21 @@ This component provides the core session management and WebSocket infrastructure
 
 ## Architecture
 
-- **Lambda Functions**: Serverless handlers for WebSocket lifecycle events
+### HTTP + WebSocket Hybrid
+
+This component implements a hybrid architecture that separates stateless session management from stateful real-time communication:
+
+- **HTTP API**: RESTful endpoints for session CRUD operations (create, read, update, delete)
+- **WebSocket API**: Bidirectional real-time audio streaming
+- **Lambda Functions**: Serverless handlers for both HTTP and WebSocket events
 - **DynamoDB**: Session and connection state storage
-- **API Gateway**: WebSocket API management
 - **AWS CDK**: Infrastructure as Code
+
+**Key Benefits:**
+- Sessions persist independently of WebSocket connections
+- Clearer separation of concerns (stateless vs stateful)
+- Better reliability and scalability
+- Follows AWS best practices
 
 ## Project Structure
 
@@ -20,6 +31,7 @@ session-management/
 │   ├── stacks/             # CDK stack definitions
 │   └── config/             # Environment-specific configurations
 ├── lambda/                 # Lambda function code
+│   ├── http_session_handler/ # HTTP API session CRUD operations
 │   ├── authorizer/         # JWT token validation
 │   ├── connection_handler/ # WebSocket connect handler
 │   ├── heartbeat_handler/  # Heartbeat message handler
@@ -31,6 +43,55 @@ session-management/
 │   └── config/             # Shared configuration
 └── tests/                  # Test files
 ```
+
+## HTTP API Endpoints
+
+The HTTP API provides RESTful endpoints for session management:
+
+### Session CRUD Operations
+
+**Create Session** (Authenticated)
+```bash
+POST /sessions
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "sourceLanguage": "en",
+  "qualityTier": "standard"
+}
+```
+
+**Get Session** (Public)
+```bash
+GET /sessions/{sessionId}
+```
+
+**Update Session** (Authenticated)
+```bash
+PATCH /sessions/{sessionId}
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+
+{
+  "status": "paused"
+}
+```
+
+**Delete Session** (Authenticated)
+```bash
+DELETE /sessions/{sessionId}
+Authorization: Bearer <JWT_TOKEN>
+```
+
+**Health Check** (Public)
+```bash
+GET /health
+```
+
+### Dev Environment
+- **HTTP API**: https://a4zdtiok36.execute-api.us-east-1.amazonaws.com/
+- **WebSocket API**: wss://kudr9na6xh.execute-api.us-east-1.amazonaws.com/prod
 
 ## Getting Started
 

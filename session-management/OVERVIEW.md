@@ -5,12 +5,28 @@
 This component provides the foundation for real-time multilingual audio broadcasting by managing:
 
 1. **Speaker Sessions**: Authenticated speakers create broadcasting sessions with memorable IDs
-2. **Listener Connections**: Anonymous listeners join sessions to receive translated audio
-3. **WebSocket Management**: Persistent bidirectional communication via AWS API Gateway
-4. **Connection Lifecycle**: Handles connect, heartbeat, disconnect, and refresh events
-5. **State Management**: Tracks sessions and connections in DynamoDB
-6. **Rate Limiting**: Prevents abuse through configurable limits
-7. **Long Sessions**: Supports unlimited duration through connection refresh
+2. **HTTP Session API**: RESTful API for session CRUD operations (create, read, update, delete)
+3. **Listener Connections**: Anonymous listeners join sessions to receive translated audio
+4. **WebSocket Management**: Persistent bidirectional communication via AWS API Gateway
+5. **Connection Lifecycle**: Handles connect, heartbeat, disconnect, and refresh events
+6. **State Management**: Tracks sessions and connections in DynamoDB
+7. **Rate Limiting**: Prevents abuse through configurable limits
+8. **Long Sessions**: Supports unlimited duration through connection refresh
+
+## Current Status
+
+### ✅ Deployed to Dev Environment
+- **HTTP API Endpoint**: https://a4zdtiok36.execute-api.us-east-1.amazonaws.com/
+- **WebSocket API Endpoint**: wss://kudr9na6xh.execute-api.us-east-1.amazonaws.com/prod
+- **Environment**: dev
+- **Last Deployment**: Task 18 (HTTP API deployment)
+- **All Tests**: Passing
+
+### Recent Milestones
+- ✅ HTTP + WebSocket Hybrid Architecture (Tasks 1-17)
+- ✅ HTTP API Deployed to Dev (Task 18)
+- 🔄 CloudWatch Monitoring (Task 19 - Next)
+- ⏳ Staging Deployment (Task 20 - Pending)
 
 ## Key Features
 
@@ -40,19 +56,29 @@ This component provides the foundation for real-time multilingual audio broadcas
 
 ## Architecture at a Glance
 
+### HTTP + WebSocket Hybrid Architecture
+
 ```
 Speaker (Authenticated)
-    ↓ WSS + JWT
-API Gateway WebSocket
+    ↓ HTTPS + JWT (Session CRUD)
+HTTP API Gateway → Session Handler Lambda
+    ↓
+DynamoDB (Sessions, Connections)
+    ↑
+    ↓ WSS + JWT (Audio Streaming)
+WebSocket API Gateway
     ↓
 Lambda Authorizer → Cognito
     ↓
 Connection Handler
     ↓
-DynamoDB (Sessions, Connections)
-    ↓
 Listeners (Anonymous)
 ```
+
+**Key Design:**
+- **HTTP API**: Stateless session management (create, read, update, delete)
+- **WebSocket API**: Stateful real-time audio streaming
+- **Separation of Concerns**: Session lifecycle independent of WebSocket connections
 
 ## Technology Stack
 
@@ -90,8 +116,9 @@ Start here based on your role:
 4. **[QUICKSTART.md](QUICKSTART.md)** - Quick deployment tutorial
 
 ### For Project Managers
-1. **Task Summaries** - See docs/TASK_1_SUMMARY.md through docs/TASK_14_SUMMARY.md
-   - Latest: docs/TASK_10_SUMMARY.md (CDK Infrastructure Updates)
+1. **Task Summaries** - See docs/TASK_*_SUMMARY.md files
+   - Latest: docs/TASK_18_DEPLOYMENT_SUMMARY.md (HTTP API Deployed to Dev)
+   - HTTP + WebSocket Hybrid: docs/HTTP_WEBSOCKET_HYBRID_PHASE*.md
 2. **[OVERVIEW.md](OVERVIEW.md)** - This file
 
 ### For Architects

@@ -54,8 +54,11 @@ export class AudioCapture {
       this.volumeGain.gain.value = 1.0;
       this.source.connect(this.volumeGain);
 
-      // Calculate buffer size for chunk duration
-      const bufferSize = Math.pow(2, Math.ceil(Math.log2(this.config.sampleRate * this.config.chunkDuration)));
+      // Calculate buffer size for chunk duration (must be 256-16384 and power of 2)
+      const idealBufferSize = this.config.sampleRate * this.config.chunkDuration;
+      const bufferSize = Math.min(16384, Math.max(256, Math.pow(2, Math.ceil(Math.log2(idealBufferSize)))));
+      
+      console.log(`[AudioCapture] Using buffer size: ${bufferSize} (ideal: ${idealBufferSize})`);
       this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
       this.processor.onaudioprocess = (e) => {
