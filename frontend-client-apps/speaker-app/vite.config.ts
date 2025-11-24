@@ -17,6 +17,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, '../shared'),
+      'events': 'events', // Polyfill for amazon-kinesis-video-streams-webrtc
     },
   },
   build: {
@@ -35,7 +36,14 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'zustand', 'amazon-cognito-identity-js'],
+    include: [
+      'react',
+      'react-dom',
+      'zustand',
+      'amazon-cognito-identity-js',
+      'events', // Polyfill for amazon-kinesis-video-streams-webrtc
+      'amazon-kinesis-video-streams-webrtc',
+    ],
   },
   server: {
     port: 3000,
