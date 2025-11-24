@@ -11,6 +11,7 @@ export interface AppConfig {
   cognito?: {
     userPoolId: string;
     clientId: string;
+    identityPoolId?: string; // For KVS WebRTC credentials
   };
   rum?: {
     guestRoleArn: string;
@@ -105,6 +106,7 @@ export function getConfig(): AppConfig {
     config.cognito = {
       userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
       clientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
+      identityPoolId: import.meta.env.VITE_COGNITO_IDENTITY_POOL_ID,
     };
   }
 
@@ -161,6 +163,7 @@ export function getConfigWithFallback(): AppConfig {
       cognito: {
         userPoolId: 'us-east-1_WoaXmyQLQ',
         clientId: '38t8057tbi0o6873qt441kuo3n',
+        identityPoolId: 'us-east-1:your-identity-pool-id',
       },
     };
   }

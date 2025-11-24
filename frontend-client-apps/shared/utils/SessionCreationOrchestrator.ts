@@ -33,6 +33,7 @@ export interface SessionCreationConfig {
 export interface SessionCreationResult {
   success: boolean;
   sessionId?: string;
+  sessionMetadata?: SessionMetadata; // Full session metadata including KVS fields
   wsClient?: WebSocketClient;
   error?: string;
   errorCode?: string;
@@ -106,6 +107,7 @@ export class SessionCreationOrchestrator {
       return {
         success: true,
         sessionId: sessionMetadata.sessionId,
+        sessionMetadata: sessionMetadata, // Return full metadata including KVS fields
         wsClient: wsClient,
       };
     } catch (error) {

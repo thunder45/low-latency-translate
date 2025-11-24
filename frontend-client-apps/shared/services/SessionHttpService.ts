@@ -27,6 +27,13 @@ export interface SessionMetadata {
   listenerCount: number;
   createdAt: number;
   updatedAt: number;
+  // KVS WebRTC fields
+  kvsChannelArn: string;
+  kvsChannelName: string;
+  kvsSignalingEndpoints: {
+    WSS: string;
+    HTTPS: string;
+  };
 }
 
 /**

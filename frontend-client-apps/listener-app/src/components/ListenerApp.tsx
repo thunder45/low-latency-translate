@@ -41,7 +41,26 @@ export const ListenerApp: React.FC = () => {
       const { getConfig } = await import('../../../shared/utils/config');
       const appConfig = getConfig();
       
-      // Create WebSocket client (no auth required for listeners)
+      // Fetch session metadata via HTTP API to get KVS fields
+      const { SessionHttpService } = await import('../../../shared/services/SessionHttpService');
+      const httpService = new SessionHttpService({
+        apiBaseUrl: appConfig.httpApiUrl,
+        timeout: 5000,
+      });
+      
+      console.log('[ListenerApp] Fetching session metadata...');
+      const sessionMetadata = await httpService.getSession(newSessionId);
+      console.log('[ListenerApp] Session metadata retrieved:', sessionMetadata.sessionId);
+      
+      if (!sessionMetadata.kvsChannelArn || !sessionMetadata.kvsSignalingEndpoints) {
+        throw new Error('Session metadata missing KVS configuration');
+      }
+      
+      if (!appConfig.cognito?.identityPoolId) {
+        throw new Error('Missing Cognito Identity Pool ID in configuration. Please set VITE_COGNITO_IDENTITY_POOL_ID');
+      }
+      
+      // Create WebSocket client (for control messages only, no JWT required for listeners)
       const client = new WebSocketClient({
         url: appConfig.websocketUrl,
         heartbeatInterval: 30000,
@@ -56,18 +75,30 @@ export const ListenerApp: React.FC = () => {
       const notifService = new NotificationService(client);
       setNotificationService(notifService);
       
-      // Create listener service
+      // Create listener service with KVS config
       const serviceConfig: ListenerServiceConfig = {
         wsUrl: appConfig.websocketUrl,
         sessionId: newSessionId,
         targetLanguage,
+        jwtToken: '', // Listeners don't need JWT for WebRTC (anonymous access via Identity Pool)
+        // KVS WebRTC configuration
+        kvsChannelArn: sessionMetadata.kvsChannelArn,
+        kvsSignalingEndpoint: sessionMetadata.kvsSignalingEndpoints.WSS,
+        region: appConfig.awsRegion,
+        identityPoolId: appConfig.cognito.identityPoolId,
+        userPoolId: appConfig.cognito.userPoolId,
       };
       
       const service = new ListenerService(serviceConfig);
       setListenerService(service);
       
-      // Initialize service (audio playback starts automatically when audio is received)
+      // Initialize service (WebSocket connection for control messages)
       await service.initialize();
+      
+      // Start WebRTC audio reception
+      await service.startListening();
+      
+      console.log('[ListenerApp] Listener service initialized and listening');
     } catch (error) {
       console.error('Failed to initialize listener service:', error);
     }

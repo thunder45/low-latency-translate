@@ -148,18 +148,37 @@ export const SpeakerApp: React.FC = () => {
         return;
       }
       
-      // Session created successfully
+      // Session created successfully - extract KVS fields from metadata
+      const sessionMetadata = result.sessionMetadata!;
+      
+      if (!sessionMetadata.kvsChannelArn || !sessionMetadata.kvsSignalingEndpoints) {
+        setCreationError('Session created but missing KVS configuration');
+        setIsCreatingSession(false);
+        return;
+      }
+      
+      if (!appConfig.cognito?.identityPoolId) {
+        setCreationError('Missing Cognito Identity Pool ID in configuration. Please set VITE_COGNITO_IDENTITY_POOL_ID');
+        setIsCreatingSession(false);
+        return;
+      }
       
       // Create notification service
       const notifService = new NotificationService(result.wsClient!);
       setNotificationService(notifService);
       
-      // Create speaker service with connected WebSocket client
+      // Create speaker service with connected WebSocket client and KVS config
       const serviceConfig: SpeakerServiceConfig = {
         wsUrl: appConfig.websocketUrl,
         jwtToken,
         sourceLanguage: config.sourceLanguage,
         qualityTier: config.qualityTier,
+        // KVS WebRTC configuration
+        kvsChannelArn: sessionMetadata.kvsChannelArn,
+        kvsSignalingEndpoint: sessionMetadata.kvsSignalingEndpoints.WSS,
+        region: appConfig.awsRegion,
+        identityPoolId: appConfig.cognito.identityPoolId,
+        userPoolId: appConfig.cognito.userPoolId,
       };
       
       const service = new SpeakerService(serviceConfig, result.wsClient!);

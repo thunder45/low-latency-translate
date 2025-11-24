@@ -1,9 +1,10 @@
-import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
-import { AudioCapture } from '../../../shared/audio/AudioCapture';
+import { KVSWebRTCService, AWSCredentials } from '../../../shared/services/KVSWebRTCService';
+import { getKVSCredentialsProvider } from '../../../shared/services/KVSCredentialsProvider';
 import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
 import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 import { RetryHandler } from '../../../shared/utils/RetryHandler';
 import { controlsMonitoring } from '../../../shared/utils/ControlsMonitoring';
+import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
 
 /**
  * Configuration for SpeakerService
@@ -13,30 +14,30 @@ export interface SpeakerServiceConfig {
   jwtToken: string;
   sourceLanguage: string;
   qualityTier: 'standard' | 'premium';
+  kvsChannelArn: string;
+  kvsSignalingEndpoint: string;
+  region: string;
+  identityPoolId: string;
+  userPoolId: string;
 }
 
 /**
- * Speaker service orchestrates WebSocket and audio capture
- * Handles session lifecycle, audio transmission, and quality monitoring
+ * Speaker service orchestrates WebRTC audio streaming and WebSocket control
+ * 
+ * Architecture:
+ * - WebRTC (via KVS): Low-latency audio streaming (<500ms)
+ * - WebSocket: Control messages and session metadata
  */
 export class SpeakerService {
   private wsClient: WebSocketClient;
-  private audioCapture: AudioCapture;
+  private kvsService: KVSWebRTCService | null = null;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
+  private config: SpeakerServiceConfig;
 
-  constructor(_config: SpeakerServiceConfig, wsClient: WebSocketClient) {
+  constructor(config: SpeakerServiceConfig, wsClient: WebSocketClient) {
+    this.config = config;
     this.wsClient = wsClient;
-
-    // Initialize audio capture
-    this.audioCapture = new AudioCapture({
-      sampleRate: 16000,
-      channelCount: 1,
-      chunkDuration: 2, // 2 seconds
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    });
 
     // Initialize retry handler
     this.retryHandler = new RetryHandler({
@@ -50,29 +51,17 @@ export class SpeakerService {
   }
 
   /**
-   * Initialize session and start broadcasting
-   * Note: WebSocket client should already be connected before calling this method
+   * Initialize session and prepare for broadcasting
    */
   async initialize(): Promise<void> {
     try {
-      console.log('[SpeakerService] initialize() called, checking connection...');
-      console.log('[SpeakerService] wsClient.isConnected():', this.wsClient.isConnected());
-      console.log('[SpeakerService] wsClient state:', this.wsClient.getState());
+      console.log('[SpeakerService] Initializing WebRTC+WebSocket hybrid service...');
       
       // Load saved preferences
       await this.loadPreferences();
       
-      console.log('[SpeakerService] Preferences loaded, rechecking connection...');
-      console.log('[SpeakerService] wsClient.isConnected():', this.wsClient.isConnected());
-      console.log('[SpeakerService] wsClient state:', this.wsClient.getState());
-      
-      // Session was successfully created (we received sessionCreated message)
-      // API Gateway closes the connection after message delivery, but session creation worked
-      console.log('[SpeakerService] Session created successfully, initializing service...');
-      console.log('[SpeakerService] Note: Connection may have closed due to API Gateway policy, but session is valid');
-      
       useSpeakerStore.getState().setConnected(true);
-      console.log('[SpeakerService] Initialization complete, session ready for broadcasting');
+      console.log('[SpeakerService] Initialization complete, ready to broadcast');
     } catch (error) {
       console.error('[SpeakerService] Initialization failed:', error);
       const appError = ErrorHandler.handle(error as Error, {
@@ -118,48 +107,53 @@ export class SpeakerService {
   }
 
   /**
-   * Start audio capture and transmission
+   * Start audio broadcasting via WebRTC
+   * Audio automatically streams to KVS - no manual chunk handling!
    */
   async startBroadcast(): Promise<void> {
     try {
-      console.log('[SpeakerService] Starting audio capture...');
-      await this.audioCapture.start();
-      console.log('[SpeakerService] Audio capture started successfully');
-
-      // Register audio chunk handler
-      this.audioCapture.onChunk((chunk) => {
-        const state = useSpeakerStore.getState();
-        
-        // Only send if not paused or muted
-        // Note: Don't require active WebSocket connection since connection may be temporary
-        if (!state.isPaused && !state.isMuted) {
-          try {
-            if (this.wsClient.isConnected()) {
-              this.wsClient.send({
-                action: 'sendAudio',
-                audioData: chunk.data,
-                timestamp: chunk.timestamp,
-                chunkId: chunk.chunkId,
-                duration: chunk.duration,
-              });
-              
-              useSpeakerStore.getState().setTransmitting(true);
-            } else {
-              console.warn('[SpeakerService] WebSocket not connected, audio chunk not sent');
-              useSpeakerStore.getState().setTransmitting(false);
-            }
-          } catch (error) {
-            console.warn('[SpeakerService] Failed to send audio chunk:', error);
-          }
-        }
+      console.log('[SpeakerService] Starting WebRTC broadcast...');
+      
+      // Get AWS credentials for KVS access
+      const credentials = await this.getAWSCredentials();
+      
+      // Create KVS WebRTC service
+      this.kvsService = new KVSWebRTCService({
+        channelARN: this.config.kvsChannelArn,
+        channelEndpoint: this.config.kvsSignalingEndpoint,
+        region: this.config.region,
+        credentials: credentials,
+        role: 'MASTER',
       });
-
-      console.log('[SpeakerService] Audio chunk handler registered');
-
-      // Start session status polling (only if WebSocket is connected)
+      
+      // Set up event handlers
+      this.kvsService.onConnectionStateChange = (state) => {
+        console.log('[SpeakerService] WebRTC connection state:', state);
+        useSpeakerStore.getState().setConnected(state === 'connected');
+        useSpeakerStore.getState().setTransmitting(state === 'connected');
+      };
+      
+      this.kvsService.onICEConnectionStateChange = (state) => {
+        console.log('[SpeakerService] ICE connection state:', state);
+      };
+      
+      this.kvsService.onError = (error) => {
+        console.error('[SpeakerService] WebRTC error:', error);
+        ErrorHandler.handle(error, {
+          component: 'SpeakerService',
+          operation: 'webrtc',
+        });
+      };
+      
+      // Connect as Master (microphone access + WebRTC connection)
+      await this.kvsService.connectAsMaster();
+      
+      console.log('[SpeakerService] WebRTC broadcast started - audio streaming via UDP');
+      
+      // Start session status polling (WebSocket for metadata only)
       this.startStatusPolling();
       
-      console.log('[SpeakerService] Broadcasting started successfully');
+      useSpeakerStore.getState().setTransmitting(true);
     } catch (error) {
       console.error('[SpeakerService] Failed to start broadcast:', error);
       const appError = ErrorHandler.handle(error as Error, {
@@ -171,16 +165,39 @@ export class SpeakerService {
   }
 
   /**
+   * Get AWS credentials for KVS access
+   */
+  private async getAWSCredentials(): Promise<AWSCredentials> {
+    try {
+      const credentialsProvider = getKVSCredentialsProvider({
+        region: this.config.region,
+        identityPoolId: this.config.identityPoolId,
+        userPoolId: this.config.userPoolId,
+      });
+      
+      return await credentialsProvider.getCredentials(this.config.jwtToken);
+    } catch (error) {
+      console.error('[SpeakerService] Failed to get AWS credentials:', error);
+      throw new Error('Failed to obtain AWS credentials for streaming');
+    }
+  }
+
+  /**
    * Pause broadcast
    */
   async pause(): Promise<void> {
     const startTime = Date.now();
     
     try {
-      this.audioCapture.pause();
+      // Mute WebRTC audio track (effectively pauses transmission)
+      if (this.kvsService) {
+        this.kvsService.mute();
+      }
+      
       useSpeakerStore.getState().setPaused(true);
       useSpeakerStore.getState().setTransmitting(false);
       
+      // Send control message via WebSocket
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
           action: 'pauseBroadcast',
@@ -210,9 +227,15 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      this.audioCapture.resume();
-      useSpeakerStore.getState().setPaused(false);
+      // Unmute WebRTC audio track (resumes transmission)
+      if (this.kvsService) {
+        this.kvsService.unmute();
+      }
       
+      useSpeakerStore.getState().setPaused(false);
+      useSpeakerStore.getState().setTransmitting(true);
+      
+      // Send control message via WebSocket
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
           action: 'resumeBroadcast',
@@ -254,10 +277,15 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      this.audioCapture.mute();
+      // Mute WebRTC audio track
+      if (this.kvsService) {
+        this.kvsService.mute();
+      }
+      
       useSpeakerStore.getState().setMuted(true);
       useSpeakerStore.getState().setTransmitting(false);
       
+      // Send control message via WebSocket
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
           action: 'muteBroadcast',
@@ -287,9 +315,15 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      this.audioCapture.unmute();
-      useSpeakerStore.getState().setMuted(false);
+      // Unmute WebRTC audio track
+      if (this.kvsService) {
+        this.kvsService.unmute();
+      }
       
+      useSpeakerStore.getState().setMuted(false);
+      useSpeakerStore.getState().setTransmitting(true);
+      
+      // Send control message via WebSocket
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
           action: 'unmuteBroadcast',
@@ -326,12 +360,10 @@ export class SpeakerService {
 
   /**
    * Set input volume (0-100)
+   * Note: WebRTC volume control is limited, stored for preference only
    */
   async setVolume(volume: number): Promise<void> {
     const clampedVolume = Math.max(0, Math.min(100, volume));
-    
-    // Update audio capture volume (normalize to 0-1)
-    this.audioCapture.setVolume(clampedVolume / 100);
     
     // Update store
     useSpeakerStore.getState().setInputVolume(clampedVolume);
@@ -364,6 +396,7 @@ export class SpeakerService {
    */
   async endSession(): Promise<void> {
     try {
+      // Send end session via WebSocket
       await this.retryHandler.execute(async () => {
         if (this.wsClient.isConnected()) {
           this.wsClient.send({
@@ -374,13 +407,16 @@ export class SpeakerService {
         }
       });
 
-      // Stop audio capture
-      this.audioCapture.stop();
+      // Cleanup WebRTC
+      if (this.kvsService) {
+        this.kvsService.cleanup();
+        this.kvsService = null;
+      }
 
       // Stop status polling
       this.stopStatusPolling();
 
-      // Close WebSocket within 1 second
+      // Close WebSocket
       setTimeout(() => {
         this.wsClient.disconnect();
       }, 1000);
@@ -398,16 +434,20 @@ export class SpeakerService {
 
   /**
    * Get current audio input level
+   * Note: WebRTC doesn't provide easy access to input levels
+   * Would need Web Audio API analyzer node
    */
   getInputLevel(): number {
-    return this.audioCapture.getInputLevel();
+    // TODO: Implement using Web Audio API if needed
+    return 0;
   }
 
   /**
    * Get average audio input level
    */
   getAverageInputLevel(): number {
-    return this.audioCapture.getAverageInputLevel();
+    // TODO: Implement using Web Audio API if needed
+    return 0;
   }
 
   /**
@@ -415,24 +455,20 @@ export class SpeakerService {
    */
   cleanup(): void {
     this.stopStatusPolling();
-    this.audioCapture.stop();
+    
+    if (this.kvsService) {
+      this.kvsService.cleanup();
+      this.kvsService = null;
+    }
+    
     this.wsClient.disconnect();
   }
 
   /**
-   * Setup WebSocket event handlers
+   * Setup WebSocket event handlers (for control messages only)
    */
   private setupEventHandlers(): void {
-    // Handle session created
-    this.wsClient.on('sessionCreated', (message: any) => {
-      useSpeakerStore.getState().setSession(
-        message.sessionId,
-        message.sourceLanguage,
-        message.qualityTier
-      );
-    });
-
-    // Handle quality warnings
+    // Handle quality warnings (from backend processing)
     this.wsClient.on('audioQualityWarning', (message: any) => {
       const warning: QualityWarning = {
         type: message.issue,
@@ -443,7 +479,7 @@ export class SpeakerService {
       
       useSpeakerStore.getState().addQualityWarning(warning);
 
-      // Auto-clear warning after 2 seconds if quality returns to normal
+      // Auto-clear warning after 2 seconds
       setTimeout(() => {
         const warnings = useSpeakerStore.getState().qualityWarnings;
         const updatedWarnings = warnings.filter(w => w.timestamp !== warning.timestamp);
@@ -461,17 +497,6 @@ export class SpeakerService {
       );
     });
 
-    // Handle connection state changes
-    this.wsClient.onStateChange((state) => {
-      useSpeakerStore.getState().setConnected(state.status === 'connected');
-    });
-
-    // Handle disconnection
-    this.wsClient.onDisconnect(() => {
-      useSpeakerStore.getState().setConnected(false);
-      useSpeakerStore.getState().setTransmitting(false);
-    });
-
     // Handle errors
     this.wsClient.onError((error) => {
       console.error('WebSocket error:', error);
@@ -479,12 +504,11 @@ export class SpeakerService {
         component: 'SpeakerService',
         operation: 'websocket',
       });
-      // Error will be displayed by UI components
     });
   }
 
   /**
-   * Start polling session status every 5 seconds
+   * Start polling session status every 5 seconds (WebSocket for metadata)
    */
   private startStatusPolling(): void {
     this.statusPollInterval = setInterval(() => {

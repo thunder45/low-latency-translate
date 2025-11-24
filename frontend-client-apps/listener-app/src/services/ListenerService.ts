@@ -1,6 +1,6 @@
 import { WebSocketClient } from '../../../shared/websocket/WebSocketClient';
-import { AudioPlayback } from '../../../shared/audio/AudioPlayback';
-import { CircularAudioBuffer } from '../../../shared/audio/CircularAudioBuffer';
+import { KVSWebRTCService, AWSCredentials } from '../../../shared/services/KVSWebRTCService';
+import { getKVSCredentialsProvider } from '../../../shared/services/KVSCredentialsProvider';
 import { useListenerStore } from '../../../shared/store/listenerStore';
 import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 import { preferenceStore } from '../../../shared/services/PreferenceStore';
@@ -12,37 +12,39 @@ export interface ListenerServiceConfig {
   wsUrl: string;
   sessionId: string;
   targetLanguage: string;
+  jwtToken: string;
+  // KVS WebRTC configuration
+  kvsChannelArn: string;
+  kvsSignalingEndpoint: string;
+  region: string;
+  identityPoolId: string;
+  userPoolId: string;
 }
 
 /**
- * Listener service orchestrates WebSocket and audio playback
- * Handles session joining, audio reception, and playback control
+ * Listener service orchestrates WebRTC audio reception and WebSocket control
+ * 
+ * Architecture:
+ * - WebRTC (via KVS): Low-latency audio streaming (<500ms)
+ * - WebSocket: Control messages and session metadata
  */
 export class ListenerService {
   private wsClient: WebSocketClient;
-  private audioPlayback: AudioPlayback;
-  private audioBuffer: CircularAudioBuffer;
+  private kvsService: KVSWebRTCService | null = null;
+  private audioElement: HTMLAudioElement | null = null;
   private config: ListenerServiceConfig;
 
   constructor(config: ListenerServiceConfig) {
     this.config = config;
-    
-    // Initialize circular buffer (16kHz sample rate, 30 seconds)
-    this.audioBuffer = new CircularAudioBuffer(16000, 30000);
 
-    // Initialize WebSocket client
+    // Initialize WebSocket client (for control messages only)
     this.wsClient = new WebSocketClient({
       url: config.wsUrl,
+      token: config.jwtToken,
       heartbeatInterval: 30000,
       reconnect: true,
       reconnectDelay: 1000,
       maxReconnectAttempts: 5,
-    });
-
-    // Initialize audio playback
-    this.audioPlayback = new AudioPlayback({
-      sampleRate: 16000,
-      maxBufferDuration: 30,
     });
 
     this.setupEventHandlers();
@@ -53,10 +55,12 @@ export class ListenerService {
    */
   async initialize(): Promise<void> {
     try {
+      console.log('[ListenerService] Initializing WebRTC+WebSocket hybrid service...');
+      
       // Load saved preferences
       await this.loadPreferences();
       
-      // Connect WebSocket
+      // Connect WebSocket (for control messages)
       await this.wsClient.connect({
         sessionId: this.config.sessionId,
         targetLanguage: this.config.targetLanguage,
@@ -70,13 +74,104 @@ export class ListenerService {
         sessionId: this.config.sessionId,
         targetLanguage: this.config.targetLanguage,
       });
+
+      console.log('[ListenerService] Initialization complete, ready to receive audio');
     } catch (error) {
+      console.error('[ListenerService] Initialization failed:', error);
       const appError = ErrorHandler.handle(error as Error, {
         component: 'ListenerService',
         operation: 'initialize',
         sessionId: this.config.sessionId,
       });
       throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Start receiving audio via WebRTC
+   */
+  async startListening(): Promise<void> {
+    try {
+      console.log('[ListenerService] Starting WebRTC audio reception...');
+      
+      // Get AWS credentials for KVS access
+      const credentials = await this.getAWSCredentials();
+      
+      // Create KVS WebRTC service as viewer
+      this.kvsService = new KVSWebRTCService({
+        channelARN: this.config.kvsChannelArn,
+        channelEndpoint: this.config.kvsSignalingEndpoint,
+        region: this.config.region,
+        credentials: credentials,
+        role: 'VIEWER',
+      });
+      
+      // Set up event handlers
+      this.kvsService.onConnectionStateChange = (state) => {
+        console.log('[ListenerService] WebRTC connection state:', state);
+        useListenerStore.getState().setConnected(state === 'connected');
+      };
+      
+      this.kvsService.onICEConnectionStateChange = (state) => {
+        console.log('[ListenerService] ICE connection state:', state);
+      };
+      
+      this.kvsService.onTrackReceived = (stream: MediaStream) => {
+        console.log('[ListenerService] Received remote audio track');
+        
+        // Create audio element if not exists
+        if (!this.audioElement) {
+          this.audioElement = new Audio();
+          this.audioElement.autoplay = true;
+          
+          // Apply saved volume
+          const savedVolume = useListenerStore.getState().playbackVolume;
+          this.audioElement.volume = savedVolume / 100;
+        }
+        
+        // Attach remote stream to audio element
+        this.audioElement.srcObject = stream;
+        
+        console.log('[ListenerService] Audio track connected to player');
+      };
+      
+      this.kvsService.onError = (error) => {
+        console.error('[ListenerService] WebRTC error:', error);
+        ErrorHandler.handle(error, {
+          component: 'ListenerService',
+          operation: 'webrtc',
+        });
+      };
+      
+      // Connect as Viewer
+      await this.kvsService.connectAsViewer();
+      
+      console.log('[ListenerService] WebRTC audio reception started');
+    } catch (error) {
+      console.error('[ListenerService] Failed to start listening:', error);
+      const appError = ErrorHandler.handle(error as Error, {
+        component: 'ListenerService',
+        operation: 'startListening',
+      });
+      throw new Error(appError.userMessage);
+    }
+  }
+
+  /**
+   * Get AWS credentials for KVS access
+   */
+  private async getAWSCredentials(): Promise<AWSCredentials> {
+    try {
+      const credentialsProvider = getKVSCredentialsProvider({
+        region: this.config.region,
+        identityPoolId: this.config.identityPoolId,
+        userPoolId: this.config.userPoolId,
+      });
+      
+      return await credentialsProvider.getCredentials(this.config.jwtToken);
+    } catch (error) {
+      console.error('[ListenerService] Failed to get AWS credentials:', error);
+      throw new Error('Failed to obtain AWS credentials for audio streaming');
     }
   }
 
@@ -112,16 +207,16 @@ export class ListenerService {
 
   /**
    * Pause playback
+   * Note: With WebRTC, we mute the audio element
    */
   async pause(): Promise<void> {
     const startTime = Date.now();
     
     try {
-      this.audioPlayback.pause();
+      if (this.audioElement) {
+        this.audioElement.pause();
+      }
       useListenerStore.getState().setPaused(true);
-      
-      // Start buffering incoming audio
-      this.startBuffering();
       
       this.logControlLatency('pause', startTime);
     } catch (error) {
@@ -137,14 +232,10 @@ export class ListenerService {
     const startTime = Date.now();
     
     try {
-      // Play buffered audio first
-      await this.playBufferedAudio();
-      
-      this.audioPlayback.resume();
+      if (this.audioElement) {
+        await this.audioElement.play();
+      }
       useListenerStore.getState().setPaused(false);
-      
-      // Stop buffering
-      this.stopBuffering();
       
       this.logControlLatency('resume', startTime);
     } catch (error) {
@@ -172,7 +263,9 @@ export class ListenerService {
     const startTime = Date.now();
     
     try {
-      this.audioPlayback.setMuted(true);
+      if (this.audioElement) {
+        this.audioElement.muted = true;
+      }
       useListenerStore.getState().setMuted(true);
       
       this.logControlLatency('mute', startTime);
@@ -189,7 +282,9 @@ export class ListenerService {
     const startTime = Date.now();
     
     try {
-      this.audioPlayback.setMuted(false);
+      if (this.audioElement) {
+        this.audioElement.muted = false;
+      }
       useListenerStore.getState().setMuted(false);
       
       this.logControlLatency('unmute', startTime);
@@ -217,9 +312,8 @@ export class ListenerService {
   async setVolume(volume: number): Promise<void> {
     const clampedVolume = Math.max(0, Math.min(100, volume));
     
-    const isMuted = useListenerStore.getState().isMuted;
-    if (!isMuted) {
-      this.audioPlayback.setVolume(clampedVolume / 100);
+    if (this.audioElement) {
+      this.audioElement.volume = clampedVolume / 100;
     }
     
     useListenerStore.getState().setPlaybackVolume(clampedVolume);
@@ -234,35 +328,6 @@ export class ListenerService {
   }
 
   /**
-   * Start buffering incoming audio
-   */
-  private startBuffering(): void {
-    // Buffer incoming audio chunks
-    // Implementation would handle audio chunk buffering
-  }
-
-  /**
-   * Stop buffering
-   */
-  private stopBuffering(): void {
-    this.audioBuffer.clear();
-    useListenerStore.getState().setBufferedDuration(0);
-    useListenerStore.getState().setBufferOverflow(false);
-  }
-
-  /**
-   * Play buffered audio
-   */
-  private async playBufferedAudio(): Promise<void> {
-    const bufferedDuration = this.audioBuffer.getBufferedDuration();
-    
-    if (bufferedDuration > 0) {
-      const audioData = this.audioBuffer.read(bufferedDuration);
-      await this.audioPlayback.playBuffer(audioData);
-    }
-  }
-
-  /**
    * Switch target language
    */
   async switchLanguage(newLanguage: string): Promise<void> {
@@ -273,10 +338,7 @@ export class ListenerService {
       // Update UI to show switching state
       useListenerStore.getState().setTargetLanguage(newLanguage);
 
-      // Clear audio buffer
-      this.audioPlayback.clearBuffer();
-
-      // Send switch language request
+      // Send switch language request via WebSocket
       if (this.wsClient.isConnected()) {
         this.wsClient.send({
           action: 'changeLanguage',
@@ -296,7 +358,6 @@ export class ListenerService {
       this.logControlLatency('switchLanguage', startTime);
     } catch (error) {
       // Revert to previous language on failure
-      // Ensure non-null string before passing to setTargetLanguage
       if (previousLanguage !== null) {
         useListenerStore.getState().setTargetLanguage(previousLanguage);
       }
@@ -316,7 +377,17 @@ export class ListenerService {
    */
   leave(): void {
     // Stop audio playback
-    this.audioPlayback.stop();
+    if (this.audioElement) {
+      this.audioElement.pause();
+      this.audioElement.srcObject = null;
+      this.audioElement = null;
+    }
+
+    // Cleanup WebRTC
+    if (this.kvsService) {
+      this.kvsService.cleanup();
+      this.kvsService = null;
+    }
 
     // Close WebSocket
     this.wsClient.disconnect();
@@ -327,16 +398,27 @@ export class ListenerService {
 
   /**
    * Get buffered audio duration
+   * Note: With WebRTC direct streaming, buffering is minimal
    */
   getBufferedDuration(): number {
-    return this.audioPlayback.getBufferDuration();
+    return 0; // WebRTC streams directly with minimal buffering
   }
 
   /**
    * Cleanup resources
    */
   cleanup(): void {
-    this.audioPlayback.stop();
+    if (this.audioElement) {
+      this.audioElement.pause();
+      this.audioElement.srcObject = null;
+      this.audioElement = null;
+    }
+    
+    if (this.kvsService) {
+      this.kvsService.cleanup();
+      this.kvsService = null;
+    }
+    
     this.wsClient.disconnect();
   }
 
@@ -365,7 +447,7 @@ export class ListenerService {
   }
 
   /**
-   * Setup WebSocket event handlers
+   * Setup WebSocket event handlers (for control messages only)
    */
   private setupEventHandlers(): void {
     // Handle session joined
@@ -374,35 +456,6 @@ export class ListenerService {
         message.sessionId,
         message.targetLanguage
       );
-    });
-
-    // Handle audio messages
-    this.wsClient.on('audio', (message: any) => {
-      // Decode and queue audio
-      this.audioPlayback.queueAudio({
-        data: message.audioData,
-        timestamp: message.timestamp,
-        chunkId: message.chunkId,
-        duration: message.duration || 2,
-      });
-
-      // Update buffer status
-      const bufferedDuration = this.audioPlayback.getBufferDuration();
-      useListenerStore.getState().setBufferedDuration(bufferedDuration);
-
-      // Check for buffer overflow
-      if (bufferedDuration >= 30) {
-        useListenerStore.getState().setBufferOverflow(true);
-      } else {
-        useListenerStore.getState().setBufferOverflow(false);
-      }
-
-      // Check for buffering state
-      if (bufferedDuration === 0 && !this.audioPlayback.isPlaying()) {
-        useListenerStore.getState().setBuffering(true);
-      } else {
-        useListenerStore.getState().setBuffering(false);
-      }
     });
 
     // Handle speaker state changes
@@ -429,7 +482,16 @@ export class ListenerService {
     // Handle session ended
     this.wsClient.on('sessionEnded', () => {
       // Stop playback
-      this.audioPlayback.stop();
+      if (this.audioElement) {
+        this.audioElement.pause();
+        this.audioElement.srcObject = null;
+      }
+      
+      // Cleanup WebRTC
+      if (this.kvsService) {
+        this.kvsService.cleanup();
+        this.kvsService = null;
+      }
       
       // Update UI to show session ended
       useListenerStore.getState().setConnected(false);

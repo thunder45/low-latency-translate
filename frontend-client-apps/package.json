@@ -32,5 +32,11 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity": "^3.936.0",
+    "@aws-sdk/client-kinesis-video": "^3.938.0",
+    "@aws-sdk/client-kinesis-video-signaling": "^3.936.0",
+    "amazon-kinesis-video-streams-webrtc": "^2.4.4"
   }
 }
