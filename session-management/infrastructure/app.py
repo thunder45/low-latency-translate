@@ -8,6 +8,7 @@ import json
 from aws_cdk import App, Environment
 from stacks.session_management_stack import SessionManagementStack
 from stacks.http_api_stack import HttpApiStack
+from stacks.kvs_webrtc_stack import KVSWebRTCStack
 
 # Add audio-transcription infrastructure to path for cross-stack reference
 audio_transcription_infra_path = os.path.join(
@@ -40,7 +41,15 @@ env = Environment(
     region=config.get("region", "us-east-1")
 )
 
-# Create AudioTranscriptionStack first (if available)
+# Create KVS WebRTC Stack first (for IAM roles)
+kvs_webrtc_stack = KVSWebRTCStack(
+    app,
+    f"KVSWebRTC-{env_name}",
+    cognito_identity_pool_id=config.get("cognito_identity_pool_id"),  # Optional
+    env=env
+)
+
+# Create AudioTranscriptionStack (if available)
 audio_transcription_stack = None
 if audio_transcription_available:
     audio_transcription_stack = AudioTranscriptionStack(
@@ -49,7 +58,7 @@ if audio_transcription_available:
         env=env
     )
 
-# Create SessionManagementStack with reference to AudioTranscriptionStack
+# Create SessionManagementStack with reference to AudioTranscriptionStack and KVS
 session_management_stack = SessionManagementStack(
     app,
     f"SessionManagement-{env_name}",
@@ -58,6 +67,9 @@ session_management_stack = SessionManagementStack(
     env_name=env_name,
     audio_transcription_stack=audio_transcription_stack
 )
+
+# Add dependency to ensure KVS stack is created first
+session_management_stack.add_dependency(kvs_webrtc_stack)
 
 # Add dependency to ensure AudioTranscriptionStack is created first
 if audio_transcription_stack:

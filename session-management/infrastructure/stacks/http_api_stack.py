@@ -103,6 +103,25 @@ class HttpApiStack(Stack):
             )
         )
         
+        # Grant KVS Signaling Channel permissions
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid='KVSSignalingChannelManagement',
+                actions=[
+                    'kinesisvideo:CreateSignalingChannel',
+                    'kinesisvideo:DeleteSignalingChannel',
+                    'kinesisvideo:DescribeSignalingChannel',
+                    'kinesisvideo:GetSignalingChannelEndpoint',
+                    'kinesisvideo:UpdateSignalingChannel',
+                    'kinesisvideo:TagResource',
+                    'kinesisvideo:GetIceServerConfig',
+                ],
+                resources=[
+                    f'arn:aws:kinesisvideo:{self.region}:{self.account}:channel/session-*/*'
+                ]
+            )
+        )
+        
         return function
     
     def _create_http_api(self) -> apigwv2.CfnApi:

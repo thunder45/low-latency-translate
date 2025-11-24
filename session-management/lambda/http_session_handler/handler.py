@@ -24,6 +24,7 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 apigateway_management = boto3.client('apigatewaymanagementapi')
+kvs_client = boto3.client('kinesisvideo')
 
 # Environment variables
 ENV = os.environ.get('ENV', 'dev')
@@ -128,7 +129,53 @@ def create_session(event: Dict[str, Any], user_id: Optional[str]) -> Dict[str, A
         # Generate unique session ID
         session_id = generate_session_id()
         
-        # Create session record
+        # Create KVS Signaling Channel for WebRTC
+        channel_name = f'session-{session_id}'
+        
+        try:
+            kvs_response = kvs_client.create_signaling_channel(
+                ChannelName=channel_name,
+                ChannelType='SINGLE_MASTER',  # 1 speaker (master), many listeners (viewers)
+                SingleMasterConfiguration={
+                    'MessageTtlSeconds': 60  # TTL for signaling messages
+                },
+                Tags=[
+                    {'Key': 'SessionId', 'Value': session_id},
+                    {'Key': 'CreatedBy', 'Value': user_id},
+                    {'Key': 'SourceLanguage', 'Value': source_language},
+                ]
+            )
+            
+            channel_arn = kvs_response['ChannelARN']
+            
+            logger.info(
+                f'KVS signaling channel created',
+                extra={
+                    'session_id': session_id,
+                    'channel_name': channel_name,
+                    'channel_arn': channel_arn
+                }
+            )
+            
+            # Get signaling channel endpoints
+            endpoints_response = kvs_client.get_signaling_channel_endpoint(
+                ChannelARN=channel_arn,
+                SingleMasterChannelEndpointConfiguration={
+                    'Protocols': ['WSS', 'HTTPS'],
+                    'Role': 'MASTER'
+                }
+            )
+            
+            signaling_endpoints = {
+                endpoint['Protocol']: endpoint['ResourceEndpoint']
+                for endpoint in endpoints_response['ResourceEndpointList']
+            }
+            
+        except ClientError as e:
+            logger.error(f'Failed to create KVS channel: {str(e)}')
+            return error_response(500, 'Failed to create streaming channel')
+        
+        # Create session record with KVS channel info
         now = int(datetime.utcnow().timestamp() * 1000)
         ttl = int((datetime.utcnow() + timedelta(hours=24)).timestamp())
         
@@ -142,6 +189,10 @@ def create_session(event: Dict[str, Any], user_id: Optional[str]) -> Dict[str, A
             'createdAt': now,
             'updatedAt': now,
             'expiresAt': ttl,
+            # KVS WebRTC fields
+            'kvsChannelArn': channel_arn,
+            'kvsChannelName': channel_name,
+            'kvsSignalingEndpoints': signaling_endpoints,
         }
         
         sessions_table.put_item(Item=session_data)
@@ -309,6 +360,25 @@ def delete_session(session_id: str, user_id: Optional[str]) -> Dict[str, Any]:
         # Verify ownership
         if session['speakerId'] != user_id:
             return error_response(403, 'Not authorized to delete this session')
+        
+        # Delete KVS signaling channel
+        channel_arn = session.get('kvsChannelArn')
+        if channel_arn:
+            try:
+                kvs_client.delete_signaling_channel(ChannelARN=channel_arn)
+                logger.info(
+                    f'KVS signaling channel deleted',
+                    extra={
+                        'session_id': session_id,
+                        'channel_arn': channel_arn
+                    }
+                )
+            except ClientError as e:
+                logger.warning(
+                    f'Failed to delete KVS channel: {str(e)}',
+                    extra={'session_id': session_id}
+                )
+                # Continue with session deletion even if KVS deletion fails
         
         # Mark session as ended (soft delete)
         sessions_table.update_item(
