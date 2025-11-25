@@ -198,8 +198,11 @@ export class ListenerService {
           const elapsed = Date.now() - startTime;
           console.log(`[ListenerService] Session verified after ${elapsed}ms`);
           
-          // Add a small delay to ensure speaker's master connection is stable
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Add delay to ensure speaker's KVS master connection is established
+          // Note: Session existing doesn't guarantee speaker connected to KVS yet
+          // Future enhancement: Backend should track speakerKvsConnected status
+          console.log('[ListenerService] Waiting 3 seconds for speaker KVS master connection...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
           
           console.log('[ListenerService] Ready to connect to KVS as viewer');
           return;
