@@ -37,16 +37,29 @@ on resource: arn:aws:kinesisvideo:us-east-1:193020606184:channel/session-peacefu
 
 ## Solution Steps
 
-### Step 1: Find Your Cognito Identity Pool ID
+### Step 1: Understand Identity Pool vs Identity ID
 
-The error shows you're using Identity Pool: `us-east-1:2cf0ecb6-e8fa-c390-2042-7776e186b389`
+**IMPORTANT**: Don't confuse these two:
 
-Verify in AWS Console:
+1. **Identity Pool ID** (what you need): `us-east-1:8a84f3fb-292e-4159-8e56-b6f238ff8d3a`
+   - This is the ID of the Identity Pool itself
+   - Used in backend config and frontend .env files
+   - One per application
+
+2. **Identity ID** (from error log): `us-east-1:2cf0ecb6-e8fa-c390-2042-7776e186b389`
+   - This is a specific user's Identity within the pool
+   - Assigned to individual authenticated users
+   - Many per Identity Pool
+   - NOT used in configuration
+
+**You need**: The Identity Pool ID (`us-east-1:8a84f3fb-292e-4159-8e56-b6f238ff8d3a`)
+
+Find it in AWS Console:
 ```bash
-# Or via AWS Console:
+# AWS Console:
 # 1. Go to Cognito → Identity Pools
-# 2. Look for existing Identity Pool
-# 3. Copy the Identity Pool ID (format: us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+# 2. Select your Identity Pool
+# 3. Copy the Identity Pool ID from the top (format: us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 ```
 
 ### Step 2: Update Backend Configuration
