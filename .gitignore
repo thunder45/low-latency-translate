@@ -40,3 +40,6 @@ session-management/lambda_layer/
 
 # Test files with sensitive data
 test-authorizer-event.json
+
+# Security incident documentation
+SECURITY_FIX_COMPLETE.md
