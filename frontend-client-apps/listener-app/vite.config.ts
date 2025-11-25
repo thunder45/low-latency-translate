@@ -17,8 +17,15 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, '../shared'),
-      'events': 'events', // Polyfill for amazon-kinesis-video-streams-webrtc
+      // Polyfill Node.js 'events' module for browser compatibility
+      // Required by amazon-kinesis-video-streams-webrtc
+      'events': path.resolve(__dirname, '../node_modules/events/events.js'),
     },
+  },
+  define: {
+    // Polyfill Node.js globals for browser
+    'process.env': {},
+    'global': 'globalThis',
   },
   build: {
     target: 'es2020',
@@ -42,6 +49,12 @@ export default defineConfig({
       'events', // Polyfill for amazon-kinesis-video-streams-webrtc
       'amazon-kinesis-video-streams-webrtc',
     ],
+    esbuildOptions: {
+      // Define Node.js globals for dependency pre-bundling
+      define: {
+        global: 'globalThis',
+      },
+    },
   },
   server: {
     port: 3001,
