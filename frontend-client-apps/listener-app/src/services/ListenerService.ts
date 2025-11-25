@@ -101,6 +101,9 @@ export class ListenerService {
     try {
       console.log('[ListenerService] Starting WebRTC audio reception...');
       
+      // Wait for speaker to be KVS-ready before attempting connection
+      await this.waitForSpeakerReady();
+      
       // Get AWS credentials for KVS access
       const credentials = await this.getAWSCredentials();
       
@@ -162,6 +165,59 @@ export class ListenerService {
       });
       throw new Error(appError.userMessage);
     }
+  }
+
+  /**
+   * Wait for speaker to be KVS-ready before connecting
+   * This prevents "SESSION_NOT_FOUND" errors when viewer connects before master
+   */
+  private async waitForSpeakerReady(maxWaitMs: number = 15000): Promise<void> {
+    const startTime = Date.now();
+    const pollInterval = 1000; // Poll every 1 second
+    
+    console.log('[ListenerService] Waiting for speaker to establish KVS connection...');
+    
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        // Check session status via HTTP API
+        const { SessionHttpService } = await import('../../../shared/services/SessionHttpService');
+        const { getConfig } = await import('../../../shared/utils/config');
+        
+        const appConfig = getConfig();
+        const httpService = new SessionHttpService({
+          apiBaseUrl: appConfig.httpApiUrl,
+          timeout: 5000,
+        });
+        
+        const session = await httpService.getSession(this.config.sessionId);
+        
+        // Check if speaker has established KVS master connection
+        // For now, we check if the session exists and has KVS configuration
+        // Future: backend will add `speakerKvsConnected` field
+        if (session.kvsChannelArn && session.kvsSignalingEndpoints) {
+          const elapsed = Date.now() - startTime;
+          console.log(`[ListenerService] Session verified after ${elapsed}ms`);
+          
+          // Add a small delay to ensure speaker's master connection is stable
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          console.log('[ListenerService] Ready to connect to KVS as viewer');
+          return;
+        }
+        
+      } catch (error) {
+        console.warn('[ListenerService] Error checking speaker status:', error);
+      }
+      
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    
+    // Timeout reached - proceed anyway with retry logic as fallback
+    console.warn(
+      `[ListenerService] Timeout waiting for speaker confirmation (${maxWaitMs}ms). ` +
+      'Attempting connection with retry logic as fallback...'
+    );
   }
 
   /**

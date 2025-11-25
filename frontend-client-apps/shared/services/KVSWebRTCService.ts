@@ -135,56 +135,123 @@ export class KVSWebRTCService {
   /**
    * Connect to KVS as Viewer (Listener)
    * Viewer receives audio from the master
+   * 
+   * @param retries Number of retry attempts if connection fails
+   * @param initialDelayMs Initial delay between retries in milliseconds
    */
-  async connectAsViewer(): Promise<void> {
-    try {
-      console.log('[KVS] Connecting as Viewer (Listener)...');
-      
-      // 1. Create signaling client
-      this.signalingClient = new SignalingClient({
-        channelARN: this.config.channelARN,
-        channelEndpoint: this.config.channelEndpoint,
-        role: Role.VIEWER,
-        region: this.config.region,
-        credentials: this.config.credentials,
-        clientId: this.config.clientId || this.generateClientId(),
-        systemClockOffset: 0,
-      });
-      
-      // 2. Get ICE servers
-      const iceServers = await this.getICEServers();
-      console.log('[KVS] ICE servers obtained:', iceServers.length);
-      
-      // 3. Create peer connection
-      this.peerConnection = new RTCPeerConnection({
-        iceServers: iceServers,
-        iceTransportPolicy: 'all',
-      });
-      
-      // 4. Set up connection event handlers
-      this.setupConnectionHandlers();
-      
-      // 5. Handle incoming audio track from master
-      this.peerConnection.ontrack = (event) => {
-        console.log('[KVS] Received media track from Master');
-        if (event.streams && event.streams[0]) {
-          this.onTrackReceived?.(event.streams[0]);
+  async connectAsViewer(retries: number = 3, initialDelayMs: number = 2000): Promise<void> {
+    let lastError: Error | null = null;
+    let delayMs = initialDelayMs;
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`[KVS] Viewer connection attempt ${attempt}/${retries}...`);
+        
+        // Attempt connection
+        await this.doConnectAsViewer();
+        
+        console.log('[KVS] Viewer connection successful!');
+        return; // Success!
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Failed to connect as Viewer');
+        console.warn(`[KVS] Attempt ${attempt} failed:`, lastError.message);
+        
+        // Cleanup failed connection attempt
+        this.cleanupPartialConnection();
+        
+        // If this was the last attempt, throw the error
+        if (attempt === retries) {
+          console.error('[KVS] All connection attempts exhausted');
+          this.onError?.(lastError);
+          throw lastError;
         }
-      };
+        
+        // Wait before retrying (exponential backoff)
+        console.log(`[KVS] Waiting ${delayMs}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * 1.5, 10000); // Cap at 10 seconds
+      }
+    }
+    
+    // Should never reach here, but just in case
+    throw lastError || new Error('Failed to connect as Viewer');
+  }
+
+  /**
+   * Internal method to perform actual viewer connection
+   */
+  private async doConnectAsViewer(): Promise<void> {
+    console.log('[KVS] Connecting as Viewer (Listener)...');
+    
+    // 1. Create signaling client
+    this.signalingClient = new SignalingClient({
+      channelARN: this.config.channelARN,
+      channelEndpoint: this.config.channelEndpoint,
+      role: Role.VIEWER,
+      region: this.config.region,
+      credentials: this.config.credentials,
+      clientId: this.config.clientId || this.generateClientId(),
+      systemClockOffset: 0,
+    });
+    
+    // 2. Get ICE servers
+    const iceServers = await this.getICEServers();
+    console.log('[KVS] ICE servers obtained:', iceServers.length);
+    
+    // 3. Create peer connection
+    this.peerConnection = new RTCPeerConnection({
+      iceServers: iceServers,
+      iceTransportPolicy: 'all',
+    });
+    
+    // 4. Set up connection event handlers
+    this.setupConnectionHandlers();
+    
+    // 5. Handle incoming audio track from master
+    this.peerConnection.ontrack = (event) => {
+      console.log('[KVS] Received media track from Master');
+      if (event.streams && event.streams[0]) {
+        this.onTrackReceived?.(event.streams[0]);
+      }
+    };
+    
+    // 6. Set up signaling handlers
+    this.setupSignalingHandlers();
+    
+    // 7. Open signaling connection with timeout
+    console.log('[KVS] Opening signaling channel...');
+    
+    // Create promise that rejects on timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Signaling channel connection timeout')), 15000);
+    });
+    
+    // Race between actual open and timeout
+    await Promise.race([
+      this.signalingClient.open(),
+      timeoutPromise
+    ]);
+    
+    console.log('[KVS] Connected as Viewer, waiting for media from Master');
+  }
+
+  /**
+   * Cleanup partial connection on failure
+   */
+  private cleanupPartialConnection(): void {
+    try {
+      if (this.peerConnection) {
+        this.peerConnection.close();
+        this.peerConnection = null;
+      }
       
-      // 6. Set up signaling handlers
-      this.setupSignalingHandlers();
-      
-      // 7. Open signaling connection
-      console.log('[KVS] Opening signaling channel...');
-      await this.signalingClient.open();
-      
-      console.log('[KVS] Connected as Viewer, waiting for media from Master');
+      if (this.signalingClient) {
+        this.signalingClient.close();
+        this.signalingClient = null;
+      }
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Failed to connect as Viewer');
-      console.error('[KVS] Viewer connection failed:', err);
-      this.onError?.(err);
-      throw err;
+      console.warn('[KVS] Error during cleanup:', error);
     }
   }
 
