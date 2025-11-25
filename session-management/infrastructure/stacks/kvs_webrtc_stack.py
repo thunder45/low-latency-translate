@@ -84,6 +84,7 @@ class KVSWebRTCStack(Stack):
         # ========================================
         
         if cognito_identity_pool_id:
+            # Authenticated users role (speakers)
             self.kvs_client_role = iam.Role(
                 self,
                 'KVSClientRole',
@@ -99,7 +100,7 @@ class KVSWebRTCStack(Stack):
                     },
                     assume_role_action='sts:AssumeRoleWithWebIdentity',
                 ),
-                description='Frontend client role for KVS WebRTC access',
+                description='Frontend client role for KVS WebRTC access (authenticated/speakers)',
             )
 
             # Grant client permissions for WebRTC signaling
@@ -113,6 +114,42 @@ class KVSWebRTCStack(Stack):
                         'kinesisvideo:GetSignalingChannelEndpoint',
                         'kinesisvideo:GetIceServerConfig',
                         'kinesisvideo:SendAlexaOfferToMaster',
+                    ],
+                    resources=[
+                        f'arn:aws:kinesisvideo:{self.region}:{self.account}:channel/session-*/*'
+                    ],
+                )
+            )
+            
+            # Unauthenticated users role (listeners/guests)
+            self.kvs_guest_role = iam.Role(
+                self,
+                'KVSGuestRole',
+                assumed_by=iam.FederatedPrincipal(
+                    'cognito-identity.amazonaws.com',
+                    conditions={
+                        'StringEquals': {
+                            'cognito-identity.amazonaws.com:aud': cognito_identity_pool_id
+                        },
+                        'ForAnyValue:StringLike': {
+                            'cognito-identity.amazonaws.com:amr': 'unauthenticated'
+                        },
+                    },
+                    assume_role_action='sts:AssumeRoleWithWebIdentity',
+                ),
+                description='Guest/listener role for KVS WebRTC access (unauthenticated)',
+            )
+
+            # Grant guest permissions for WebRTC signaling (viewer-only)
+            # Listeners can only connect as viewers, not as masters
+            self.kvs_guest_role.add_to_policy(
+                iam.PolicyStatement(
+                    sid='KVSWebRTCViewerAccess',
+                    actions=[
+                        'kinesisvideo:ConnectAsViewer',
+                        'kinesisvideo:DescribeSignalingChannel',
+                        'kinesisvideo:GetSignalingChannelEndpoint',
+                        'kinesisvideo:GetIceServerConfig',
                     ],
                     resources=[
                         f'arn:aws:kinesisvideo:{self.region}:{self.account}:channel/session-*/*'
@@ -151,6 +188,14 @@ class KVSWebRTCStack(Stack):
                 self,
                 'KVSClientRoleArn',
                 value=self.kvs_client_role.role_arn,
-                description='IAM Role ARN for frontend KVS clients',
+                description='IAM Role ARN for frontend KVS clients (authenticated)',
                 export_name=f'{construct_id}-ClientRoleArn',
+            )
+            
+            CfnOutput(
+                self,
+                'KVSGuestRoleArn',
+                value=self.kvs_guest_role.role_arn,
+                description='IAM Role ARN for frontend KVS guests (unauthenticated/listeners)',
+                export_name=f'{construct_id}-GuestRoleArn',
             )

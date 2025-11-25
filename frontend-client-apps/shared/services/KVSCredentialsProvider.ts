@@ -33,6 +33,8 @@ export class KVSCredentialsProvider {
   /**
    * Get AWS credentials for KVS access
    * Caches credentials and refreshes when expired
+   * 
+   * Supports both authenticated (with JWT) and unauthenticated access
    */
   async getCredentials(idToken: string): Promise<AWSCredentials> {
     // Check if cached credentials are still valid
@@ -41,7 +43,8 @@ export class KVSCredentialsProvider {
       return this.cachedCredentials;
     }
 
-    console.log('[KVS Credentials] Fetching new credentials from Cognito Identity Pool...');
+    const isAuthenticated = idToken && idToken.trim().length > 0;
+    console.log(`[KVS Credentials] Fetching ${isAuthenticated ? 'authenticated' : 'unauthenticated'} credentials from Cognito Identity Pool...`);
 
     try {
       // Import AWS SDK for Cognito Identity
@@ -53,16 +56,19 @@ export class KVSCredentialsProvider {
       });
 
       // 1. Get Identity ID from Cognito Identity Pool
-      const providerName = `cognito-idp.${this.config.region}.amazonaws.com/${this.config.userPoolId}`;
-      
-      const getIdResponse = await cognitoIdentity.send(
-        new GetIdCommand({
-          IdentityPoolId: this.config.identityPoolId,
-          Logins: {
-            [providerName]: idToken,
-          },
-        })
-      );
+      const getIdParams: any = {
+        IdentityPoolId: this.config.identityPoolId,
+      };
+
+      // Only add Logins if we have a valid JWT token (authenticated flow)
+      if (isAuthenticated) {
+        const providerName = `cognito-idp.${this.config.region}.amazonaws.com/${this.config.userPoolId}`;
+        getIdParams.Logins = {
+          [providerName]: idToken,
+        };
+      }
+
+      const getIdResponse = await cognitoIdentity.send(new GetIdCommand(getIdParams));
 
       const identityId = getIdResponse.IdentityId;
       if (!identityId) {
@@ -72,13 +78,20 @@ export class KVSCredentialsProvider {
       console.log('[KVS Credentials] Got Identity ID:', identityId);
 
       // 2. Get temporary AWS credentials
+      const getCredentialsParams: any = {
+        IdentityId: identityId,
+      };
+
+      // Only add Logins if authenticated
+      if (isAuthenticated) {
+        const providerName = `cognito-idp.${this.config.region}.amazonaws.com/${this.config.userPoolId}`;
+        getCredentialsParams.Logins = {
+          [providerName]: idToken,
+        };
+      }
+
       const getCredentialsResponse = await cognitoIdentity.send(
-        new GetCredentialsForIdentityCommand({
-          IdentityId: identityId,
-          Logins: {
-            [providerName]: idToken,
-          },
-        })
+        new GetCredentialsForIdentityCommand(getCredentialsParams)
       );
 
       const credentials = getCredentialsResponse.Credentials;

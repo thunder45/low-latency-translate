@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KVSViewerPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "kinesisvideo:DescribeSignalingChannel",
+        "kinesisvideo:GetSignalingChannelEndpoint",
+        "kinesisvideo:ConnectAsViewer"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

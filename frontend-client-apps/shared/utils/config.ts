@@ -34,8 +34,9 @@ function validateConfig(): void {
     errors.push('VITE_HTTP_API_URL is required');
   }
 
-  if (!import.meta.env.VITE_AWS_REGION) {
-    errors.push('VITE_AWS_REGION is required');
+  // AWS Region - can use VITE_AWS_REGION or fallback to VITE_COGNITO_REGION
+  if (!import.meta.env.VITE_AWS_REGION && !import.meta.env.VITE_COGNITO_REGION) {
+    errors.push('VITE_AWS_REGION or VITE_COGNITO_REGION is required');
   }
 
   if (!import.meta.env.VITE_ENCRYPTION_KEY) {
@@ -97,7 +98,7 @@ export function getConfig(): AppConfig {
   const config: AppConfig = {
     websocketUrl,
     httpApiUrl: import.meta.env.VITE_HTTP_API_URL,
-    awsRegion: import.meta.env.VITE_AWS_REGION,
+    awsRegion: import.meta.env.VITE_AWS_REGION || import.meta.env.VITE_COGNITO_REGION,
     encryptionKey,
   };
 

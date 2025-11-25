@@ -8,6 +8,7 @@ import { SpeakerStatus } from './SpeakerStatus';
 import { BufferIndicator } from './BufferIndicator';
 import { LanguageSelector } from './LanguageSelector';
 import { useListenerStore } from '../../../shared/store/listenerStore';
+import { AuthGuard } from './AuthGuard';
 
 /**
  * Main listener application component
@@ -19,6 +20,7 @@ export const ListenerApp: React.FC = () => {
   const [listenerService, setListenerService] = useState<ListenerService | null>(null);
   const [notificationService, setNotificationService] = useState<NotificationService | null>(null);
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   
   const {
     sessionId,
@@ -28,6 +30,67 @@ export const ListenerApp: React.FC = () => {
     isBuffering,
     isBufferOverflow,
   } = useListenerStore();
+
+  /**
+   * Load user info on mount
+   */
+  useEffect(() => {
+    const loadUserInfo = async () => {
+      try {
+        const { TokenStorage } = await import('../../../shared/services/TokenStorage');
+        const { getConfig } = await import('../../../shared/utils/config');
+        
+        const config = getConfig();
+        const tokenStorage = TokenStorage.getInstance();
+        await tokenStorage.initialize(config.encryptionKey);
+        const tokens = await tokenStorage.getTokens();
+        
+        if (tokens && tokens.idToken) {
+          // Decode JWT to get user info (simple base64 decode of payload)
+          const payload = tokens.idToken.split('.')[1];
+          const decoded = JSON.parse(atob(payload));
+          if (decoded.email) {
+            setUserEmail(decoded.email);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load user info:', error);
+      }
+    };
+
+    loadUserInfo();
+  }, []);
+
+  /**
+   * Handle logout
+   */
+  const handleLogout = async () => {
+    try {
+      // Cleanup services first
+      if (listenerService) {
+        listenerService.cleanup();
+      }
+      if (wsClient) {
+        wsClient.disconnect();
+      }
+
+      // Clear tokens
+      const { TokenStorage } = await import('../../../shared/services/TokenStorage');
+      const { getConfig } = await import('../../../shared/utils/config');
+      
+      const config = getConfig();
+      const tokenStorage = TokenStorage.getInstance();
+      await tokenStorage.initialize(config.encryptionKey);
+      await tokenStorage.clearTokens();
+      
+      // Reload page to show login form
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Force reload even if logout fails
+      window.location.reload();
+    }
+  };
 
   /**
    * Initialize services when session is joined
@@ -40,6 +103,18 @@ export const ListenerApp: React.FC = () => {
       // Get configuration from environment
       const { getConfig } = await import('../../../shared/utils/config');
       const appConfig = getConfig();
+      
+      // Get JWT token from storage for authenticated KVS access
+      const { TokenStorage } = await import('../../../shared/services/TokenStorage');
+      const tokenStorage = TokenStorage.getInstance();
+      await tokenStorage.initialize(appConfig.encryptionKey);
+      const tokens = await tokenStorage.getTokens();
+      
+      if (!tokens || !tokens.idToken) {
+        throw new Error('Please log in to join a session');
+      }
+      
+      const jwtToken = tokens.idToken;
       
       // Fetch session metadata via HTTP API to get KVS fields
       const { SessionHttpService } = await import('../../../shared/services/SessionHttpService');
@@ -75,12 +150,12 @@ export const ListenerApp: React.FC = () => {
       const notifService = new NotificationService(client);
       setNotificationService(notifService);
       
-      // Create listener service with KVS config
+      // Create listener service with KVS config and authenticated JWT token
       const serviceConfig: ListenerServiceConfig = {
         wsUrl: appConfig.websocketUrl,
         sessionId: newSessionId,
         targetLanguage,
-        jwtToken: '', // Listeners don't need JWT for WebRTC (anonymous access via Identity Pool)
+        jwtToken, // Authenticated JWT token for KVS credentials
         // KVS WebRTC configuration
         kvsChannelArn: sessionMetadata.kvsChannelArn,
         kvsSignalingEndpoint: sessionMetadata.kvsSignalingEndpoints.WSS,
@@ -119,10 +194,25 @@ export const ListenerApp: React.FC = () => {
   }, [listenerService, wsClient]);
 
   return (
-    <div className="listener-app">
-      <header className="app-header">
-        <h1>Listener Playback</h1>
-      </header>
+    <AuthGuard>
+      <div className="listener-app">
+        <header className="app-header">
+          <div className="header-content">
+            <h1>Listener Playback</h1>
+            <div className="user-section">
+              {userEmail && (
+                <span className="user-email">{userEmail}</span>
+              )}
+              <button
+                onClick={handleLogout}
+                className="logout-button"
+                title="Logout"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
 
       <main className="app-main">
         {!sessionId ? (
@@ -186,14 +276,53 @@ export const ListenerApp: React.FC = () => {
         }
 
         .app-header {
-          text-align: center;
           color: white;
           margin-bottom: 2rem;
+        }
+
+        .header-content {
+          max-width: 800px;
+          margin: 0 auto;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
 
         .app-header h1 {
           font-size: 2.5rem;
           margin: 0;
+        }
+
+        .user-section {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .user-email {
+          font-size: 0.9rem;
+          opacity: 0.9;
+        }
+
+        .logout-button {
+          padding: 0.5rem 1rem;
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: white;
+          background-color: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .logout-button:hover {
+          background-color: rgba(255, 255, 255, 0.3);
+          border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .logout-button:active {
+          transform: scale(0.98);
         }
 
         .app-main {
@@ -215,6 +344,7 @@ export const ListenerApp: React.FC = () => {
           margin-bottom: 2rem;
         }
       `}</style>
-    </div>
+      </div>
+    </AuthGuard>
   );
 };

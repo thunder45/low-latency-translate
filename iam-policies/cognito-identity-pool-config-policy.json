@@ -1,0 +1,48 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CognitoIdentityPoolRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-identity:SetIdentityPoolRoles",
+        "cognito-identity:GetIdentityPoolRoles",
+        "cognito-identity:DescribeIdentityPool",
+        "cognito-identity:ListIdentityPools"
+      ],
+      "Resource": [
+        "arn:aws:cognito-identity:us-east-1:193020606184:identitypool/us-east-1:d5e057cb-a333-4f2f-913e-777e6c279bf4"
+      ]
+    },
+    {
+      "Sid": "IAMPassRoleForKVSRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::193020606184:role/KVSWebRTC-dev-KVSGuestRoleB2D31EDC-WLWmKOrefMQt",
+        "arn:aws:iam::193020606184:role/KVSWebRTC-dev-KVSClientRoleD58A328F-GNjSJXzIIbxN",
+        "arn:aws:iam::193020606184:role/KVSWebRTC-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "cognito-identity.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "IAMReadRolePermissions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": [
+        "arn:aws:iam::193020606184:role/KVSWebRTC-*"
+      ]
+    }
+  ]
+}

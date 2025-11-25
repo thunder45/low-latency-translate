@@ -25,6 +25,7 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource('dynamodb')
 apigateway_management = boto3.client('apigatewaymanagementapi')
 kvs_client = boto3.client('kinesisvideo')
+eventbridge = boto3.client('events')
 
 # Environment variables
 ENV = os.environ.get('ENV', 'dev')
@@ -208,6 +209,42 @@ def create_session(event: Dict[str, Any], user_id: Optional[str]) -> Dict[str, A
         
         # Emit CloudWatch metric
         emit_metric('SessionCreationCount', 1, {'SourceLanguage': source_language})
+        
+        # Emit EventBridge event to trigger KVS stream consumer
+        try:
+            event_detail = {
+                'sessionId': session_id,
+                'status': 'ACTIVE',
+                'channelArn': channel_arn,
+                'sourceLanguage': source_language,
+                'targetLanguages': [],  # Will be populated as listeners join
+                'qualityTier': quality_tier,
+                'speakerId': user_id,
+                'timestamp': now,
+            }
+            
+            eventbridge.put_events(
+                Entries=[{
+                    'Source': 'session-management',
+                    'DetailType': 'Session Status Change',
+                    'Detail': json.dumps(event_detail),
+                    'EventBusName': 'default',
+                }]
+            )
+            
+            logger.info(
+                f'EventBridge event emitted for session creation',
+                extra={
+                    'session_id': session_id,
+                    'event_detail': event_detail,
+                }
+            )
+        except Exception as e:
+            logger.error(
+                f'Failed to emit EventBridge event: {str(e)}',
+                extra={'session_id': session_id}
+            )
+            # Don't fail the request if EventBridge emission fails
         
         return {
             'statusCode': 201,
@@ -401,6 +438,39 @@ def delete_session(session_id: str, user_id: Optional[str]) -> Dict[str, Any]:
         
         # Emit CloudWatch metric
         emit_metric('SessionDeletionCount', 1)
+        
+        # Emit EventBridge event to signal session end
+        try:
+            event_detail = {
+                'sessionId': session_id,
+                'status': 'ENDED',
+                'channelArn': channel_arn,
+                'sourceLanguage': session.get('sourceLanguage', ''),
+                'timestamp': int(datetime.utcnow().timestamp() * 1000),
+            }
+            
+            eventbridge.put_events(
+                Entries=[{
+                    'Source': 'session-management',
+                    'DetailType': 'Session Status Change',
+                    'Detail': json.dumps(event_detail),
+                    'EventBusName': 'default',
+                }]
+            )
+            
+            logger.info(
+                f'EventBridge event emitted for session deletion',
+                extra={
+                    'session_id': session_id,
+                    'event_detail': event_detail,
+                }
+            )
+        except Exception as e:
+            logger.error(
+                f'Failed to emit EventBridge event: {str(e)}',
+                extra={'session_id': session_id}
+            )
+            # Don't fail the request if EventBridge emission fails
         
         return {
             'statusCode': 204,

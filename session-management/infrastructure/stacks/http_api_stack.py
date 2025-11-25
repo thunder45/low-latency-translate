@@ -122,6 +122,20 @@ class HttpApiStack(Stack):
             )
         )
         
+        # Grant EventBridge PutEvents permissions (Phase 3)
+        # Allows Lambda to emit session lifecycle events that trigger KVS stream consumer
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid='EventBridgePutEvents',
+                actions=[
+                    'events:PutEvents',
+                ],
+                resources=[
+                    f'arn:aws:events:{self.region}:{self.account}:event-bus/default'
+                ]
+            )
+        )
+        
         return function
     
     def _create_http_api(self) -> apigwv2.CfnApi:

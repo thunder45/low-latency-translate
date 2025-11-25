@@ -59,12 +59,18 @@ class SessionManagementStack(Stack):
         self.disconnect_handler = self._create_disconnect_handler()
         self.refresh_handler = self._create_refresh_handler()
         self.session_status_handler = self._create_session_status_handler()
+        
+        # Create KVS Stream Consumer Lambda (Phase 3)
+        self.kvs_stream_consumer = self._create_kvs_stream_consumer()
 
         # Create WebSocket API
         self.websocket_api = self._create_websocket_api()
 
         # Create EventBridge rule for periodic status updates
         self._create_periodic_status_update_rule()
+        
+        # Create EventBridge rules for KVS stream processing (Phase 3)
+        self._create_kvs_event_rules()
 
         # Create SNS topic for alarms
         self.alarm_topic = self._create_alarm_topic()
@@ -422,14 +428,15 @@ class SessionManagementStack(Stack):
                 )
             )
 
-        # Create $connect route (with authorizer for speakers)
+        # Create $connect route (no authorizer - validation handled in Lambda)
+        # The connection_handler Lambda validates sessionId and determines role
+        # Speakers provide JWT token in query params, listeners connect anonymously
         connect_route = apigwv2.CfnRoute(
             self,
             "ConnectRoute",
             api_id=api.ref,
             route_key="$connect",
-            authorization_type="CUSTOM",
-            authorizer_id=authorizer.ref,
+            authorization_type="NONE",
             target=f"integrations/{connect_integration.ref}",
         )
 
@@ -751,6 +758,155 @@ class SessionManagementStack(Stack):
         
         return topic
 
+    def _create_kvs_stream_consumer(self) -> lambda_.Function:
+        """Create KVS Stream Consumer Lambda function (Phase 3)."""
+        # Get log retention from config
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.ONE_DAY
+        
+        # Get audio processor function name for invoking from KVS consumer
+        audio_processor_function_name = "audio-processor-dev"
+        if self.audio_transcription_stack:
+            audio_processor_function_name = self.audio_transcription_stack.audio_processor_function.function_name
+        
+        function = lambda_.Function(
+            self,
+            "KVSStreamConsumer",
+            function_name=f"kvs-stream-consumer-{self.env_name}",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="handler.lambda_handler",
+            code=lambda_.Code.from_asset("../lambda/kvs_stream_consumer"),
+            layers=[self.shared_layer],
+            timeout=Duration.minutes(15),  # Long timeout for stream processing
+            memory_size=1024,  # Higher memory for audio processing
+            environment={
+                "ENV": self.env_name,
+                "SESSIONS_TABLE": self.sessions_table.table_name,
+                "CONNECTIONS_TABLE": self.connections_table.table_name,
+                "AUDIO_PROCESSOR_FUNCTION_NAME": audio_processor_function_name,
+                "REGION": self.config.get("region", "us-east-1"),
+            },
+            log_retention=log_retention,
+        )
+
+        # Grant DynamoDB permissions
+        self.sessions_table.grant_read_data(function)
+        self.connections_table.grant_read_data(function)
+
+        # Grant KVS permissions for stream consumption
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid="KVSStreamConsumption",
+                actions=[
+                    "kinesisvideo:GetDataEndpoint",
+                    "kinesisvideo:GetMedia",
+                    "kinesisvideo:DescribeStream",
+                    "kinesisvideo:ListStreams",
+                ],
+                resources=[
+                    f"arn:aws:kinesisvideo:{self.region}:{self.account}:stream/session-*/*"
+                ],
+            )
+        )
+
+        # Grant KVS-video-media permissions for GetMedia API
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid="KVSMediaAccess",
+                actions=[
+                    "kinesis-video-media:GetMedia",
+                ],
+                resources=["*"],  # KVS media endpoints are dynamic
+            )
+        )
+
+        # Grant Lambda invoke permissions for audio processor
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid="InvokeAudioProcessor",
+                actions=[
+                    "lambda:InvokeFunction",
+                ],
+                resources=[
+                    f"arn:aws:lambda:{self.region}:{self.account}:function:{audio_processor_function_name}*"
+                ],
+            )
+        )
+
+        # Grant CloudWatch permissions for metrics
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=['cloudwatch:PutMetricData'],
+                resources=['*']
+            )
+        )
+
+        return function
+
+    def _create_kvs_event_rules(self):
+        """
+        Create EventBridge rules for KVS stream processing (Phase 3).
+        
+        Creates rules to:
+        1. Trigger KVS consumer when sessions become active
+        2. Stop KVS consumer when sessions end
+        3. Health check and cleanup for KVS consumer
+        """
+        # Rule 1: Session lifecycle events
+        # This rule will be triggered by session creation/deletion events
+        # For now, we'll create a placeholder rule - in production this would
+        # be triggered by the HTTP session handler when sessions are created
+        
+        session_lifecycle_rule = events.Rule(
+            self,
+            "SessionLifecycleRule",
+            rule_name=f"session-lifecycle-{self.env_name}",
+            description="Trigger KVS stream processing on session lifecycle events",
+            event_pattern=events.EventPattern(
+                source=["session-management"],
+                detail_type=["Session Status Change"],
+                detail={
+                    "status": ["ACTIVE", "ENDED"]
+                }
+            ),
+            enabled=True,
+        )
+
+        # Add KVS stream consumer as target for session lifecycle events
+        session_lifecycle_rule.add_target(
+            targets.LambdaFunction(
+                self.kvs_stream_consumer,
+                retry_attempts=2,
+            )
+        )
+
+        # Grant EventBridge permission to invoke KVS stream consumer
+        self.kvs_stream_consumer.grant_invoke(
+            iam.ServicePrincipal("events.amazonaws.com")
+        )
+
+        # Rule 2: Periodic health check and cleanup for KVS consumer
+        kvs_health_check_rule = events.Rule(
+            self,
+            "KVSHealthCheckRule",
+            rule_name=f"kvs-health-check-{self.env_name}",
+            description="Periodic health check and cleanup for KVS stream consumer",
+            schedule=events.Schedule.rate(Duration.minutes(5)),  # Every 5 minutes
+            enabled=True,
+        )
+
+        # Add KVS stream consumer as target with health check payload
+        kvs_health_check_rule.add_target(
+            targets.LambdaFunction(
+                self.kvs_stream_consumer,
+                retry_attempts=1,
+                event=events.RuleTargetInput.from_object({
+                    "action": "health_check",
+                    "source": "cloudwatch_events"
+                })
+            )
+        )
+
     def _create_cloudwatch_alarms(self):
         """Create CloudWatch alarms for monitoring."""
         # Alarm action
@@ -821,6 +977,7 @@ class SessionManagementStack(Stack):
             ("heartbeat-handler", self.heartbeat_handler),
             ("disconnect-handler", self.disconnect_handler),
             ("refresh-handler", self.refresh_handler),
+            ("kvs-stream-consumer", self.kvs_stream_consumer),  # Phase 3 addition
         ]:
             error_alarm = cloudwatch.Alarm(
                 self,
@@ -837,6 +994,26 @@ class SessionManagementStack(Stack):
                 treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
             )
             error_alarm.add_alarm_action(alarm_action)
+        
+        # 5. KVS Stream Consumer specific alarms (Phase 3)
+        # Active streams count alarm
+        kvs_active_streams_alarm = cloudwatch.Alarm(
+            self,
+            "KVSActiveStreamsAlarm",
+            alarm_name=f"kvs-active-streams-{self.env_name}",
+            alarm_description="Alert when KVS active streams exceed expected threshold",
+            metric=cloudwatch.Metric(
+                namespace="KVSStreamConsumer",
+                metric_name="ActiveStreams",
+                statistic="Average",
+                period=Duration.minutes(5)
+            ),
+            threshold=20,  # Alert if more than 20 concurrent streams
+            evaluation_periods=2,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
+        )
+        kvs_active_streams_alarm.add_alarm_action(alarm_action)
 
     def _create_outputs(self):
         """Create CloudFormation outputs."""
@@ -873,4 +1050,19 @@ class SessionManagementStack(Stack):
             "AlarmTopicArn",
             value=self.alarm_topic.topic_arn,
             description="SNS topic ARN for CloudWatch alarms"
+        )
+        
+        # Phase 3 outputs
+        CfnOutput(
+            self,
+            "KVSStreamConsumerFunctionName",
+            value=self.kvs_stream_consumer.function_name,
+            description="KVS Stream Consumer Lambda function name"
+        )
+        
+        CfnOutput(
+            self,
+            "KVSStreamConsumerFunctionArn",
+            value=self.kvs_stream_consumer.function_arn,
+            description="KVS Stream Consumer Lambda function ARN"
         )

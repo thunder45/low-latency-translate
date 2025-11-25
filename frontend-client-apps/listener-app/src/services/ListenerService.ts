@@ -38,14 +38,21 @@ export class ListenerService {
     this.config = config;
 
     // Initialize WebSocket client (for control messages only)
-    this.wsClient = new WebSocketClient({
+    // Listeners don't need JWT token - only pass if actually provided
+    const wsConfig: any = {
       url: config.wsUrl,
-      token: config.jwtToken,
       heartbeatInterval: 30000,
       reconnect: true,
       reconnectDelay: 1000,
       maxReconnectAttempts: 5,
-    });
+    };
+    
+    // Only add token if it's a non-empty string
+    if (config.jwtToken && config.jwtToken.trim()) {
+      wsConfig.token = config.jwtToken;
+    }
+    
+    this.wsClient = new WebSocketClient(wsConfig);
 
     this.setupEventHandlers();
   }
