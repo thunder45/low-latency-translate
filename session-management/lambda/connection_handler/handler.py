@@ -557,13 +557,16 @@ def handle_join_session_message(event, connection_id, body, ip_address):
         
         return success_response(status_code=200, body={})
     
-    if not session.get('isActive', False):
+    # Check session status (HTTP API uses 'status' field, not 'isActive')
+    session_status = session.get('status', '')
+    if session_status != 'active':
         logger.warning(
-            message=f"Session is inactive: {session_id}",
+            message=f"Session is not active: {session_id}, status: {session_status}",
             correlation_id=f"{session_id}-{connection_id}",
             operation='handle_join_session_message',
             error_code='SESSION_NOT_FOUND',
-            sessionId=session_id
+            sessionId=session_id,
+            sessionStatus=session_status
         )
         metrics_publisher.emit_connection_error('SESSION_NOT_FOUND')
         
