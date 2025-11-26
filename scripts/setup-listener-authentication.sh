@@ -78,9 +78,9 @@ echo ""
 echo -e "${YELLOW}5. Creating test listener user...${NC}"
 aws cognito-idp admin-create-user \
   --user-pool-id "$LISTENER_USER_POOL_ID" \
-  --username "advm@advm.lu" \
-  --user-attributes Name=email,Value="advm@advm.lu" \
-  --temporary-password "Jesus33" \
+  --username "test@example.com" \
+  --user-attributes Name=email,Value="test@example.com" \
+  --temporary-password "Test123Abc!" \
   --message-action SUPPRESS
 
 echo -e "${GREEN}✅ Test user created${NC}"
@@ -99,8 +99,8 @@ echo "VITE_COGNITO_IDENTITY_POOL_ID=$LISTENER_IDENTITY_POOL_ID"
 echo "VITE_COGNITO_REGION=us-east-1"
 echo ""
 echo -e "${GREEN}Test credentials:${NC}"
-echo "Email: advm@advm.lu
-echo "Temp Password: Jesus33!"
+echo "Email: test@example.com"
+echo "Temp Password: Test123Abc!"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
 echo "1. Update frontend-client-apps/listener-app/.env with values above"
