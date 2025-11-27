@@ -43,3 +43,6 @@ test-authorizer-event.json
 
 # Security incident documentation
 SECURITY_FIX_COMPLETE.md
+
+# FFmpeg binary (too large for git)
+session-management/lambda_layers/ffmpeg/bin/ffmpeg
