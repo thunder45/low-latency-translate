@@ -6,6 +6,7 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     CfnOutput,
+    Size,
     aws_dynamodb as dynamodb,
     aws_lambda as lambda_,
     aws_apigatewayv2 as apigwv2,
@@ -476,7 +477,7 @@ class SessionManagementStack(Stack):
             layers=[self.shared_layer, self.ffmpeg_layer],
             timeout=Duration.seconds(60),  # 60 seconds for batch processing
             memory_size=1024,  # Higher memory for ffmpeg
-            ephemeral_storage_size=2048,  # 2GB for temporary audio files
+            ephemeral_storage_size=Size.mebibytes(2048),  # 2GB for temporary audio files
             environment={
                 "STAGE": self.env_name,
                 "AUDIO_BUCKET_NAME": self.audio_chunks_bucket.bucket_name,
