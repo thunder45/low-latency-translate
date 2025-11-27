@@ -59,6 +59,7 @@ export const SpeakerApp: React.FC = () => {
    * Handle logout
    */
   const handleLogout = async () => {
+    console.log('Logging out...');
     try {
       // Cleanup services first
       if (speakerService) {
@@ -148,37 +149,23 @@ export const SpeakerApp: React.FC = () => {
         return;
       }
       
-      // Session created successfully - extract KVS fields from metadata
-      const sessionMetadata = result.sessionMetadata!;
-      
-      if (!sessionMetadata.kvsChannelArn || !sessionMetadata.kvsSignalingEndpoints) {
-        setCreationError('Session created but missing KVS configuration');
-        setIsCreatingSession(false);
-        return;
-      }
-      
-      if (!appConfig.cognito?.identityPoolId) {
-        setCreationError('Missing Cognito Identity Pool ID in configuration. Please set VITE_COGNITO_IDENTITY_POOL_ID');
-        setIsCreatingSession(false);
-        return;
-      }
+      // Session created successfully - store session data first
+      useSpeakerStore.getState().setSession(
+        result.sessionId!,
+        config.sourceLanguage,
+        config.qualityTier
+      );
       
       // Create notification service
       const notifService = new NotificationService(result.wsClient!);
       setNotificationService(notifService);
       
-      // Create speaker service with connected WebSocket client and KVS config
+      // Create speaker service with connected WebSocket client
       const serviceConfig: SpeakerServiceConfig = {
         wsUrl: appConfig.websocketUrl,
         jwtToken,
         sourceLanguage: config.sourceLanguage,
         qualityTier: config.qualityTier,
-        // KVS WebRTC configuration
-        kvsChannelArn: sessionMetadata.kvsChannelArn,
-        kvsSignalingEndpoint: sessionMetadata.kvsSignalingEndpoints.WSS,
-        region: appConfig.awsRegion,
-        identityPoolId: appConfig.cognito.identityPoolId,
-        userPoolId: appConfig.cognito.userPoolId,
       };
       
       const service = new SpeakerService(serviceConfig, result.wsClient!);
@@ -186,6 +173,9 @@ export const SpeakerApp: React.FC = () => {
       
       // Initialize service
       await service.initialize();
+      
+      // Small delay to ensure WebSocket is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Start broadcasting
       await service.startBroadcast();
@@ -200,18 +190,23 @@ export const SpeakerApp: React.FC = () => {
       
       setIsCreatingSession(false);
       
-      // Cleanup orchestrator
-      if (orchestrator) {
-        orchestrator.abort();
+      // DON'T abort orchestrator here - it would disconnect the WebSocket
+      // The WebSocket is now owned by SpeakerService
+      // Just cleanup the service if it was created
+      if (speakerService) {
+        speakerService.cleanup();
+        setSpeakerService(null);
       }
     }
   };
 
   /**
-   * Cleanup on unmount
+   * Cleanup on unmount ONLY
    */
   useEffect(() => {
+    console.debug('SpeakerApp mounted');
     return () => {
+      console.debug('SpeakerApp unmounting - cleaning up resources');
       // Abort any ongoing session creation
       if (orchestrator) {
         orchestrator.abort();
@@ -222,7 +217,7 @@ export const SpeakerApp: React.FC = () => {
         speakerService.cleanup();
       }
     };
-  }, [speakerService, orchestrator]);
+  }, []); // Empty deps - only run on mount/unmount, not when services change!
 
   return (
     <AuthGuard>

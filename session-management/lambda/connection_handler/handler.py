@@ -191,6 +191,41 @@ def lambda_handler(event, context):
             is_speaker = user_id and user_id == speaker_user_id
             role = 'speaker' if is_speaker else 'listener'
             
+            # Create connection record in DynamoDB
+            # CRITICAL: Must create this during $connect so disconnect handler can find it
+            try:
+                connections_repo.create_connection(
+                    connection_id=connection_id,
+                    session_id=session_id,
+                    role=role,
+                    target_language=session.get('sourceLanguage') if role == 'listener' else None,
+                    ip_address=ip_address,
+                    session_max_duration_hours=SESSION_MAX_DURATION_HOURS
+                )
+                logger.info(
+                    message=f"Connection record created successfully in DynamoDB",
+                    correlation_id=f"{session_id}-{connection_id}",
+                    operation='lambda_handler',
+                    sessionId=session_id,
+                    role=role
+                )
+            except Exception as e:
+                logger.error(
+                    message=f"CRITICAL: Failed to create connection record: {str(e)}",
+                    correlation_id=f"{session_id}-{connection_id}",
+                    operation='lambda_handler',
+                    error_code='DB_WRITE_FAILED',
+                    sessionId=session_id,
+                    role=role,
+                    exc_info=True
+                )
+                # Return error to prevent connection
+                return error_response(
+                    status_code=500,
+                    error_code='DB_WRITE_FAILED',
+                    message='Failed to initialize connection'
+                )
+            
             logger.info(
                 message=f"{role.capitalize()} connection accepted for session {session_id}",
                 correlation_id=f"{session_id}-{connection_id}",
@@ -201,13 +236,8 @@ def lambda_handler(event, context):
                 role=role
             )
             
-            # Store sessionId in connection record for later use
-            # Note: We don't create the full connection record here yet
-            # That happens in joinSession MESSAGE event for listeners
-            # For speakers, the connection was already created during HTTP session creation
-            
-            # Accept connection
-            return success_response(status_code=200, body={})
+            # Accept connection - return ONLY statusCode for $connect (no body per AWS docs)
+            return {'statusCode': 200}
         
         # Handle MESSAGE events
         elif event_type == 'MESSAGE':
@@ -227,6 +257,8 @@ def lambda_handler(event, context):
                 return handle_create_session_message(event, connection_id, body, ip_address)
             elif action == 'joinSession':
                 return handle_join_session_message(event, connection_id, body, ip_address)
+            elif action == 'audioChunk':
+                return handle_audio_chunk(event, connection_id, body, ip_address)
             elif action:
                 # Route other control messages (pauseBroadcast, muteBroadcast, etc.)
                 return route_control_message(connection_id, action, body)
@@ -710,6 +742,88 @@ def handle_join_session_message(event, connection_id, body, ip_address):
     
     # Return success response to keep connection open
     return success_response(status_code=200, body={})
+
+
+def handle_audio_chunk(event, connection_id, body, ip_address):
+    """
+    Handle audio chunk from speaker - forward to kvs_stream_writer.
+    
+    Note: This is a temporary routing handler. In production, consider:
+    - Direct Lambda invocation from WebSocket integration
+    - SQS queue for buffering
+    - Dedicated audio ingestion Lambda
+    
+    Args:
+        event: Lambda event
+        connection_id: WebSocket connection ID
+        body: Message body with audio data
+        ip_address: Client IP
+        
+    Returns:
+        Success response
+    """
+    try:
+        session_id = body.get('sessionId', '')
+        audio_data_base64 = body.get('audioData', '')
+        chunk_index = body.get('chunkIndex', 0)
+        
+        if not session_id or not audio_data_base64:
+            logger.warning(
+                message="Invalid audio chunk: missing sessionId or audioData",
+                correlation_id=connection_id,
+                operation='handle_audio_chunk'
+            )
+            return success_response(status_code=200, body={})
+        
+        # Verify connection is speaker role
+        connection = connections_repo.get_connection(connection_id)
+        if not connection or connection.get('role') != 'speaker':
+            logger.warning(
+                message="Audio chunk from non-speaker connection",
+                correlation_id=connection_id,
+                operation='handle_audio_chunk',
+                role=connection.get('role') if connection else 'unknown'
+            )
+            return success_response(status_code=200, body={})
+        
+        # Forward to kvs_stream_writer Lambda
+        kvs_writer_function = os.environ.get('KVS_STREAM_WRITER_FUNCTION', 'kvs-stream-writer-dev')
+        
+        lambda_client = boto3.client('lambda')
+        lambda_client.invoke(
+            FunctionName=kvs_writer_function,
+            InvocationType='Event',  # Async
+            Payload=json.dumps({
+                'action': 'writeToStream',
+                'sessionId': session_id,
+                'audioData': audio_data_base64,
+                'timestamp': body.get('timestamp', int(time.time() * 1000)),
+                'format': body.get('format', 'webm-opus'),
+                'chunkIndex': chunk_index,
+            })
+        )
+        
+        # Log every 40th chunk to avoid log spam
+        if chunk_index % 40 == 0:
+            logger.info(
+                message=f"Forwarded audio chunk {chunk_index} to kvs_stream_writer",
+                correlation_id=f"{session_id}-{connection_id}",
+                operation='handle_audio_chunk',
+                sessionId=session_id,
+                chunkIndex=chunk_index
+            )
+        
+        return success_response(status_code=200, body={})
+        
+    except Exception as e:
+        logger.error(
+            message=f"Error handling audio chunk: {str(e)}",
+            correlation_id=connection_id,
+            operation='handle_audio_chunk',
+            exc_info=True
+        )
+        # Return success to avoid WebSocket disconnect
+        return success_response(status_code=200, body={})
 
 
 # Keep old function for backwards compatibility (not used anymore)

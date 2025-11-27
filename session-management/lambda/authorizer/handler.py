@@ -155,7 +155,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict:
     """
     Lambda authorizer for WebSocket API Gateway
     
-    Validates JWT token from Cognito and returns IAM policy
+    Handles both authenticated speakers (with JWT) and anonymous listeners:
+    - If token present and valid: Allow with userId in context (speaker)
+    - If no token present: Allow with empty userId in context (listener)
+    - If token present but invalid: Deny
     """
     try:
         # Validate configuration
@@ -165,43 +168,55 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict:
         
         # Extract token
         token = extract_token(event)
-        if not token:
-            logger.error('No token provided')
-            raise Exception('Unauthorized')
-        
-        # Validate token
-        decoded = validate_token(token)
-        
-        # Extract user information
-        user_id = decoded.get('sub')
-        email = decoded.get('email')
-        
-        if not user_id:
-            logger.error('Token missing sub claim')
-            raise Exception('Unauthorized')
-        
-        # Generate allow policy
         method_arn = event['methodArn']
-        policy = generate_policy(
-            principal_id=user_id,
-            effect='Allow',
-            resource=method_arn,
-            context={
-                'userId': user_id,
-                'email': email or '',
-            }
-        )
         
-        logger.info(f'Authorization successful for user: {user_id}')
-        return policy
+        # Case 1: No token provided - Allow as anonymous listener
+        if not token:
+            logger.info('No token provided - authorizing as anonymous listener')
+            policy = generate_policy(
+                principal_id='anonymous',
+                effect='Allow',
+                resource=method_arn,
+                context={
+                    'userId': '',  # Empty string for listeners
+                    'email': '',
+                }
+            )
+            return policy
         
-    except jwt.ExpiredSignatureError:
-        logger.error('Authorization failed: Token expired')
-        raise Exception('Unauthorized')
-    except jwt.PyJWTError as e:
-        logger.error(f'Authorization failed: JWT validation error: {str(e)}')
-        raise Exception('Unauthorized')
+        # Case 2: Token provided - Validate and authorize as speaker
+        try:
+            decoded = validate_token(token)
+            
+            # Extract user information
+            user_id = decoded.get('sub')
+            email = decoded.get('email')
+            
+            if not user_id:
+                logger.error('Token missing sub claim')
+                raise Exception('Unauthorized')
+            
+            # Generate allow policy with userId
+            policy = generate_policy(
+                principal_id=user_id,
+                effect='Allow',
+                resource=method_arn,
+                context={
+                    'userId': user_id,
+                    'email': email or '',
+                }
+            )
+            
+            logger.info(f'Authorization successful for speaker: {user_id}')
+            return policy
+            
+        except jwt.ExpiredSignatureError:
+            logger.error('Authorization failed: Token expired')
+            raise Exception('Unauthorized')
+        except jwt.PyJWTError as e:
+            logger.error(f'Authorization failed: JWT validation error: {str(e)}')
+            raise Exception('Unauthorized')
+        
     except Exception as e:
         logger.error(f'Authorization failed: {str(e)}')
         raise Exception('Unauthorized')
-

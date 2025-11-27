@@ -42,28 +42,40 @@ export class WebSocketClient {
   async connect(queryParams: Record<string, string> = {}): Promise<void> {
     const url = this.buildUrl(queryParams);
     this.updateState({ status: 'connecting' });
+    console.log('[WebSocketClient] Connecting to WebSocket server:', url);
 
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
-          console.log('[WebSocketClient] WebSocket connection opened, readyState:', this.ws?.readyState);
+          console.debug('[WebSocketClient] ========================================');
+          console.debug('[WebSocketClient] WebSocket connection OPENED');
+          console.debug('[WebSocketClient] readyState:', this.ws?.readyState);
+          console.debug('[WebSocketClient] URL:', url);
+          console.debug('[WebSocketClient] Timestamp:', new Date().toISOString());
+          console.debug('[WebSocketClient] ========================================');
           this.updateState({
             status: 'connected',
             reconnectAttempts: 0,
           });
           this.startHeartbeat();
           this.onConnectHandlers.forEach((handler) => handler());
-          console.log('[WebSocketClient] onopen handlers completed, resolving connect promise');
+          console.debug('[WebSocketClient] onopen handlers completed, resolving connect promise');
           resolve();
         };
 
         this.ws.onmessage = (event) => {
-          console.log('[WebSocketClient] Raw message received:', event.data, 'at', Date.now());
+          console.debug('[WebSocketClient] ----------------------------------------');
+          console.debug('[WebSocketClient] MESSAGE RECEIVED');
+          console.debug('[WebSocketClient] Timestamp:', new Date().toISOString());
+          console.debug('[WebSocketClient] Raw data:', event.data);
+          console.debug('[WebSocketClient] Data length:', event.data.length);
+          console.debug('[WebSocketClient] ----------------------------------------');
           try {
             const message = JSON.parse(event.data);
-            console.log('[WebSocketClient] Parsed message type:', message.type, 'full message:', message);
+            console.debug('[WebSocketClient] Parsed message type:', message.type);
+            console.debug('[WebSocketClient] Full parsed message:', JSON.stringify(message, null, 2));
             this.handleMessage(message);
           } catch (error) {
             console.error('[WebSocketClient] Failed to parse WebSocket message:', error, 'raw data:', event.data);
@@ -71,7 +83,12 @@ export class WebSocketClient {
         };
 
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          console.error('[WebSocketClient] ========================================');
+          console.error('[WebSocketClient] WebSocket ERROR EVENT');
+          console.error('[WebSocketClient] Timestamp:', new Date().toISOString());
+          console.error('[WebSocketClient] Error:', error);
+          console.error('[WebSocketClient] ReadyState:', this.ws?.readyState);
+          console.error('[WebSocketClient] ========================================');
           this.handleConnectionError(error);
           const err = new Error('WebSocket connection error');
           this.onErrorHandlers.forEach((handler) => handler(err));
@@ -79,6 +96,14 @@ export class WebSocketClient {
         };
 
         this.ws.onclose = (event) => {
+          console.log('[WebSocketClient] ========================================');
+          console.log('[WebSocketClient] WebSocket CLOSED');
+          console.log('[WebSocketClient] Timestamp:', new Date().toISOString());
+          console.log('[WebSocketClient] Close code:', event.code);
+          console.log('[WebSocketClient] Close reason:', event.reason || '(empty)');
+          console.log('[WebSocketClient] Was clean:', event.wasClean);
+          console.log('[WebSocketClient] Current state.status:', this.state.status);
+          console.log('[WebSocketClient] ========================================');
           this.handleConnectionClose(event);
         };
       } catch (error) {
@@ -93,15 +118,19 @@ export class WebSocketClient {
    * Send message to server
    */
   send(message: WebSocketMessage): void {
-    console.log('[WebSocketClient] send() called, readyState:', this.ws?.readyState, 'message:', message);
+    console.debug('[WebSocketClient] ----------------------------------------');
+    console.debug('[WebSocketClient] SENDING MESSAGE');
+    console.debug('[WebSocketClient] Timestamp:', new Date().toISOString());
+    console.debug('[WebSocketClient] readyState:', this.ws?.readyState);
+    console.debug('[WebSocketClient] Message:', JSON.stringify(message, null, 2));
+    console.debug('[WebSocketClient] ----------------------------------------');
     
     if (this.ws?.readyState === WebSocket.OPEN) {
       const payload = JSON.stringify(message);
-      console.log('[WebSocketClient] Sending payload:', payload);
       this.ws.send(payload);
-      console.log('[WebSocketClient] Payload sent successfully');
+      console.debug('[WebSocketClient] ✓ Message sent successfully');
     } else {
-      console.error('[WebSocketClient] Cannot send - WebSocket not open. ReadyState:', this.ws?.readyState);
+      console.error('[WebSocketClient] ✗ Cannot send - WebSocket not open. ReadyState:', this.ws?.readyState);
       throw new Error('WebSocket not connected');
     }
   }
@@ -152,6 +181,7 @@ export class WebSocketClient {
    * Disconnect from server
    */
   disconnect(): void {
+    console.log('[WebSocketClient] Disconnecting from WebSocket server');
     this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -190,6 +220,23 @@ export class WebSocketClient {
     }
     
     return result;
+  }
+
+  /**
+   * Get the underlying WebSocket instance
+   * Used by AudioStreamService to send audio chunks
+   */
+  getWebSocket(): WebSocket {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.error('[WebSocketClient] WebSocket not connected');
+      console.error('[WebSocketClient] ReadyState:', this.ws?.readyState);
+      console.error('[WebSocketClient] Current state:', this.state);
+      console.error('[WebSocketClient] Config:', this.config);
+      throw new Error('WebSocket not connected');
+    } else {
+      console.debug('[WebSocketClient] WebSocket is connected');
+    }
+    return this.ws;
   }
 
   /**
@@ -241,23 +288,39 @@ export class WebSocketClient {
    * Start heartbeat mechanism
    */
   private startHeartbeat(): void {
+    console.debug('[WebSocketClient] Starting heartbeat mechanism');
+    // Clear any existing heartbeat timer to avoid duplicates
+    if (this.heartbeatTimer) {
+      console.debug('[WebSocketClient] Clearing existing heartbeat timer');
+      clearInterval(this.heartbeatTimer);
+    }
+    console.debug('[WebSocketClient] Setting new heartbeat timer. isConnected: ', this.isConnected());
     this.heartbeatTimer = setInterval(() => {
       if (this.isConnected()) {
+        console.debug('[WebSocketClient] Connected -> Sending heartbeat');
         this.send({
           action: 'heartbeat',
           timestamp: Date.now(),
         });
 
         // Set timeout for heartbeat acknowledgment
+        console.debug('[WebSocketClient] Setting heartbeat timeout timer');
         this.heartbeatTimeoutTimer = setTimeout(() => {
           const timeSinceLastHeartbeat = Date.now() - (this.state.lastHeartbeat || 0);
+          console.log(`[WebSocketClient] Heartbeat timeout after ${timeSinceLastHeartbeat}ms`);
           if (timeSinceLastHeartbeat > 5000) {
             console.warn('Heartbeat timeout, reconnecting...');
             this.handleDisconnect();
+          } else {
+            console.log('Heartbeat timeout, but within 5 seconds, not reconnecting');
           }
         }, 5000);
+      } else {
+        console.log('[WebSocketClient] Not connected -> Clearing heartbeat timer');
+        this.stopHeartbeat();
       }
     }, this.config.heartbeatInterval);
+    console.debug('[WebSocketClient] Heartbeat mechanism started');
   }
 
   /**
@@ -347,8 +410,7 @@ export class WebSocketClient {
    * Handle disconnection
    */
   private handleDisconnect(): void {
-    console.log('[WebSocketClient] handleDisconnect() called');
-    console.trace('[WebSocketClient] handleDisconnect stack trace');
+    console.debug('[WebSocketClient] handleDisconnect stack trace');
     this.stopHeartbeat();
     this.updateState({ status: 'disconnected' });
     this.onDisconnectHandlers.forEach((handler) => handler());
@@ -362,6 +424,7 @@ export class WebSocketClient {
    * Attempt to reconnect with exponential backoff
    */
   private attemptReconnect(): void {
+    console.debug('[WebSocketClient] attemptReconnect() called');
     this.updateState({
       status: 'reconnecting',
       reconnectAttempts: this.state.reconnectAttempts + 1,
@@ -385,7 +448,9 @@ export class WebSocketClient {
    * Update connection state and notify handlers
    */
   private updateState(updates: Partial<ConnectionState>): void {
+    console.debug('[WebSocketClient] updateState() called with updates:', updates);
     this.state = { ...this.state, ...updates };
+    console.debug('[WebSocketClient] Updated state:', this.state);
     this.onStateChangeHandlers.forEach((handler) => handler(this.state));
   }
 }

@@ -373,6 +373,11 @@ class SessionManagementStack(Stack):
         )
 
         # Create Lambda Authorizer for WebSocket API
+        # CRITICAL: For REQUEST authorizers on WebSocket APIs, identity_source determines
+        # when the authorizer is invoked. If specified (e.g., "route.request.querystring.token"),
+        # the authorizer is ONLY invoked when that parameter is present.
+        # To make the authorizer ALWAYS invoke (for both speakers with tokens and listeners without),
+        # we must NOT specify identity_source, or set it to an empty list.
         authorizer = apigwv2.CfnAuthorizer(
             self,
             "WebSocketAuthorizer",
@@ -380,7 +385,7 @@ class SessionManagementStack(Stack):
             name=f"session-authorizer-{self.env_name}",
             authorizer_type="REQUEST",
             authorizer_uri=f"arn:aws:apigateway:{self.region}:lambda:path/2015-03-31/functions/{self.authorizer_function.function_arn}/invocations",
-            identity_source=["route.request.querystring.token"],
+            # identity_source removed - authorizer will ALWAYS be invoked
         )
 
         # Grant API Gateway permission to invoke authorizer
@@ -428,15 +433,18 @@ class SessionManagementStack(Stack):
                 )
             )
 
-        # Create $connect route (no authorizer - validation handled in Lambda)
-        # The connection_handler Lambda validates sessionId and determines role
-        # Speakers provide JWT token in query params, listeners connect anonymously
+        # Create $connect route WITH authorizer
+        # The authorizer handles both speakers (with JWT) and listeners (without JWT)
+        # - Speakers: JWT validated, userId extracted to context
+        # - Listeners: No JWT required, empty userId in context
+        # The connection_handler uses authorizer context to determine role
         connect_route = apigwv2.CfnRoute(
             self,
             "ConnectRoute",
             api_id=api.ref,
             route_key="$connect",
-            authorization_type="NONE",
+            authorization_type="CUSTOM",
+            authorizer_id=authorizer.ref,
             target=f"integrations/{connect_integration.ref}",
         )
 

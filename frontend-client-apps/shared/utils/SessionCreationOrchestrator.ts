@@ -97,7 +97,7 @@ export class SessionCreationOrchestrator {
         qualityTier: this.config.qualityTier,
       };
 
-      console.log('[SessionOrchestrator] Creating session via HTTP API...');
+      console.debug('[SessionOrchestrator] Creating session via HTTP API...');
       const sessionMetadata: SessionMetadata = await httpService.createSession(sessionConfig);
       console.log('[SessionOrchestrator] Session created:', sessionMetadata.sessionId);
 
@@ -141,7 +141,7 @@ export class SessionCreationOrchestrator {
       maxReconnectAttempts: 0,
       reconnectDelay: 1000,
     });
-
+    console.log('[SessionOrchestrator] Connecting WebSocket with sessionId:', sessionId);
     this.wsClient = wsClient;
 
     // Connect with sessionId query parameter
@@ -157,6 +157,7 @@ export class SessionCreationOrchestrator {
       await Promise.race([connectPromise, timeoutPromise]);
       return wsClient;
     } catch (error) {
+      console.error('[SessionOrchestrator] WebSocket connection failed:', error);
       wsClient.disconnect();
       throw error;
     }
@@ -167,7 +168,7 @@ export class SessionCreationOrchestrator {
    * Always uses HTTP-based session creation
    */
   async createSession(): Promise<SessionCreationResult> {
-    console.log('[SessionOrchestrator] Creating session via HTTP API');
+    console.debug('[SessionOrchestrator] Creating session via HTTP API');
     return this.createSessionViaHttp();
   }
 
@@ -193,7 +194,10 @@ export class SessionCreationOrchestrator {
    * Clean up resources
    */
   private cleanup(): void {
+    console.debug('[SessionOrchestrator] Cleaning up resources...');
     if (this.wsClient) {
+      console.debug('[SessionOrchestrator] Disconnecting WebSocket...');
+      this.wsClient.off('message'); 
       this.wsClient.disconnect();
       this.wsClient = null;
     }

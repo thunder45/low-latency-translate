@@ -1,5 +1,4 @@
-import { KVSWebRTCService, AWSCredentials } from '../../../shared/services/KVSWebRTCService';
-import { getKVSCredentialsProvider } from '../../../shared/services/KVSCredentialsProvider';
+import { AudioStreamService } from './AudioStreamService';
 import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
 import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 import { RetryHandler } from '../../../shared/utils/RetryHandler';
@@ -14,29 +13,22 @@ export interface SpeakerServiceConfig {
   jwtToken: string;
   sourceLanguage: string;
   qualityTier: 'standard' | 'premium';
-  kvsChannelArn: string;
-  kvsSignalingEndpoint: string;
-  region: string;
-  identityPoolId: string;
-  userPoolId: string;
 }
 
 /**
- * Speaker service orchestrates WebRTC audio streaming and WebSocket control
+ * Speaker service orchestrates MediaRecorder audio streaming and WebSocket control
  * 
  * Architecture:
- * - WebRTC (via KVS): Low-latency audio streaming (<500ms)
- * - WebSocket: Control messages and session metadata
+ * - MediaRecorder: Browser-native audio capture with 250ms chunks
+ * - WebSocket: Audio streaming and control messages
  */
 export class SpeakerService {
   private wsClient: WebSocketClient;
-  private kvsService: KVSWebRTCService | null = null;
+  private audioStreamService: AudioStreamService | null = null;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
-  private config: SpeakerServiceConfig;
 
-  constructor(config: SpeakerServiceConfig, wsClient: WebSocketClient) {
-    this.config = config;
+  constructor(_config: SpeakerServiceConfig, wsClient: WebSocketClient) {
     this.wsClient = wsClient;
 
     // Initialize retry handler
@@ -55,7 +47,7 @@ export class SpeakerService {
    */
   async initialize(): Promise<void> {
     try {
-      console.log('[SpeakerService] Initializing WebRTC+WebSocket hybrid service...');
+      console.debug('[SpeakerService] Initializing WebSocket service...');
       
       // Load saved preferences
       await this.loadPreferences();
@@ -107,53 +99,57 @@ export class SpeakerService {
   }
 
   /**
-   * Start audio broadcasting via WebRTC
-   * Audio automatically streams to KVS - no manual chunk handling!
+   * Start audio broadcasting via MediaRecorder
    */
   async startBroadcast(): Promise<void> {
     try {
-      console.log('[SpeakerService] Starting WebRTC broadcast...');
+      console.log('[SpeakerService] Starting audio streaming...');
       
-      // Get AWS credentials for KVS access
-      const credentials = await this.getAWSCredentials();
+      // Get session ID from store
+      const sessionId = useSpeakerStore.getState().sessionId;
+      if (!sessionId) {
+        throw new Error('Session ID not set. Cannot start broadcast.');
+      } else {
+        console.log(`[SpeakerService] Session ID: ${sessionId}`);
+      }
       
-      // Create KVS WebRTC service
-      this.kvsService = new KVSWebRTCService({
-        channelARN: this.config.kvsChannelArn,
-        channelEndpoint: this.config.kvsSignalingEndpoint,
-        region: this.config.region,
-        credentials: credentials,
-        role: 'MASTER',
+      // Create AudioStreamService
+      this.audioStreamService = new AudioStreamService({
+        sessionId,
+        websocket: this.wsClient.getWebSocket(),
+        chunkDuration: 250, // 250ms chunks
+        onChunkSent: (_size, index) => {
+          // Update UI with streaming stats
+          if (index % 40 === 0) { // Every 10 seconds
+            console.log(`[SpeakerService] Streaming: ${index} chunks sent`);
+          }
+        },
+        onError: (error) => {
+          console.error('[SpeakerService] Audio streaming error:', error);
+          ErrorHandler.handle(error, {
+            component: 'SpeakerService',
+            operation: 'audioStream',
+          });
+        },
+        onStreamStart: () => {
+          useSpeakerStore.getState().setTransmitting(true);
+          console.log('[SpeakerService] Audio streaming started');
+        },
+        onStreamStop: () => {
+          useSpeakerStore.getState().setTransmitting(false);
+          console.log('[SpeakerService] Audio streaming stopped');
+        },
       });
       
-      // Set up event handlers
-      this.kvsService.onConnectionStateChange = (state) => {
-        console.log('[SpeakerService] WebRTC connection state:', state);
-        useSpeakerStore.getState().setConnected(state === 'connected');
-        useSpeakerStore.getState().setTransmitting(state === 'connected');
-      };
+      // Start capturing and streaming
+      await this.audioStreamService.start();
       
-      this.kvsService.onICEConnectionStateChange = (state) => {
-        console.log('[SpeakerService] ICE connection state:', state);
-      };
-      
-      this.kvsService.onError = (error) => {
-        console.error('[SpeakerService] WebRTC error:', error);
-        ErrorHandler.handle(error, {
-          component: 'SpeakerService',
-          operation: 'webrtc',
-        });
-      };
-      
-      // Connect as Master (microphone access + WebRTC connection)
-      await this.kvsService.connectAsMaster();
-      
-      console.log('[SpeakerService] WebRTC broadcast started - audio streaming via UDP');
-      
-      // Start session status polling (WebSocket for metadata only)
+      // Start session status polling (WebSocket for metadata)
       this.startStatusPolling();
       
+      useSpeakerStore.getState().setConnected(true);
       useSpeakerStore.getState().setTransmitting(true);
+      
     } catch (error) {
       console.error('[SpeakerService] Failed to start broadcast:', error);
       const appError = ErrorHandler.handle(error as Error, {
@@ -165,33 +161,15 @@ export class SpeakerService {
   }
 
   /**
-   * Get AWS credentials for KVS access
-   */
-  private async getAWSCredentials(): Promise<AWSCredentials> {
-    try {
-      const credentialsProvider = getKVSCredentialsProvider({
-        region: this.config.region,
-        identityPoolId: this.config.identityPoolId,
-        userPoolId: this.config.userPoolId,
-      });
-      
-      return await credentialsProvider.getCredentials(this.config.jwtToken);
-    } catch (error) {
-      console.error('[SpeakerService] Failed to get AWS credentials:', error);
-      throw new Error('Failed to obtain AWS credentials for streaming');
-    }
-  }
-
-  /**
    * Pause broadcast
    */
   async pause(): Promise<void> {
     const startTime = Date.now();
     
     try {
-      // Mute WebRTC audio track (effectively pauses transmission)
-      if (this.kvsService) {
-        this.kvsService.mute();
+      // Pause audio streaming (stop sending chunks)
+      if (this.audioStreamService) {
+        this.audioStreamService.pause();
       }
       
       useSpeakerStore.getState().setPaused(true);
@@ -227,9 +205,9 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      // Unmute WebRTC audio track (resumes transmission)
-      if (this.kvsService) {
-        this.kvsService.unmute();
+      // Resume audio streaming
+      if (this.audioStreamService) {
+        this.audioStreamService.resume();
       }
       
       useSpeakerStore.getState().setPaused(false);
@@ -271,15 +249,15 @@ export class SpeakerService {
   }
 
   /**
-   * Mute audio
+   * Mute audio (stop streaming entirely)
    */
   async mute(): Promise<void> {
     const startTime = Date.now();
     
     try {
-      // Mute WebRTC audio track
-      if (this.kvsService) {
-        this.kvsService.mute();
+      // Pause audio streaming
+      if (this.audioStreamService) {
+        this.audioStreamService.pause();
       }
       
       useSpeakerStore.getState().setMuted(true);
@@ -309,15 +287,15 @@ export class SpeakerService {
   }
 
   /**
-   * Unmute audio
+   * Unmute audio (resume streaming)
    */
   async unmute(): Promise<void> {
     const startTime = Date.now();
     
     try {
-      // Unmute WebRTC audio track
-      if (this.kvsService) {
-        this.kvsService.unmute();
+      // Resume audio streaming
+      if (this.audioStreamService) {
+        this.audioStreamService.resume();
       }
       
       useSpeakerStore.getState().setMuted(false);
@@ -395,6 +373,7 @@ export class SpeakerService {
    * End session
    */
   async endSession(): Promise<void> {
+    console.log('[SpeakerService] Ending session...');
     try {
       // Send end session via WebSocket
       await this.retryHandler.execute(async () => {
@@ -407,10 +386,10 @@ export class SpeakerService {
         }
       });
 
-      // Cleanup WebRTC
-      if (this.kvsService) {
-        this.kvsService.cleanup();
-        this.kvsService = null;
+      // Cleanup audio streaming
+      if (this.audioStreamService) {
+        this.audioStreamService.cleanup();
+        this.audioStreamService = null;
       }
 
       // Stop status polling
@@ -434,11 +413,11 @@ export class SpeakerService {
 
   /**
    * Get current audio input level
-   * Note: WebRTC doesn't provide easy access to input levels
-   * Would need Web Audio API analyzer node
    */
   getInputLevel(): number {
-    // TODO: Implement using Web Audio API if needed
+    if (this.audioStreamService) {
+      return this.audioStreamService.getInputLevel();
+    }
     return 0;
   }
 
@@ -456,9 +435,9 @@ export class SpeakerService {
   cleanup(): void {
     this.stopStatusPolling();
     
-    if (this.kvsService) {
-      this.kvsService.cleanup();
-      this.kvsService = null;
+    if (this.audioStreamService) {
+      this.audioStreamService.cleanup();
+      this.audioStreamService = null;
     }
     
     this.wsClient.disconnect();

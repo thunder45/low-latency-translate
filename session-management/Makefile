@@ -111,6 +111,11 @@ deploy-dev:
 # Deploy WebSocket stack only (dev)
 deploy-websocket-dev:
 	cd infrastructure && cdk deploy SessionManagement-dev --context env=dev --require-approval never
+	@echo "Creating new API Gateway deployment..."
+	@DEPLOYMENT_ID=$$(aws apigatewayv2 create-deployment --api-id 2y19uvhyq5 --description "Deploy from Makefile - $$(date +%Y%m%d-%H%M%S)" --query 'DeploymentId' --output text) && \
+	echo "Created deployment: $$DEPLOYMENT_ID" && \
+	aws apigatewayv2 update-stage --api-id 2y19uvhyq5 --stage-name prod --deployment-id $$DEPLOYMENT_ID > /dev/null && \
+	echo "Stage updated to deployment: $$DEPLOYMENT_ID"
 
 # Deploy HTTP API stack only (dev)
 deploy-http-dev:
