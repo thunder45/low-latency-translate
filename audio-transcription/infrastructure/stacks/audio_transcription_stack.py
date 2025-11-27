@@ -10,12 +10,14 @@ This stack defines the infrastructure for real-time audio transcription includin
 from aws_cdk import (
     Stack,
     Duration,
+    RemovalPolicy,
     aws_lambda as lambda_,
     aws_iam as iam,
     aws_cloudwatch as cloudwatch,
     aws_cloudwatch_actions as cw_actions,
     aws_sns as sns,
     aws_ssm as ssm,
+    aws_s3 as s3,
 )
 from constructs import Construct
 import json
@@ -52,6 +54,9 @@ class AudioTranscriptionStack(Stack):
             topic_name='audio-transcription-alarms'
         )
 
+        # Create S3 bucket for translated audio (Phase 3)
+        self.translated_audio_bucket = self._create_translated_audio_bucket()
+
         # Create feature flag parameter for gradual rollout
         feature_flag_parameter = self._create_feature_flag_parameter()
 
@@ -60,6 +65,9 @@ class AudioTranscriptionStack(Stack):
 
         # Create Audio Processor Lambda function
         self.audio_processor_function = self._create_audio_processor_lambda(lambda_role)
+        
+        # Grant S3 permissions to audio processor (Phase 3)
+        self.translated_audio_bucket.grant_read_write(self.audio_processor_function)
 
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms(self.audio_processor_function, alarm_topic)
@@ -272,7 +280,11 @@ class AudioTranscriptionStack(Stack):
                 # AWS service configuration
                 # Note: AWS_REGION is automatically set by Lambda runtime
                 'SESSIONS_TABLE_NAME': 'Sessions',
+                'CONNECTIONS_TABLE': f'Connections-{self.env_name}',
                 'TRANSLATION_PIPELINE_FUNCTION_NAME': 'TranslationProcessor',
+                'S3_BUCKET_NAME': f'translation-audio-{self.env_name}',
+                'PRESIGNED_URL_EXPIRATION': '600',  # 10 minutes
+                'STAGE': self.env_name,
                 
                 # Logging configuration
                 'LOG_LEVEL': 'INFO',  # Set to DEBUG for verbose logging
@@ -706,3 +718,38 @@ class AudioTranscriptionStack(Stack):
         dashboard.add_widgets(echo_widget, silence_widget)
         dashboard.add_widgets(latency_widget, events_widget)
         dashboard.add_widgets(lambda_widget)
+
+    def _create_translated_audio_bucket(self) -> s3.Bucket:
+        """
+        Create S3 bucket for translated audio storage (Phase 3).
+        
+        Returns:
+            S3 bucket for translated audio with lifecycle policy
+        """
+        bucket = s3.Bucket(
+            self,
+            'TranslatedAudioBucket',
+            bucket_name=f'translation-audio-{self.env_name}',
+            removal_policy=RemovalPolicy.DESTROY if self.env_name == 'dev' else RemovalPolicy.RETAIN,
+            auto_delete_objects=True if self.env_name == 'dev' else False,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    id='DeleteOldTranslatedAudio',
+                    expiration=Duration.days(1),  # Auto-delete after 24 hours
+                    enabled=True,
+                )
+            ],
+            # CORS for listener access
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.GET],
+                    allowed_origins=['*'],  # TODO: Restrict to your domains in production
+                    allowed_headers=['*'],
+                    max_age=3600,
+                )
+            ],
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            versioned=False,
+        )
+        return bucket
