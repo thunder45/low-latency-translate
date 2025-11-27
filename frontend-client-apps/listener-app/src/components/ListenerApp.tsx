@@ -116,26 +116,7 @@ export const ListenerApp: React.FC = () => {
       
       const jwtToken = tokens.idToken;
       
-      // Fetch session metadata via HTTP API to get KVS fields
-      const { SessionHttpService } = await import('../../../shared/services/SessionHttpService');
-      const httpService = new SessionHttpService({
-        apiBaseUrl: appConfig.httpApiUrl,
-        timeout: 5000,
-      });
-      
-      console.log('[ListenerApp] Fetching session metadata...');
-      const sessionMetadata = await httpService.getSession(newSessionId);
-      console.log('[ListenerApp] Session metadata retrieved:', sessionMetadata.sessionId);
-      
-      if (!sessionMetadata.kvsChannelArn || !sessionMetadata.kvsSignalingEndpoints) {
-        throw new Error('Session metadata missing KVS configuration');
-      }
-      
-      if (!appConfig.cognito?.identityPoolId) {
-        throw new Error('Missing Cognito Identity Pool ID in configuration. Please set VITE_COGNITO_IDENTITY_POOL_ID');
-      }
-      
-      // Create WebSocket client (for control messages only, no JWT required for listeners)
+      // Create WebSocket client (for control messages)
       const client = new WebSocketClient({
         url: appConfig.websocketUrl,
         heartbeatInterval: 30000,
@@ -150,30 +131,24 @@ export const ListenerApp: React.FC = () => {
       const notifService = new NotificationService(client);
       setNotificationService(notifService);
       
-      // Create listener service with KVS config and authenticated JWT token
+      // Create listener service with S3 playback configuration
       const serviceConfig: ListenerServiceConfig = {
         wsUrl: appConfig.websocketUrl,
         sessionId: newSessionId,
         targetLanguage,
-        jwtToken, // Authenticated JWT token for KVS credentials
-        // KVS WebRTC configuration
-        kvsChannelArn: sessionMetadata.kvsChannelArn,
-        kvsSignalingEndpoint: sessionMetadata.kvsSignalingEndpoints.WSS,
-        region: appConfig.awsRegion,
-        identityPoolId: appConfig.cognito.identityPoolId,
-        userPoolId: appConfig.cognito.userPoolId,
+        jwtToken, // JWT token (optional for listeners)
       };
       
       const service = new ListenerService(serviceConfig);
       setListenerService(service);
       
-      // Initialize service (WebSocket connection for control messages)
+      // Initialize service (WebSocket connection)
       await service.initialize();
       
-      // Start WebRTC audio reception
+      // Start S3 audio playback
       await service.startListening();
       
-      console.log('[ListenerApp] Listener service initialized and listening');
+      console.log('[ListenerApp] Listener service initialized and ready for audio');
     } catch (error) {
       console.error('Failed to initialize listener service:', error);
     }

@@ -697,11 +697,23 @@ async def handle_pcm_batch(event: Dict[str, Any], context: Any) -> Dict[str, Any
         
         logger.info(f"Decoded PCM audio: {len(pcm_bytes)} bytes, {sample_rate}Hz")
         
-        # TODO: Step 2: Transcribe audio using AWS Transcribe
-        # For now, using placeholder transcript
-        transcript = "This is a test transcript"
+        # Step 2: Transcribe audio using AWS Transcribe
+        # For Phase 3, using simplified approach with StartTranscriptionJob
+        aws_language = _convert_to_aws_language_code(source_language)
         
-        logger.info(f"Transcription: '{transcript}'")
+        try:
+            transcript = await transcribe_pcm_audio(
+                pcm_bytes, 
+                aws_language, 
+                sample_rate,
+                session_id,
+                batch_index
+            )
+            logger.info(f"Transcription complete: '{transcript[:100]}...'")
+        except Exception as transcribe_error:
+            logger.error(f"Transcription failed: {str(transcribe_error)}")
+            # Use fallback
+            transcript = "[Transcription unavailable]"
         
         # Step 3-6: Translate and deliver for each target language
         # TODO: This should use the actual translation pipeline
@@ -722,15 +734,43 @@ async def handle_pcm_batch(event: Dict[str, Any], context: Any) -> Dict[str, Any
             logger.warning("API_GATEWAY_ENDPOINT not set, cannot send WebSocket notifications")
             apigw_client = None
         
+        # Initialize Translate and Polly clients
+        translate_client = boto3.client('translate')
+        polly_client = boto3.client('polly')
+        
         # Process each target language
         results = []
         for target_lang in target_languages:
             try:
-                # TODO: Translate transcript
-                translated_text = f"[{target_lang}] {transcript}"
+                # Step 3: Translate transcript
+                try:
+                    translation_response = translate_client.translate_text(
+                        Text=transcript,
+                        SourceLanguageCode=source_language,
+                        TargetLanguageCode=target_lang
+                    )
+                    translated_text = translation_response['TranslatedText']
+                    logger.info(f"Translated to {target_lang}: '{translated_text[:50]}...'")
+                except Exception as translate_error:
+                    logger.error(f"Translation failed for {target_lang}: {str(translate_error)}")
+                    translated_text = transcript  # Use original if translation fails
                 
-                # TODO: Generate TTS audio
-                tts_audio_bytes = b"fake_audio_data"  # Placeholder
+                # Step 4: Generate TTS audio with Polly
+                try:
+                    voice_id = get_polly_voice_for_language(target_lang)
+                    tts_response = polly_client.synthesize_speech(
+                        Text=translated_text,
+                        OutputFormat='mp3',
+                        VoiceId=voice_id,
+                        Engine='neural',
+                        SampleRate='24000'
+                    )
+                    tts_audio_bytes = tts_response['AudioStream'].read()
+                    logger.info(f"Generated TTS for {target_lang}: {len(tts_audio_bytes)} bytes")
+                except Exception as tts_error:
+                    logger.error(f"TTS failed for {target_lang}: {str(tts_error)}")
+                    # Create silent MP3 as fallback
+                    tts_audio_bytes = create_silent_mp3(duration)
                 
                 # Store in S3
                 s3_key = f"sessions/{session_id}/translated/{target_lang}/{timestamp}.mp3"
@@ -1819,3 +1859,151 @@ def check_transcribe_health(session_id: str = "") -> bool:
         update_health_status(session_id=session_id)
     
     return is_healthy
+
+
+# ============================================================================
+# Phase 3: AWS API Integration Helper Functions
+# ============================================================================
+
+async def transcribe_pcm_audio(
+    pcm_bytes: bytes,
+    language_code: str,
+    sample_rate: int,
+    session_id: str,
+    batch_index: int
+) -> str:
+    """
+    Transcribe PCM audio using AWS Transcribe.
+    
+    For Phase 3, using StartTranscriptionJob approach.
+    Uploads audio to S3, starts job, polls for completion.
+    
+    Args:
+        pcm_bytes: PCM audio data
+        language_code: AWS language code (e.g., 'en-US')
+        sample_rate: Audio sample rate
+        session_id: Session identifier
+        batch_index: Batch index for naming
+    
+    Returns:
+        Transcribed text
+    """
+    try:
+        import uuid
+        import tempfile
+        
+        transcribe_client = boto3.client('transcribe')
+        s3_client = boto3.client('s3')
+        
+        # Generate unique job name
+        job_name = f"transcribe-{session_id}-{batch_index}-{uuid.uuid4().hex[:8]}"
+        
+        # Get S3 bucket for temporary storage
+        audio_bucket = os.environ.get('AUDIO_BUCKET_NAME', f'low-latency-audio-{os.environ.get("STAGE", "dev")}')
+        
+        # Upload PCM to S3 temporarily
+        s3_key = f"sessions/{session_id}/transcribe-temp/{job_name}.pcm"
+        s3_client.put_object(
+            Bucket=audio_bucket,
+            Key=s3_key,
+            Body=pcm_bytes
+        )
+        
+        # Start transcription job
+        transcribe_client.start_transcription_job(
+            TranscriptionJobName=job_name,
+            LanguageCode=language_code,
+            MediaFormat='pcm',
+            MediaSampleRateHertz=sample_rate,
+            Media={'MediaFileUri': f's3://{audio_bucket}/{s3_key}'}
+        )
+        
+        # Poll for completion (with timeout)
+        max_wait = 30  # 30 seconds max
+        wait_interval = 1
+        elapsed = 0
+        
+        while elapsed < max_wait:
+            await asyncio.sleep(wait_interval)
+            elapsed += wait_interval
+            
+            status_response = transcribe_client.get_transcription_job(
+                TranscriptionJobName=job_name
+            )
+            
+            status = status_response['TranscriptionJob']['TranscriptionJobStatus']
+            
+            if status == 'COMPLETED':
+                transcript_uri = status_response['TranscriptionJob']['Transcript']['TranscriptFileUri']
+                
+                # Download and parse transcript
+                import urllib.request
+                with urllib.request.urlopen(transcript_uri) as response:
+                    transcript_data = json.loads(response.read())
+                
+                transcript = transcript_data['results']['transcripts'][0]['transcript']
+                
+                # Cleanup
+                try:
+                    transcribe_client.delete_transcription_job(TranscriptionJobName=job_name)
+                    s3_client.delete_object(Bucket=audio_bucket, Key=s3_key)
+                except:
+                    pass
+                
+                return transcript
+            
+            elif status == 'FAILED':
+                raise Exception(f"Transcription job failed: {status_response.get('FailureReason', 'Unknown')}")
+        
+        # Timeout
+        raise Exception(f"Transcription job timed out after {max_wait} seconds")
+        
+    except Exception as e:
+        logger.error(f"Transcription error: {str(e)}")
+        raise
+
+
+def get_polly_voice_for_language(language_code: str) -> str:
+    """
+    Get appropriate Polly voice ID for language.
+    
+    Args:
+        language_code: ISO 639-1 language code
+    
+    Returns:
+        Polly voice ID
+    """
+    # Neural voices for better quality
+    voice_mapping = {
+        'en': 'Joanna',  # US English, Neural
+        'es': 'Lucia',   # Spanish, Neural
+        'fr': 'Lea',     # French, Neural
+        'de': 'Vicki',   # German, Neural
+        'it': 'Bianca',  # Italian, Neural
+        'pt': 'Camila',  # Portuguese (BR), Neural
+        'ja': 'Takumi',  # Japanese, Neural
+        'ko': 'Seoyeon', # Korean, Neural
+        'zh': 'Zhiyu',   # Chinese, Neural
+        'ar': 'Zeina',   # Arabic
+        'hi': 'Aditi',   # Hindi
+        'ru': 'Tatyana'  # Russian
+    }
+    
+    return voice_mapping.get(language_code, 'Joanna')
+
+
+def create_silent_mp3(duration: float) -> bytes:
+    """
+    Create a silent MP3 file as fallback.
+    
+    Args:
+        duration: Duration in seconds
+    
+    Returns:
+        MP3 bytes (minimal silent audio)
+    """
+    # Minimal MP3 header for silent audio
+    # This is a very basic implementation
+    # In production, use ffmpeg or pydub for proper silent audio
+    silent_mp3_header = b'\xff\xfb\x90\x00' * int(duration * 10)
+    return silent_mp3_header

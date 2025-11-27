@@ -34,7 +34,6 @@ export class S3AudioPlayer {
   private isPaused: boolean = false;
   private prefetchCache: Map<number, Blob> = new Map();
   private maxCacheSize: number = 3; // Buffer 3 chunks ahead
-  private currentSequence: number = 0;
   private volume: number = 1.0;
 
   constructor(config: S3AudioPlayerConfig) {
@@ -82,7 +81,6 @@ export class S3AudioPlayer {
     try {
       // Get next chunk
       const chunk = this.playQueue.shift()!;
-      this.currentSequence = chunk.sequenceNumber;
 
       console.log(`[S3AudioPlayer] Playing chunk ${chunk.sequenceNumber}`);
 
@@ -298,7 +296,6 @@ export class S3AudioPlayer {
     }
     
     this.isPlaying = false;
-    this.currentSequence = 0;
     
     console.log('[S3AudioPlayer] Cleared queue and stopped playback');
   }

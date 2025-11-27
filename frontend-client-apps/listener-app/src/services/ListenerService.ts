@@ -112,7 +112,7 @@ export class ListenerService {
             operation: 'audioPlayback',
           });
         },
-        onProgress: (current, total) => {
+        onProgress: (_current, _total) => {
           // Update UI progress if needed
         },
       });

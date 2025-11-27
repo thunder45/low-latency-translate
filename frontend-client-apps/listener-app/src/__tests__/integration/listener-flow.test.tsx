@@ -24,11 +24,6 @@ describe('Listener Flow Integration', () => {
       sessionId: 'test-session-123',
       targetLanguage: 'es',
       jwtToken: '',
-      kvsChannelArn: 'arn:aws:kinesisvideo:us-east-1:123456789012:channel/test-channel/1234567890',
-      kvsSignalingEndpoint: 'wss://test-kvs.kinesisvideo.us-east-1.amazonaws.com',
-      region: 'us-east-1',
-      identityPoolId: 'us-east-1:test-identity-pool-id',
-      userPoolId: 'us-east-1_TestPool',
     });
     
     // Replace wsClient with mock BEFORE setupEventHandlers is called

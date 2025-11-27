@@ -132,7 +132,32 @@ class AudioTranscriptionStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=[
                     'transcribe:StartStreamTranscription',
-                    'transcribe:StartStreamTranscriptionWebSocket'
+                    'transcribe:StartStreamTranscriptionWebSocket',
+                    'transcribe:StartTranscriptionJob',
+                    'transcribe:GetTranscriptionJob',
+                    'transcribe:DeleteTranscriptionJob'
+                ],
+                resources=['*']
+            )
+        )
+        
+        # AWS Translate permissions (Phase 3)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'translate:TranslateText'
+                ],
+                resources=['*']
+            )
+        )
+        
+        # AWS Polly TTS permissions (Phase 3)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'polly:SynthesizeSpeech'
                 ],
                 resources=['*']
             )
@@ -170,7 +195,7 @@ class AudioTranscriptionStack(Stack):
             )
         )
 
-        # DynamoDB permissions (for session configuration)
+        # DynamoDB permissions (for session and connections)
         role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
@@ -179,8 +204,22 @@ class AudioTranscriptionStack(Stack):
                     'dynamodb:Query'
                 ],
                 resources=[
-                    f'arn:aws:dynamodb:{self.region}:{self.account}:table/Sessions',
-                    f'arn:aws:dynamodb:{self.region}:{self.account}:table/Sessions/index/*'
+                    f'arn:aws:dynamodb:{self.region}:{self.account}:table/Sessions*',
+                    f'arn:aws:dynamodb:{self.region}:{self.account}:table/Connections*',
+                ]
+            )
+        )
+        
+        # API Gateway ManageConnections permissions (Phase 3)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    'execute-api:ManageConnections',
+                    'execute-api:Invoke'
+                ],
+                resources=[
+                    f'arn:aws:execute-api:{self.region}:{self.account}:*/*/*/*'
                 ]
             )
         )
@@ -209,6 +248,21 @@ class AudioTranscriptionStack(Stack):
                 ],
                 resources=[
                     f'arn:aws:lambda:{self.region}:{self.account}:function:TranslationProcessor'
+                ]
+            )
+        )
+        
+        # S3 permissions for audio chunks bucket (Phase 3 - for Transcribe temp storage)
+        role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    's3:PutObject',
+                    's3:GetObject',
+                    's3:DeleteObject'
+                ],
+                resources=[
+                    f'arn:aws:s3:::low-latency-audio-{self.env_name}/*'
                 ]
             )
         )
@@ -283,8 +337,11 @@ class AudioTranscriptionStack(Stack):
                 'CONNECTIONS_TABLE': f'Connections-{self.env_name}',
                 'TRANSLATION_PIPELINE_FUNCTION_NAME': 'TranslationProcessor',
                 'S3_BUCKET_NAME': f'translation-audio-{self.env_name}',
+                'AUDIO_BUCKET_NAME': f'low-latency-audio-{self.env_name}',  # For Transcribe temp storage
                 'PRESIGNED_URL_EXPIRATION': '600',  # 10 minutes
                 'STAGE': self.env_name,
+                # API_GATEWAY_ENDPOINT will be set by session-management stack after deployment
+                'API_GATEWAY_ENDPOINT': 'wss://2y19uvhyq5.execute-api.us-east-1.amazonaws.com/prod',
                 
                 # Logging configuration
                 'LOG_LEVEL': 'INFO',  # Set to DEBUG for verbose logging
