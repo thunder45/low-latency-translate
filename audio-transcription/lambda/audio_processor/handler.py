@@ -129,7 +129,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             - body: Audio data (base64 or binary)
             - isBase64Encoded: Boolean
             
-            Or direct invocation:
+            Or direct invocation (from s3_audio_consumer - Phase 3):
+            - sessionId: Session identifier
+            - audio: {data: hex, format: 'pcm', sampleRate, channels, encoding}
+            - sourceLanguage: Source language code
+            - targetLanguages: List of target language codes
+            - timestamp: Batch start timestamp
+            - duration: Batch duration in seconds
+            - batchIndex: Index of this batch
+            
+            Or legacy direct invocation:
             - action: 'initialize' or 'process'
             - sessionId: Session identifier
             - sourceLanguage: Source language code
@@ -145,13 +154,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     global websocket_parser, connection_validator, rate_limiter, format_validator
     
     try:
-        # Determine if this is a WebSocket event or direct invocation
+        # Determine event type
         is_websocket_event = 'requestContext' in event and 'connectionId' in event.get('requestContext', {})
+        is_pcm_batch = 'audio' in event and isinstance(event.get('audio'), dict)
         
         if is_websocket_event:
             # Handle WebSocket audio event
             logger.info("Processing WebSocket audio event")
             return handle_websocket_audio_event(event, context)
+        elif is_pcm_batch:
+            # Handle PCM batch from s3_audio_consumer (Phase 3)
+            logger.info("Processing PCM batch from s3_audio_consumer")
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(handle_pcm_batch(event, context))
         else:
             # Handle direct invocation (legacy/testing)
             logger.info("Processing direct invocation event")
@@ -632,6 +647,255 @@ async def process_audio_chunk_with_emotion(
         )
         
         return default_emotion
+
+
+async def handle_pcm_batch(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Handle PCM batch from s3_audio_consumer (Phase 3).
+    
+    This processes aggregated audio batches:
+    1. Decode PCM audio data
+    2. Transcribe using AWS Transcribe
+    3. Translate to target languages
+    4. Generate TTS for each language
+    5. Store TTS audio in S3
+    6. Send WebSocket notifications to listeners
+    
+    Args:
+        event: Event from s3_audio_consumer containing:
+            - sessionId: Session identifier
+            - audio: {data: hex, format, sampleRate, channels, encoding}
+            - sourceLanguage: Source language code
+            - targetLanguages: List of target language codes
+            - timestamp: Batch start timestamp
+            - duration: Batch duration in seconds
+            - batchIndex: Index of this batch
+        context: Lambda context
+    
+    Returns:
+        Response dict with statusCode and results
+    """
+    try:
+        # Extract event data
+        session_id = event['sessionId']
+        audio_info = event['audio']
+        source_language = event['sourceLanguage']
+        target_languages = event['targetLanguages']
+        timestamp = event['timestamp']
+        duration = event['duration']
+        batch_index = event['batchIndex']
+        
+        logger.info(
+            f"Processing PCM batch for session {session_id}: "
+            f"batch={batch_index}, duration={duration:.2f}s, "
+            f"languages={target_languages}"
+        )
+        
+        # Decode PCM audio from hex string
+        pcm_bytes = bytes.fromhex(audio_info['data'])
+        sample_rate = audio_info['sampleRate']
+        
+        logger.info(f"Decoded PCM audio: {len(pcm_bytes)} bytes, {sample_rate}Hz")
+        
+        # TODO: Step 2: Transcribe audio using AWS Transcribe
+        # For now, using placeholder transcript
+        transcript = "This is a test transcript"
+        
+        logger.info(f"Transcription: '{transcript}'")
+        
+        # Step 3-6: Translate and deliver for each target language
+        # TODO: This should use the actual translation pipeline
+        # For now, creating placeholder implementation
+        
+        # Initialize S3 client for TTS storage
+        s3_client = boto3.client('s3')
+        s3_bucket = os.environ.get('S3_BUCKET_NAME', f'translation-audio-{os.environ.get("STAGE", "dev")}')
+        
+        # Initialize API Gateway Management client for WebSocket
+        api_endpoint = os.environ.get('API_GATEWAY_ENDPOINT', '')
+        if api_endpoint:
+            apigw_client = boto3.client(
+                'apigatewaymanagementapi',
+                endpoint_url=api_endpoint
+            )
+        else:
+            logger.warning("API_GATEWAY_ENDPOINT not set, cannot send WebSocket notifications")
+            apigw_client = None
+        
+        # Process each target language
+        results = []
+        for target_lang in target_languages:
+            try:
+                # TODO: Translate transcript
+                translated_text = f"[{target_lang}] {transcript}"
+                
+                # TODO: Generate TTS audio
+                tts_audio_bytes = b"fake_audio_data"  # Placeholder
+                
+                # Store in S3
+                s3_key = f"sessions/{session_id}/translated/{target_lang}/{timestamp}.mp3"
+                s3_client.put_object(
+                    Bucket=s3_bucket,
+                    Key=s3_key,
+                    Body=tts_audio_bytes,
+                    ContentType='audio/mpeg',
+                    Metadata={
+                        'sessionId': session_id,
+                        'targetLanguage': target_lang,
+                        'transcript': translated_text[:1000],
+                        'timestamp': str(timestamp),
+                        'duration': str(duration),
+                    }
+                )
+                
+                logger.info(f"Stored TTS audio in S3: {s3_key}")
+                
+                # Generate presigned URL
+                presigned_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': s3_bucket, 'Key': s3_key},
+                    ExpiresIn=600  # 10 minutes
+                )
+                
+                # Send WebSocket notification to listeners
+                if apigw_client:
+                    success = await notify_listeners_for_language(
+                        apigw_client,
+                        session_id,
+                        target_lang,
+                        presigned_url,
+                        timestamp,
+                        duration,
+                        translated_text
+                    )
+                    
+                    if success:
+                        logger.info(f"Notified listeners for language {target_lang}")
+                
+                results.append({
+                    'targetLanguage': target_lang,
+                    'success': True,
+                    's3Key': s3_key
+                })
+                
+            except Exception as lang_error:
+                logger.error(
+                    f"Error processing language {target_lang}: {str(lang_error)}",
+                    exc_info=True
+                )
+                results.append({
+                    'targetLanguage': target_lang,
+                    'success': False,
+                    'error': str(lang_error)
+                })
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'PCM batch processed',
+                'sessionId': session_id,
+                'batchIndex': batch_index,
+                'results': results
+            })
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing PCM batch: {str(e)}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': 'PCM batch processing failed',
+                'message': str(e)
+            })
+        }
+
+
+async def notify_listeners_for_language(
+    apigw_client,
+    session_id: str,
+    target_language: str,
+    presigned_url: str,
+    timestamp: int,
+    duration: float,
+    transcript: str
+) -> bool:
+    """
+    Send WebSocket notification to listeners for specific language.
+    
+    Args:
+        apigw_client: API Gateway Management client
+        session_id: Session identifier  
+        target_language: Target language code
+        presigned_url: S3 presigned URL for audio
+        timestamp: Audio timestamp
+        duration: Audio duration in seconds
+        transcript: Translated transcript
+    
+    Returns:
+        True if at least one listener notified successfully
+    """
+    try:
+        # Get connections for this session and language from DynamoDB
+        dynamodb_client = boto3.resource('dynamodb')
+        connections_table_name = os.environ.get('CONNECTIONS_TABLE', 'Connections-dev')
+        connections_table = dynamodb_client.Table(connections_table_name)
+        
+        # Query GSI: sessionId-targetLanguage-index
+        response = connections_table.query(
+            IndexName='sessionId-targetLanguage-index',
+            KeyConditionExpression='sessionId = :sid AND targetLanguage = :lang',
+            ExpressionAttributeValues={
+                ':sid': session_id,
+                ':lang': target_language
+            }
+        )
+        
+        connections = response.get('Items', [])
+        
+        if not connections:
+            logger.warning(f"No listeners found for {target_language} in session {session_id}")
+            return False
+        
+        # Create message
+        message = {
+            'type': 'translatedAudio',
+            'sessionId': session_id,
+            'targetLanguage': target_language,
+            'url': presigned_url,
+            'timestamp': timestamp,
+            'duration': duration,
+            'transcript': transcript,
+            'sequenceNumber': timestamp  # Use timestamp as sequence
+        }
+        
+        message_data = json.dumps(message).encode('utf-8')
+        
+        # Send to each connection
+        success_count = 0
+        for connection in connections:
+            connection_id = connection.get('connectionId')
+            
+            try:
+                apigw_client.post_to_connection(
+                    ConnectionId=connection_id,
+                    Data=message_data
+                )
+                success_count += 1
+                
+            except apigw_client.exceptions.GoneException:
+                logger.info(f"Connection gone: {connection_id}")
+            except Exception as send_error:
+                logger.error(f"Error sending to connection {connection_id}: {str(send_error)}")
+        
+        logger.info(
+            f"Notified {success_count}/{len(connections)} listeners for {target_language}"
+        )
+        
+        return success_count > 0
+        
+    except Exception as e:
+        logger.error(f"Error notifying listeners: {str(e)}", exc_info=True)
+        return False
 
 
 def _initialize_websocket_components() -> None:

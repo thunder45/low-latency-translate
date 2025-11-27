@@ -67,6 +67,12 @@ class SessionManagementStack(Stack):
         # Create KVS Stream Writer Lambda (Phase 2)
         self.kvs_stream_writer = self._create_kvs_stream_writer()
         
+        # Create FFmpeg Lambda Layer (Phase 3)
+        self.ffmpeg_layer = self._create_ffmpeg_layer()
+        
+        # Create S3 Audio Consumer Lambda (Phase 3)
+        self.s3_audio_consumer = self._create_s3_audio_consumer()
+        
         # Create KVS Stream Consumer Lambda (Phase 3)
         self.kvs_stream_consumer = self._create_kvs_stream_consumer()
 
@@ -431,6 +437,93 @@ class SessionManagementStack(Stack):
             iam.PolicyStatement(
                 actions=['cloudwatch:PutMetricData'],
                 resources=['*']
+            )
+        )
+
+        return function
+
+    def _create_ffmpeg_layer(self) -> lambda_.LayerVersion:
+        """Create FFmpeg Lambda Layer for audio processing."""
+        layer = lambda_.LayerVersion(
+            self,
+            "FFmpegLayer",
+            layer_version_name=f"ffmpeg-layer-{self.env_name}",
+            code=lambda_.Code.from_asset("../lambda_layers/ffmpeg"),
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_11],
+            description="FFmpeg binary for audio conversion",
+            removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
+        )
+        return layer
+
+    def _create_s3_audio_consumer(self) -> lambda_.Function:
+        """Create S3 Audio Consumer Lambda function (Phase 3)."""
+        # Get log retention from config
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.ONE_DAY
+        
+        # Get audio processor function name
+        audio_processor_function_name = "audio-processor-dev"
+        if self.audio_transcription_stack:
+            audio_processor_function_name = self.audio_transcription_stack.audio_processor_function.function_name
+        
+        function = lambda_.Function(
+            self,
+            "S3AudioConsumer",
+            function_name=f"s3-audio-consumer-{self.env_name}",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="handler.lambda_handler",
+            code=lambda_.Code.from_asset("../lambda/s3_audio_consumer"),
+            layers=[self.shared_layer, self.ffmpeg_layer],
+            timeout=Duration.seconds(60),  # 60 seconds for batch processing
+            memory_size=1024,  # Higher memory for ffmpeg
+            ephemeral_storage_size=2048,  # 2GB for temporary audio files
+            environment={
+                "STAGE": self.env_name,
+                "AUDIO_BUCKET_NAME": self.audio_chunks_bucket.bucket_name,
+                "AUDIO_PROCESSOR_FUNCTION": audio_processor_function_name,
+                "SESSIONS_TABLE_NAME": self.sessions_table.table_name,
+                "BATCH_WINDOW_SECONDS": "3",  # Aggregate 3 seconds
+                "MIN_CHUNKS_FOR_PROCESSING": "8",  # Minimum 2 seconds
+            },
+            log_retention=log_retention,
+            description="Aggregates S3 audio chunks and converts to PCM",
+        )
+
+        # Grant S3 read permissions
+        self.audio_chunks_bucket.grant_read(function)
+
+        # Grant DynamoDB read access
+        self.sessions_table.grant_read_data(function)
+
+        # Grant Lambda invoke permissions for audio processor
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                sid="InvokeAudioProcessor",
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    f"arn:aws:lambda:{self.region}:{self.account}:function:{audio_processor_function_name}*"
+                ],
+            )
+        )
+
+        # Grant CloudWatch permissions for metrics
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=['cloudwatch:PutMetricData'],
+                resources=['*']
+            )
+        )
+
+        # Configure S3 event notification to trigger this function
+        # This is done via S3 bucket notification configuration
+        from aws_cdk.aws_s3_notifications import LambdaDestination
+        
+        self.audio_chunks_bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            LambdaDestination(function),
+            s3.NotificationKeyFilter(
+                prefix="sessions/",
+                suffix=".webm"
             )
         )
 
@@ -1161,6 +1254,20 @@ class SessionManagementStack(Stack):
         )
         
         # Phase 3 outputs
+        CfnOutput(
+            self,
+            "S3AudioConsumerFunctionName",
+            value=self.s3_audio_consumer.function_name,
+            description="S3 Audio Consumer Lambda function name"
+        )
+        
+        CfnOutput(
+            self,
+            "S3AudioConsumerFunctionArn",
+            value=self.s3_audio_consumer.function_arn,
+            description="S3 Audio Consumer Lambda function ARN"
+        )
+        
         CfnOutput(
             self,
             "KVSStreamConsumerFunctionName",
