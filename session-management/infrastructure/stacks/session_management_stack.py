@@ -17,6 +17,7 @@ from aws_cdk import (
     aws_events as events,
     aws_events_targets as targets,
     aws_cognito as cognito,
+    aws_s3 as s3,
 )
 from constructs import Construct
 
@@ -49,6 +50,9 @@ class SessionManagementStack(Stack):
         self.connections_table = self._create_connections_table()
         self.rate_limits_table = self._create_rate_limits_table()
 
+        # Create S3 bucket for audio chunks (Phase 2)
+        self.audio_chunks_bucket = self._create_audio_chunks_bucket()
+
         # Create shared Lambda layer
         self.shared_layer = self._create_shared_layer()
 
@@ -60,8 +64,18 @@ class SessionManagementStack(Stack):
         self.refresh_handler = self._create_refresh_handler()
         self.session_status_handler = self._create_session_status_handler()
         
+        # Create KVS Stream Writer Lambda (Phase 2)
+        self.kvs_stream_writer = self._create_kvs_stream_writer()
+        
         # Create KVS Stream Consumer Lambda (Phase 3)
         self.kvs_stream_consumer = self._create_kvs_stream_consumer()
+
+        # Grant connection_handler permission to invoke kvs_stream_writer (Phase 2)
+        self.kvs_stream_writer.grant_invoke(self.connection_handler)
+        self.connection_handler.add_environment(
+            "KVS_STREAM_WRITER_FUNCTION",
+            self.kvs_stream_writer.function_name
+        )
 
         # Create WebSocket API
         self.websocket_api = self._create_websocket_api()
@@ -152,6 +166,27 @@ class SessionManagementStack(Stack):
             removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
         )
         return table
+
+    def _create_audio_chunks_bucket(self) -> s3.Bucket:
+        """Create S3 bucket for storing audio chunks."""
+        bucket = s3.Bucket(
+            self,
+            "AudioChunksBucket",
+            bucket_name=f"low-latency-audio-{self.env_name}",
+            removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
+            auto_delete_objects=True if self.env_name == "dev" else False,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    id="DeleteOldChunks",
+                    expiration=Duration.days(1),  # Auto-delete after 1 day
+                    enabled=True,
+                )
+            ],
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            versioned=False,
+        )
+        return bucket
 
     def _create_shared_layer(self) -> lambda_.LayerVersion:
         """Create Lambda Layer with shared code.
@@ -358,6 +393,46 @@ class SessionManagementStack(Stack):
         # Grant DynamoDB permissions
         self.sessions_table.grant_read_data(function)
         self.connections_table.grant_read_data(function)
+
+        return function
+
+    def _create_kvs_stream_writer(self) -> lambda_.Function:
+        """Create KVS Stream Writer Lambda function (Phase 2) - S3 storage."""
+        # Get log retention from config
+        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
+        log_retention = logs.RetentionDays.ONE_DAY
+        
+        function = lambda_.Function(
+            self,
+            "KVSStreamWriter",
+            function_name=f"kvs-stream-writer-{self.env_name}",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="handler.lambda_handler",
+            code=lambda_.Code.from_asset("../lambda/kvs_stream_writer"),
+            layers=[self.shared_layer],
+            timeout=Duration.seconds(10),
+            memory_size=256,  # Reduced - no conversion needed
+            environment={
+                "STAGE": self.env_name,
+                "SESSIONS_TABLE_NAME": self.sessions_table.table_name,
+            },
+            log_retention=log_retention,
+            description="Receives WebM chunks and writes to S3",
+        )
+
+        # Grant DynamoDB read access (for session metadata)
+        self.sessions_table.grant_read_data(function)
+
+        # Grant S3 write permissions
+        self.audio_chunks_bucket.grant_write(function)
+
+        # Grant CloudWatch permissions for metrics
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=['cloudwatch:PutMetricData'],
+                resources=['*']
+            )
+        )
 
         return function
 
@@ -594,6 +669,15 @@ class SessionManagementStack(Stack):
             target=f"integrations/{listener_control_integration.ref}",
         )
 
+        # Create audioChunk route (Phase 2) - speaker sends audio chunks
+        audio_chunk_route = apigwv2.CfnRoute(
+            self,
+            "AudioChunkRoute",
+            api_id=api.ref,
+            route_key="audioChunk",
+            target=f"integrations/{connect_integration.ref}",
+        )
+
         # Create sendAudio route if audio_transcription_stack is provided
         send_audio_route = None
         if self.audio_transcription_stack:
@@ -637,6 +721,7 @@ class SessionManagementStack(Stack):
         deployment.add_dependency(get_session_status_route)
         deployment.add_dependency(pause_playback_route)
         deployment.add_dependency(change_language_route)
+        deployment.add_dependency(audio_chunk_route)  # Phase 2 addition
         # Add sendAudio route dependency if it exists
         if send_audio_route:
             deployment.add_dependency(send_audio_route)
@@ -1058,6 +1143,21 @@ class SessionManagementStack(Stack):
             "AlarmTopicArn",
             value=self.alarm_topic.topic_arn,
             description="SNS topic ARN for CloudWatch alarms"
+        )
+        
+        # Phase 2 outputs
+        CfnOutput(
+            self,
+            "KVSStreamWriterFunctionName",
+            value=self.kvs_stream_writer.function_name,
+            description="KVS Stream Writer Lambda function name"
+        )
+        
+        CfnOutput(
+            self,
+            "KVSStreamWriterFunctionArn",
+            value=self.kvs_stream_writer.function_arn,
+            description="KVS Stream Writer Lambda function ARN"
         )
         
         # Phase 3 outputs
