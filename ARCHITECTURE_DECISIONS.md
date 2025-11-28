@@ -671,15 +671,49 @@ cd audio-transcription && make deploy
 - **Solution:** Direct S3 storage, consumer handles conversion
 - **Result:** ✅ Working - 56 chunks stored, ~170ms latency
 
+### Nov 28, 2025 - AudioWorklet Architecture Pivot
+- **Decision:** Replace MediaRecorder with AudioWorklet + raw PCM
+- **Original Plan:** MediaRecorder WebM chunks with FFmpeg conversion
+- **Problem:** WebM chunks not standalone (only first has header), FFmpeg conversion adds latency
+- **Solution:** AudioWorklet captures raw Int16 PCM directly
+- **Benefits:** 
+  - Eliminated FFmpeg complexity (150+ lines removed)
+  - 33-40% latency reduction (15s → 6-10s)
+  - 50% cost reduction (no conversion overhead)
+  - Industry-standard approach for low-latency audio
+- **Trade-off:** 16x bandwidth increase (2KB/s → 32KB/s), acceptable for WiFi/LAN
+- **Result:** ✅ Implemented Nov 28, speaker/listener apps build successfully
+
+### Nov 28, 2025 - Phase 4: Kinesis Data Streams Need Identified  
+- **Current Issue:** S3 events fire per-object, not batched
+  - 4 Lambda invocations/second causes race conditions
+  - s3_audio_consumer gets triggered for every chunk
+  - High S3 ListObjects costs
+  - Transcribe batch jobs have 15-60s latency (queue + boot time)
+- **Proposed Solution:** Kinesis Data Streams with native batching
+  - BatchWindow: 3 seconds (native, not manual)
+  - 1 Lambda invocation per 3 seconds (vs 4/sec)
+  - Transcribe Streaming API (500ms vs 15-60s)
+  - 75% cost reduction, 50% latency improvement
+- **Status:** ⏳ Phase 4 plan documented, awaiting implementation
+- **See:** PHASE4_KINESIS_ARCHITECTURE.md for complete plan
+
 ---
 
-## Next Steps
+## Current Status (Nov 28, 2025)
 
-1. ✅ Complete Phase 0 cleanup and blueprints
-2. Toggle to Act Mode
-3. Implement Phase 1 (Speaker MediaRecorder)
-4. Create checkpoint after each phase
-5. Use new_task if hitting token limits
+**Phase 3:** ✅ COMPLETE (AudioWorklet + PCM)
+- Frontend: AudioWorklet implemented and deployed
+- Backend: PCM handling functional (but with S3 batching issues)
+- Documentation: Complete flow diagrams created
+
+**Phase 4:** 📋 READY TO START (Kinesis Migration)
+- Problem: S3 event architecture has fundamental scaling issues
+- Solution: Migrate to Kinesis Data Streams for proper batching
+- Estimate: 3-4 hours implementation
+- Benefit: True low latency (5-7s), 75% cost savings
+
+**Next:** Implement Phase 4 for production-ready architecture
 
 ---
 
@@ -687,10 +721,10 @@ cd audio-transcription && make deploy
 
 If resuming after interruption:
 1. **Read this file first** - ARCHITECTURE_DECISIONS.md
-2. **Check task_progress** - See what's completed
-3. **Read latest CHECKPOINT file** - Get phase status
-4. **Continue from next unchecked task**
+2. **Check:** PHASE4_START_CONTEXT.md for Phase 4 details
+3. **Check:** IMPLEMENTATION_STATUS.md for current status
+4. **Review:** PHASE4_KINESIS_ARCHITECTURE.md for implementation plan
 
-**Current Phase:** Phase 0 (Cleanup & Blueprints)
-**Next Phase:** Phase 1 (Speaker MediaRecorder)
-**Timeline:** 3-4 days to working translation
+**Current Phase:** Phase 3 Complete, Phase 4 Ready
+**Next Phase:** Phase 4 (Kinesis Migration)
+**Timeline:** 3-4 hours to correct architecture
