@@ -104,7 +104,8 @@ type-check:
 security-check:
 	bandit -r lambda/ shared/ -ll
 
-# Deploy to dev environment (both WebSocket and HTTP API stacks)
+# Deploy to dev environment (SessionManagement + SessionHttpApi stacks)
+# Note: KVSWebRTC-dev stack removed in Phase 4 (not deployed with --all)
 deploy-dev:
 	cd infrastructure && cdk deploy --all --context env=dev --require-approval never
 
@@ -129,7 +130,9 @@ deploy-staging:
 deploy-prod:
 	cd infrastructure && cdk deploy --all --context env=prod --require-approval broadening
 
-# Destroy dev stacks (both WebSocket and HTTP API)
+# Destroy dev stacks (SessionManagement + SessionHttpApi)
+# Note: KVSWebRTC-dev stack removed in Phase 4, delete manually if exists:
+#   aws cloudformation delete-stack --stack-name KVSWebRTC-dev --region us-east-1
 destroy-dev:
 	cd infrastructure && cdk destroy --all --context env=dev --force
 

@@ -8,7 +8,7 @@ import json
 from aws_cdk import App, Environment
 from stacks.session_management_stack import SessionManagementStack
 from stacks.http_api_stack import HttpApiStack
-from stacks.kvs_webrtc_stack import KVSWebRTCStack
+# from stacks.kvs_webrtc_stack import KVSWebRTCStack  # Phase 0-3 only, not used in Phase 4
 
 # Add audio-transcription infrastructure to path for cross-stack reference
 audio_transcription_infra_path = os.path.join(
@@ -41,13 +41,9 @@ env = Environment(
     region=config.get("region", "us-east-1")
 )
 
-# Create KVS WebRTC Stack first (for IAM roles)
-kvs_webrtc_stack = KVSWebRTCStack(
-    app,
-    f"KVSWebRTC-{env_name}",
-    cognito_identity_pool_id=config.get("cognito_identity_pool_id"),  # Optional
-    env=env
-)
+# KVSWebRTC Stack removed - not used in Phase 4 Kinesis architecture
+# Was only needed for WebRTC peer-to-peer (Phases 0-3, abandoned)
+# To delete existing stack: aws cloudformation delete-stack --stack-name KVSWebRTC-dev
 
 # Create AudioTranscriptionStack (if available)
 audio_transcription_stack = None
@@ -68,8 +64,7 @@ session_management_stack = SessionManagementStack(
     audio_transcription_stack=audio_transcription_stack
 )
 
-# Add dependency to ensure KVS stack is created first
-session_management_stack.add_dependency(kvs_webrtc_stack)
+# KVSWebRTC dependency removed - not needed in Phase 4
 
 # Add dependency to ensure AudioTranscriptionStack is created first
 if audio_transcription_stack:
