@@ -1,6 +1,26 @@
 # Backend Message Flow - AudioWorklet + PCM Architecture
 
-## Complete Message Flow Diagram
+## Document Status
+**Current:** Phase 3 Architecture (S3-based ingestion)  
+**Status:** ✅ Working but has scaling issues  
+**Next:** Phase 4 - Kinesis Data Streams migration planned
+
+⚠️ **Important:** This document describes the **Phase 3 architecture** which is currently deployed and working, but has known issues:
+- S3 events fire per-object (4 Lambda invocations/second)
+- Transcribe batch jobs too slow (15-60s latency)
+- High costs at scale ($130-170/hour for 1000 users)
+
+**Phase 4 will replace:**
+- S3 ingestion → Kinesis Data Stream
+- S3 events → Kinesis event source mapping
+- Transcribe batch jobs → Transcribe Streaming API
+- Expected: 5-7s latency (vs 10-15s), 75% cost reduction
+
+See **PHASE4_KINESIS_ARCHITECTURE.md** for complete Phase 4 plan.
+
+---
+
+## Complete Message Flow Diagram (Phase 3 - Current)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -537,6 +557,119 @@ Total latency: ~10 seconds (speaker voice → listener ear)
 | TTS MP3 output | Binary | ~32KB | 3 seconds @ 24kHz |
 
 **Key improvement:** No WebM container means smaller payloads and no FFmpeg processing overhead!
+
+---
+
+## Phase 4: Kinesis Data Streams Architecture (Planned)
+
+### Simplified Flow with Kinesis
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    SPEAKER BROWSER                           │
+│  AudioWorklet → PCM → WebSocket                              │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ↓ WebSocket audioChunk
+                     │
+┌────────────────────┴─────────────────────────────────────────┐
+│           CONNECTION_HANDLER LAMBDA                          │
+│                                                              │
+│  ├─ Decode base64 → PCM bytes                               │
+│  ├─ kinesis.put_record(                                     │
+│  │    StreamName: 'audio-ingestion-dev',                    │
+│  │    Data: pcm_bytes,  // Raw bytes                        │
+│  │    PartitionKey: sessionId                               │
+│  │  )                                                        │
+│  └─ Return 200 OK                                           │
+│                                                              │
+│  ⚠️ NO kvs_stream_writer invoke (deleted in Phase 4)       │
+│  Processing: ~10ms (vs 50ms S3)                             │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ↓ Kinesis PutRecord
+                     │
+┌────────────────────┴─────────────────────────────────────────┐
+│           KINESIS DATA STREAM                                │
+│           audio-ingestion-dev (On-Demand)                    │
+│                                                              │
+│  ├─ Buffers records by PartitionKey (sessionId)             │
+│  ├─ Accumulates for BatchWindow: 3 seconds                  │
+│  ├─ OR until BatchSize: 100 records reached                 │
+│  └─ Triggers Lambda with batched records                    │
+│                                                              │
+│  KEY BENEFIT: Only 1 Lambda invocation per 3 seconds!       │
+│  (vs 12 invocations in Phase 3)                             │
+└────────────────────┬─────────────────────────────────────────┘
+                     │
+                     ↓ Kinesis Event Source Mapping
+                     │ Event: { Records: [...] }
+                     │
+┌────────────────────┴─────────────────────────────────────────┐
+│           AUDIO_PROCESSOR LAMBDA                             │
+│                                                              │
+│  ┌─ Handler: lambda_handler(kinesis_event)                  │
+│  │                                                            │
+│  ├─ 1. Group records by sessionId                           │
+│  │    └─ sessions = {}                                      │
+│  │       for record in event['Records']:                    │
+│  │         pcm = base64.b64decode(record['kinesis']['data'])│
+│  │         sid = record['kinesis']['partitionKey']          │
+│  │         sessions.setdefault(sid, []).append(pcm)         │
+│  │                                                            │
+│  ├─ 2. For each session, concatenate PCM                    │
+│  │    └─ pcm_data = b''.join(chunks)  // ~98KB             │
+│  │                                                            │
+│  ├─ 3. Transcribe with STREAMING API                        │
+│  │    └─ transcribe_streaming(pcm_data, language)          │
+│  │       ├─ Open HTTP/2 stream                              │
+│  │       ├─ Send PCM buffer                                 │
+│  │       └─ Receive transcript in ~500ms                    │
+│  │       └─ NO job queue, NO S3 temp files!                │
+│  │                                                            │
+│  │    Result: "Hello this is a test"                        │
+│  │    Time: ~500ms (vs 15-60s batch jobs!)                 │
+│  │                                                            │
+│  ├─ 4. Translate + TTS (same as Phase 3)                    │
+│  ├─ 5. Store MP3 in S3 + notify listeners (same)            │
+│  │                                                            │
+│  └─ Total time: ~5 seconds (vs 10-15s)                      │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+Improvements:
+- ✅ Native batching (no race conditions)
+- ✅ 92% fewer Lambda invocations (20/min vs 240/min)
+- ✅ Transcribe Streaming (500ms vs 15-60s)
+- ✅ 50% latency reduction (10-15s → 5-7s)
+- ✅ 75% cost reduction
+```
+
+### Key Changes in Phase 4:
+
+1. **connection_handler:** Writes to Kinesis (not S3)
+2. **DELETE:** kvs_stream_writer Lambda (not needed)
+3. **DELETE:** s3_audio_consumer Lambda (not needed)
+4. **audio_processor:** Accepts Kinesis events, uses Transcribe Streaming
+5. **Kinesis:** Native batching replaces manual coordination
+
+### Phase 4 Timing (Expected):
+
+```
+T = 0s:     Speaker speaks
+T = 0.2s:   PCM in Kinesis
+T = 3.0s:   Batch window closes
+T = 3.1s:   audio_processor triggered with batch (12 chunks)
+T = 3.2s:   Transcribe Streaming starts
+T = 3.7s:   Transcript received (500ms)
+T = 4.2s:   Translation complete (500ms)
+T = 5.5s:   TTS generated (1.3s)
+T = 5.6s:   MP3 in S3
+T = 5.7s:   Listener notified
+T = 5.8s:   Audio playing
+
+Total: ~6 seconds (vs 10-15s current)
+```
 
 ---
 

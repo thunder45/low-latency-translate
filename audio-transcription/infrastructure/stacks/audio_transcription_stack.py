@@ -39,12 +39,14 @@ class AudioTranscriptionStack(Stack):
         construct_id: str,
         env_name: str = 'dev',
         config: dict = None,
+        session_management_stack=None,
         **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
         self.env_name = env_name
         self.config = config or {}
+        self.session_management_stack = session_management_stack
 
         # Create SNS topic for alarms
         alarm_topic = sns.Topic(
@@ -68,6 +70,10 @@ class AudioTranscriptionStack(Stack):
         
         # Grant S3 permissions to audio processor (Phase 3)
         self.translated_audio_bucket.grant_read_write(self.audio_processor_function)
+
+        # Phase 4: Connect audio_processor to Kinesis Data Stream
+        if session_management_stack and hasattr(session_management_stack, 'audio_stream'):
+            self._configure_kinesis_event_source(session_management_stack.audio_stream)
 
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms(self.audio_processor_function, alarm_topic)
@@ -775,6 +781,42 @@ class AudioTranscriptionStack(Stack):
         dashboard.add_widgets(echo_widget, silence_widget)
         dashboard.add_widgets(latency_widget, events_widget)
         dashboard.add_widgets(lambda_widget)
+
+    def _configure_kinesis_event_source(self, kinesis_stream) -> None:
+        """
+        Configure Kinesis Data Stream as event source for audio_processor (Phase 4).
+        
+        This replaces S3-based event triggering with native Kinesis batching:
+        - BatchWindow: 3 seconds (wait for 3s of records)
+        - BatchSize: 100 records max per invocation
+        - ParallelizationFactor: 10 (process 10 shards in parallel)
+        
+        Benefits:
+        - Native batching (no race conditions)
+        - 92% fewer Lambda invocations
+        - Predictable processing windows
+        
+        Args:
+            kinesis_stream: Kinesis Data Stream from session_management_stack
+        """
+        from aws_cdk import aws_lambda_event_sources as event_sources
+        
+        # Add Kinesis stream as event source
+        self.audio_processor_function.add_event_source(
+            event_sources.KinesisEventSource(
+                stream=kinesis_stream,
+                starting_position=lambda_.StartingPosition.LATEST,
+                batch_size=100,  # Max records per invocation
+                max_batching_window=Duration.seconds(3),  # Wait 3 seconds for batching
+                parallelization_factor=10,  # Process 10 shards in parallel
+                retry_attempts=2,  # Retry failed batches
+                max_record_age=Duration.hours(24),  # Skip records older than 24 hours
+                bisect_batch_on_error=True,  # Split batch on error for better error isolation
+            )
+        )
+        
+        # Grant Kinesis read permissions (automatically done by add_event_source, but explicit)
+        kinesis_stream.grant_read(self.audio_processor_function)
 
     def _create_translated_audio_bucket(self) -> s3.Bucket:
         """

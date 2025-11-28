@@ -19,6 +19,8 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_cognito as cognito,
     aws_s3 as s3,
+    aws_kinesis as kinesis,
+    aws_lambda_event_sources as event_sources,
 )
 from constructs import Construct
 
@@ -51,8 +53,8 @@ class SessionManagementStack(Stack):
         self.connections_table = self._create_connections_table()
         self.rate_limits_table = self._create_rate_limits_table()
 
-        # Create S3 bucket for audio chunks (Phase 2)
-        self.audio_chunks_bucket = self._create_audio_chunks_bucket()
+        # Phase 4: Create Kinesis Data Stream for audio ingestion
+        self.audio_stream = self._create_audio_ingestion_stream()
 
         # Create shared Lambda layer
         self.shared_layer = self._create_shared_layer()
@@ -65,23 +67,11 @@ class SessionManagementStack(Stack):
         self.refresh_handler = self._create_refresh_handler()
         self.session_status_handler = self._create_session_status_handler()
         
-        # Create KVS Stream Writer Lambda (Phase 2)
-        self.kvs_stream_writer = self._create_kvs_stream_writer()
-        
-        # Create FFmpeg Lambda Layer (Phase 3)
-        self.ffmpeg_layer = self._create_ffmpeg_layer()
-        
-        # Create S3 Audio Consumer Lambda (Phase 3)
-        self.s3_audio_consumer = self._create_s3_audio_consumer()
-        
-        # Create KVS Stream Consumer Lambda (Phase 3)
-        self.kvs_stream_consumer = self._create_kvs_stream_consumer()
-
-        # Grant connection_handler permission to invoke kvs_stream_writer (Phase 2)
-        self.kvs_stream_writer.grant_invoke(self.connection_handler)
+        # Phase 4: Grant connection_handler permission to write to Kinesis
+        self.audio_stream.grant_write(self.connection_handler)
         self.connection_handler.add_environment(
-            "KVS_STREAM_WRITER_FUNCTION",
-            self.kvs_stream_writer.function_name
+            "AUDIO_STREAM_NAME",
+            self.audio_stream.stream_name
         )
 
         # Create WebSocket API
@@ -89,9 +79,6 @@ class SessionManagementStack(Stack):
 
         # Create EventBridge rule for periodic status updates
         self._create_periodic_status_update_rule()
-        
-        # Create EventBridge rules for KVS stream processing (Phase 3)
-        self._create_kvs_event_rules()
 
         # Create SNS topic for alarms
         self.alarm_topic = self._create_alarm_topic()
@@ -174,26 +161,30 @@ class SessionManagementStack(Stack):
         )
         return table
 
-    def _create_audio_chunks_bucket(self) -> s3.Bucket:
-        """Create S3 bucket for storing audio chunks."""
-        bucket = s3.Bucket(
+    def _create_audio_ingestion_stream(self) -> kinesis.Stream:
+        """
+        Create Kinesis Data Stream for audio ingestion (Phase 4).
+        
+        This stream replaces S3-based audio storage with native event stream batching.
+        
+        Features:
+        - On-Demand mode: Auto-scales with load
+        - 24-hour retention: Allows replay if needed
+        - AWS managed encryption: Data encrypted at rest
+        
+        Returns:
+            Kinesis Data Stream for audio ingestion
+        """
+        stream = kinesis.Stream(
             self,
-            "AudioChunksBucket",
-            bucket_name=f"low-latency-audio-{self.env_name}",
-            removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
-            auto_delete_objects=True if self.env_name == "dev" else False,
-            lifecycle_rules=[
-                s3.LifecycleRule(
-                    id="DeleteOldChunks",
-                    expiration=Duration.days(1),  # Auto-delete after 1 day
-                    enabled=True,
-                )
-            ],
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            versioned=False,
+            "AudioIngestionStream",
+            stream_name=f"audio-ingestion-{self.env_name}",
+            stream_mode=kinesis.StreamMode.ON_DEMAND,
+            retention_period=Duration.hours(24),
+            encryption=kinesis.StreamEncryption.MANAGED,
         )
-        return bucket
+        
+        return stream
 
     def _create_shared_layer(self) -> lambda_.LayerVersion:
         """Create Lambda Layer with shared code.
@@ -400,144 +391,6 @@ class SessionManagementStack(Stack):
         # Grant DynamoDB permissions
         self.sessions_table.grant_read_data(function)
         self.connections_table.grant_read_data(function)
-
-        return function
-
-    def _create_kvs_stream_writer(self) -> lambda_.Function:
-        """Create KVS Stream Writer Lambda function (Phase 2) - S3 storage."""
-        # Get log retention from config
-        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.ONE_DAY
-        
-        function = lambda_.Function(
-            self,
-            "KVSStreamWriter",
-            function_name=f"kvs-stream-writer-{self.env_name}",
-            runtime=lambda_.Runtime.PYTHON_3_11,
-            handler="handler.lambda_handler",
-            code=lambda_.Code.from_asset("../lambda/kvs_stream_writer"),
-            layers=[self.shared_layer],
-            timeout=Duration.seconds(10),
-            memory_size=256,  # Reduced - no conversion needed
-            environment={
-                "STAGE": self.env_name,
-                "SESSIONS_TABLE_NAME": self.sessions_table.table_name,
-            },
-            log_retention=log_retention,
-            description="Receives WebM chunks and writes to S3",
-        )
-
-        # Grant DynamoDB read access (for session metadata)
-        self.sessions_table.grant_read_data(function)
-
-        # Grant S3 write permissions
-        self.audio_chunks_bucket.grant_write(function)
-
-        # Grant CloudWatch permissions for metrics
-        function.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=['cloudwatch:PutMetricData'],
-                resources=['*']
-            )
-        )
-
-        return function
-
-    def _create_ffmpeg_layer(self) -> lambda_.LayerVersion:
-        """Create FFmpeg Lambda Layer for audio processing."""
-        layer = lambda_.LayerVersion(
-            self,
-            "FFmpegLayer",
-            layer_version_name=f"ffmpeg-layer-{self.env_name}",
-            code=lambda_.Code.from_asset("../lambda_layers/ffmpeg"),
-            compatible_runtimes=[lambda_.Runtime.PYTHON_3_11],
-            description="FFmpeg binary for audio conversion",
-            removal_policy=RemovalPolicy.DESTROY if self.env_name == "dev" else RemovalPolicy.RETAIN,
-        )
-        return layer
-
-    def _create_s3_audio_consumer(self) -> lambda_.Function:
-        """Create S3 Audio Consumer Lambda function (Phase 3)."""
-        # Get log retention from config
-        log_retention_hours = int(self.config.get("dataRetentionHours", 12))
-        log_retention = logs.RetentionDays.ONE_DAY
-        
-        # Get audio processor function name
-        audio_processor_function_name = "audio-processor-dev"
-        if self.audio_transcription_stack:
-            audio_processor_function_name = self.audio_transcription_stack.audio_processor_function.function_name
-        
-        function = lambda_.Function(
-            self,
-            "S3AudioConsumer",
-            function_name=f"s3-audio-consumer-{self.env_name}",
-            runtime=lambda_.Runtime.PYTHON_3_11,
-            handler="handler.lambda_handler",
-            code=lambda_.Code.from_asset("../lambda/s3_audio_consumer"),
-            layers=[self.shared_layer, self.ffmpeg_layer],
-            timeout=Duration.seconds(60),  # 60 seconds for batch processing
-            memory_size=1024,  # Higher memory for ffmpeg
-            ephemeral_storage_size=Size.mebibytes(2048),  # 2GB for temporary audio files
-            environment={
-                "STAGE": self.env_name,
-                "AUDIO_BUCKET_NAME": self.audio_chunks_bucket.bucket_name,
-                "AUDIO_PROCESSOR_FUNCTION": audio_processor_function_name,
-                "SESSIONS_TABLE_NAME": self.sessions_table.table_name,
-                "BATCH_WINDOW_SECONDS": "3",  # Aggregate 3 seconds
-                "MIN_CHUNKS_FOR_PROCESSING": "8",  # Minimum 2 seconds
-            },
-            log_retention=log_retention,
-            description="Aggregates S3 audio chunks and converts to PCM",
-        )
-
-        # Grant S3 read permissions
-        self.audio_chunks_bucket.grant_read(function)
-
-        # Grant DynamoDB read access
-        self.sessions_table.grant_read_data(function)
-
-        # Grant Lambda invoke permissions for audio processor
-        function.add_to_role_policy(
-            iam.PolicyStatement(
-                sid="InvokeAudioProcessor",
-                actions=["lambda:InvokeFunction"],
-                resources=[
-                    f"arn:aws:lambda:{self.region}:{self.account}:function:{audio_processor_function_name}*"
-                ],
-            )
-        )
-
-        # Grant CloudWatch permissions for metrics
-        function.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=['cloudwatch:PutMetricData'],
-                resources=['*']
-            )
-        )
-
-        # Configure S3 event notification to trigger this function
-        # Support both PCM (new) and WebM (legacy) formats
-        from aws_cdk.aws_s3_notifications import LambdaDestination
-        
-        # Notification for PCM files (primary)
-        self.audio_chunks_bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            LambdaDestination(function),
-            s3.NotificationKeyFilter(
-                prefix="sessions/",
-                suffix=".pcm"
-            )
-        )
-        
-        # Notification for WebM files (legacy support)
-        self.audio_chunks_bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            LambdaDestination(function),
-            s3.NotificationKeyFilter(
-                prefix="sessions/",
-                suffix=".webm"
-            )
-        )
 
         return function
 
@@ -1175,7 +1028,6 @@ class SessionManagementStack(Stack):
             ("heartbeat-handler", self.heartbeat_handler),
             ("disconnect-handler", self.disconnect_handler),
             ("refresh-handler", self.refresh_handler),
-            ("kvs-stream-consumer", self.kvs_stream_consumer),  # Phase 3 addition
         ]:
             error_alarm = cloudwatch.Alarm(
                 self,
@@ -1193,25 +1045,25 @@ class SessionManagementStack(Stack):
             )
             error_alarm.add_alarm_action(alarm_action)
         
-        # 5. KVS Stream Consumer specific alarms (Phase 3)
-        # Active streams count alarm
-        kvs_active_streams_alarm = cloudwatch.Alarm(
+        # Phase 4: Kinesis Data Stream alarms
+        kinesis_records_alarm = cloudwatch.Alarm(
             self,
-            "KVSActiveStreamsAlarm",
-            alarm_name=f"kvs-active-streams-{self.env_name}",
-            alarm_description="Alert when KVS active streams exceed expected threshold",
+            "KinesisIncomingRecordsAlarm",
+            alarm_name=f"kinesis-incoming-records-{self.env_name}",
+            alarm_description="Alert when Kinesis incoming records are high",
             metric=cloudwatch.Metric(
-                namespace="KVSStreamConsumer",
-                metric_name="ActiveStreams",
-                statistic="Average",
-                period=Duration.minutes(5)
+                namespace="AWS/Kinesis",
+                metric_name="IncomingRecords",
+                statistic="Sum",
+                period=Duration.minutes(5),
+                dimensions_map={"StreamName": self.audio_stream.stream_name}
             ),
-            threshold=20,  # Alert if more than 20 concurrent streams
+            threshold=10000,  # Alert if more than 10k records per 5 minutes
             evaluation_periods=2,
             comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING
         )
-        kvs_active_streams_alarm.add_alarm_action(alarm_action)
+        kinesis_records_alarm.add_alarm_action(alarm_action)
 
     def _create_outputs(self):
         """Create CloudFormation outputs."""
@@ -1250,46 +1102,17 @@ class SessionManagementStack(Stack):
             description="SNS topic ARN for CloudWatch alarms"
         )
         
-        # Phase 2 outputs
+        # Phase 4 outputs
         CfnOutput(
             self,
-            "KVSStreamWriterFunctionName",
-            value=self.kvs_stream_writer.function_name,
-            description="KVS Stream Writer Lambda function name"
+            "AudioIngestionStreamName",
+            value=self.audio_stream.stream_name,
+            description="Kinesis Data Stream name for audio ingestion"
         )
         
         CfnOutput(
             self,
-            "KVSStreamWriterFunctionArn",
-            value=self.kvs_stream_writer.function_arn,
-            description="KVS Stream Writer Lambda function ARN"
-        )
-        
-        # Phase 3 outputs
-        CfnOutput(
-            self,
-            "S3AudioConsumerFunctionName",
-            value=self.s3_audio_consumer.function_name,
-            description="S3 Audio Consumer Lambda function name"
-        )
-        
-        CfnOutput(
-            self,
-            "S3AudioConsumerFunctionArn",
-            value=self.s3_audio_consumer.function_arn,
-            description="S3 Audio Consumer Lambda function ARN"
-        )
-        
-        CfnOutput(
-            self,
-            "KVSStreamConsumerFunctionName",
-            value=self.kvs_stream_consumer.function_name,
-            description="KVS Stream Consumer Lambda function name"
-        )
-        
-        CfnOutput(
-            self,
-            "KVSStreamConsumerFunctionArn",
-            value=self.kvs_stream_consumer.function_arn,
-            description="KVS Stream Consumer Lambda function ARN"
+            "AudioIngestionStreamArn",
+            value=self.audio_stream.stream_arn,
+            description="Kinesis Data Stream ARN for audio ingestion"
         )

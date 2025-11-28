@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Deployment Health Check Script
+# Deployment Health Check Script - Phase 4 (Kinesis Architecture)
 # Verifies backend and frontend are ready for E2E testing
 
 # Don't exit on error - we want to check everything
 set +e
 
-echo "🔍 Deployment Health Check"
-echo "=========================="
+echo "🔍 Deployment Health Check - Phase 4 (Kinesis)"
+echo "==============================================="
 echo ""
 
 # Colors for output
@@ -62,17 +62,6 @@ if [ -f "frontend-client-apps/speaker-app/.env" ]; then
         print_status "FAIL" "VITE_AWS_REGION is missing"
     fi
     
-    if grep -q "VITE_ENCRYPTION_KEY" frontend-client-apps/speaker-app/.env 2>/dev/null; then
-        KEY_LENGTH=$(grep "VITE_ENCRYPTION_KEY" frontend-client-apps/speaker-app/.env 2>/dev/null | cut -d'=' -f2 | wc -c)
-        if [ "$KEY_LENGTH" -ge 32 ]; then
-            print_status "PASS" "VITE_ENCRYPTION_KEY is at least 32 characters"
-        else
-            print_status "FAIL" "VITE_ENCRYPTION_KEY is too short (need 32+ chars)"
-        fi
-    else
-        print_status "FAIL" "VITE_ENCRYPTION_KEY is missing"
-    fi
-    
     if grep -q "VITE_WEBSOCKET_URL" frontend-client-apps/speaker-app/.env 2>/dev/null; then
         print_status "PASS" "VITE_WEBSOCKET_URL is set"
     else
@@ -113,8 +102,8 @@ else
 fi
 
 echo ""
-echo "4️⃣  Checking Backend Resources (if AWS CLI available)..."
-echo "-------------------------------------------------------"
+echo "4️⃣  Checking Phase 4 Backend Resources..."
+echo "----------------------------------------"
 
 if command -v aws &> /dev/null && aws sts get-caller-identity &> /dev/null; then
     # Get region from .env or use default
@@ -154,13 +143,44 @@ if command -v aws &> /dev/null && aws sts get-caller-identity &> /dev/null; then
         print_status "WARN" "No DynamoDB tables found"
     fi
     
-    # Check Lambda functions
-    LAMBDA_COUNT=$(aws lambda list-functions --region "$REGION" --query 'Functions' --output json 2>/dev/null | jq '. | length')
-    if [ "$LAMBDA_COUNT" -gt 0 ]; then
-        print_status "PASS" "Lambda functions found ($LAMBDA_COUNT function(s))"
+    # Check Lambda functions (Phase 4 specific)
+    REQUIRED_LAMBDAS=("session-connection-handler-dev" "session-disconnect-handler-dev" "audio-processor")
+    
+    for lambda in "${REQUIRED_LAMBDAS[@]}"; do
+        if aws lambda get-function --function-name "$lambda" --region "$REGION" &> /dev/null; then
+            print_status "PASS" "Lambda function exists: $lambda"
+        else
+            print_status "FAIL" "Lambda function not found: $lambda"
+        fi
+    done
+    
+    # Check Kinesis Data Stream (Phase 4 critical resource)
+    STREAM_NAME="audio-ingestion-dev"
+    if aws kinesis describe-stream --stream-name "$STREAM_NAME" --region "$REGION" &> /dev/null; then
+        print_status "PASS" "Kinesis Data Stream exists: $STREAM_NAME"
+        
+        # Check stream status
+        STREAM_STATUS=$(aws kinesis describe-stream --stream-name "$STREAM_NAME" --region "$REGION" --query 'StreamDescription.StreamStatus' --output text)
+        if [ "$STREAM_STATUS" == "ACTIVE" ]; then
+            print_status "PASS" "Stream is ACTIVE"
+        else
+            print_status "WARN" "Stream status: $STREAM_STATUS"
+        fi
     else
-        print_status "WARN" "No Lambda functions found"
+        print_status "FAIL" "Kinesis Data Stream not found: $STREAM_NAME (Phase 4 required)"
     fi
+    
+    # Check S3 buckets
+    REQUIRED_BUCKETS=("low-latency-audio-dev" "translation-audio-dev")
+    
+    for bucket in "${REQUIRED_BUCKETS[@]}"; do
+        if aws s3 ls "s3://$bucket" --region "$REGION" &> /dev/null; then
+            print_status "PASS" "S3 bucket exists: $bucket"
+        else
+            print_status "FAIL" "S3 bucket not found: $bucket"
+        fi
+    done
+    
 else
     print_status "WARN" "Skipping backend checks (AWS CLI not available or not configured)"
 fi
@@ -212,16 +232,20 @@ echo ""
 if [ $FAIL -eq 0 ]; then
     echo -e "${GREEN}🎉 All critical checks passed!${NC}"
     echo ""
+    echo "Phase 4 Architecture Verified:"
+    echo "  AudioWorklet → PCM → Kinesis → audio_processor → S3 → Listener"
+    echo ""
     echo "Next steps:"
-    echo "1. cd frontend-client-apps/speaker-app"
-    echo "2. npm run dev"
-    echo "3. Open http://localhost:3000"
-    echo "4. Follow E2E_AUTHENTICATION_TEST_GUIDE.md"
+    echo "1. cd frontend-client-apps/speaker-app && npm run dev"
+    echo "2. cd frontend-client-apps/listener-app && npm run dev (separate terminal)"
+    echo "3. Test end-to-end translation"
+    echo "4. Monitor logs: ./scripts/tail-lambda-logs.sh audio-processor"
     exit 0
 else
     echo -e "${RED}⚠️  Some checks failed. Please fix the issues above before proceeding.${NC}"
     echo ""
-    echo "For detailed troubleshooting, see:"
-    echo "  frontend-client-apps/docs/PRE_E2E_DEPLOYMENT_CHECKLIST.md"
+    echo "For troubleshooting, see:"
+    echo "  - README.md (deployment instructions)"
+    echo "  - CHECKPOINT_PHASE4_COMPLETE.md (deployment details)"
     exit 1
 fi

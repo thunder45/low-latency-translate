@@ -1,1 +1,0 @@
-# KVS Stream Writer Lambda

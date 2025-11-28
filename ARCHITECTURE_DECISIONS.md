@@ -4,9 +4,9 @@
 This is the **SINGLE SOURCE OF TRUTH** for the Low-Latency Translation project architecture. If context is lost or confusion arises, refer to this document first.
 
 ## Last Updated
-**Date:** November 27, 2025, 4:35 PM  
-**Status:** ✅ Phase 2 COMPLETE - Audio storage working  
-**Progress:** Phase 2 Complete, Phase 3 Ready
+**Date:** November 28, 2025, 2:11 PM  
+**Status:** ✅ Phase 4 DEPLOYED - Kinesis architecture  
+**Progress:** Phase 4 Deployed, Testing Required
 
 ---
 
@@ -700,20 +700,27 @@ cd audio-transcription && make deploy
 
 ---
 
-## Current Status (Nov 28, 2025)
+## Current Status (Nov 28, 2025, 2:11 PM)
 
-**Phase 3:** ✅ COMPLETE (AudioWorklet + PCM)
-- Frontend: AudioWorklet implemented and deployed
-- Backend: PCM handling functional (but with S3 batching issues)
-- Documentation: Complete flow diagrams created
+**Phase 4:** ✅ DEPLOYED (Kinesis Data Streams Architecture)
+- Infrastructure: Kinesis stream created, event source mapping configured
+- Backend: connection_handler uses Kinesis PutRecord
+- Backend: audio_processor handles Kinesis batches with Transcribe Streaming
+- Cleanup: Deleted kvs_stream_writer and s3_audio_consumer Lambdas
+- Expected: 5-7s latency (vs 10-15s), 75% cost savings
 
-**Phase 4:** 📋 READY TO START (Kinesis Migration)
-- Problem: S3 event architecture has fundamental scaling issues
-- Solution: Migrate to Kinesis Data Streams for proper batching
-- Estimate: 3-4 hours implementation
-- Benefit: True low latency (5-7s), 75% cost savings
+**Phase 5:** 📋 NEXT (Testing & Validation)
+- Test: End-to-end latency measurement
+- Verify: Lambda invocations reduced to ~20/min
+- Validate: Transcribe Streaming API works properly
+- Confirm: Cost reduction achieved
 
-**Next:** Implement Phase 4 for production-ready architecture
+**Important Note:** Traditional KVS Stream architecture (from Nov 26 plan) was never implemented. We evolved through:
+- Phase 1: MediaRecorder → S3
+- Phase 2-3: AudioWorklet + PCM → S3 (working but flawed)
+- Phase 4: AudioWorklet + PCM → Kinesis (current, production-ready)
+
+**Next:** End-to-end testing and validation
 
 ---
 

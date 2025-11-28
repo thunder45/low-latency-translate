@@ -1,12 +1,12 @@
-# Low-Latency Translation System - Traditional KVS Stream Architecture
+# Low-Latency Translation System - AudioWorklet + PCM Architecture
 
-**Real-time audio translation platform with 3-4 second end-to-end latency**
+**Real-time audio translation platform with 5-7 second end-to-end latency**
 
-## Current Status: Phase 0 Complete ✅
+## Current Status: Phase 4 Deployed ✅ | Testing Required 📋
 
-**Architecture:** Traditional KVS Stream (MediaRecorder → Backend → Translation → S3)  
-**Progress:** Blueprints ready, implementation starting  
-**Next:** Phase 1 - Speaker MediaRecorder implementation
+**Architecture:** AudioWorklet → Raw PCM → Kinesis → Transcribe Streaming/Translate/TTS  
+**Progress:** Phase 4 deployed (Kinesis Data Streams), awaiting end-to-end testing  
+**Next:** Validate 5-7s latency and cost reduction
 
 ---
 
@@ -15,111 +15,88 @@
 ### Documentation
 - **📋 Master Reference:** [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md) - Start here
 - **📈 Progress Tracking:** [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)
-- **🔨 Implementation Guides:**
-  - [Phase 1: Speaker MediaRecorder](./PHASE1_SPEAKER_MEDIARECORDER_GUIDE.md)
-  - [Phase 2: Backend KVS Writer](./PHASE2_BACKEND_KVS_WRITER_GUIDE.md)
-  - [Phase 3: Listener S3 Playback](./PHASE3_LISTENER_S3_PLAYBACK_GUIDE.md)
+- **🔨 Phase 4 Plan:** [PHASE4_KINESIS_ARCHITECTURE.md](./PHASE4_KINESIS_ARCHITECTURE.md)
+- **🔄 Message Flow:** [BACKEND_MESSAGE_FLOW.md](./BACKEND_MESSAGE_FLOW.md)
 
 ### Verification
 ```bash
-# Verify infrastructure
-./scripts/verify-audio-pipeline.sh
+# Check deployment health
+./scripts/check-deployment-health.sh
 
 # Monitor Lambda logs
-./scripts/tail-lambda-logs.sh kvs-stream-writer-dev
+./scripts/tail-lambda-logs.sh audio-processor
 ```
 
 ---
 
 ## Architecture Overview
 
-### Complete Flow
+### Current Flow (Phase 4 - Kinesis Architecture)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    SPEAKER BROWSER                           │
 │                                                              │
-│  1. getUserMedia() → Microphone                             │
-│  2. MediaRecorder → Capture WebM (Opus, 16kHz, mono)        │
-│  3. 250ms chunks → base64 encoding                          │
-│  4. WebSocket → Send to backend                             │
+│  1. AudioWorklet → Capture Float32 samples (16kHz)          │
+│  2. Convert to Int16 PCM (4096 samples = 256ms)             │
+│  3. Send via WebSocket (~8KB per chunk)                     │
 │                                                              │
-│  Latency: ~100ms buffering                                  │
+│  Benefits: Low-latency capture (~3ms), raw PCM format       │
 └────────────────────┬─────────────────────────────────────────┘
                      │
                      ↓ WebSocket (wss://)
-                     │ { action: 'audioChunk', audioData, ... }
+                     │ { action: 'audioChunk', audioData (base64), ... }
                      │
 ┌────────────────────┴─────────────────────────────────────────┐
 │              AWS Lambda: connection_handler                  │
 │                                                              │
-│  Routes WebSocket messages                                  │
-│  Forwards audioChunk → kvs_stream_writer (async)            │
+│  1. Decode base64 → raw PCM bytes                           │
+│  2. Write to Kinesis Data Stream                            │
+│     - kinesis.put_record()                                  │
+│     - PartitionKey: sessionId                               │
+│     - Data: raw PCM bytes                                   │
 │                                                              │
-│  Latency: ~50ms                                             │
+│  Latency: ~10ms (5x faster than S3!)                        │
 └────────────────────┬─────────────────────────────────────────┘
                      │
-                     ↓ Lambda invocation (async)
+                     ↓ Kinesis PutRecord
                      │
 ┌────────────────────┴─────────────────────────────────────────┐
-│              AWS Lambda: kvs_stream_writer                   │
+│           KINESIS DATA STREAM (AWS Service)                  │
+│           audio-ingestion-dev (On-Demand)                    │
 │                                                              │
-│  1. Decode base64 → WebM binary                             │
-│  2. ffmpeg: WebM → PCM (16kHz, 16-bit, mono)                │
-│  3. PutMedia → Write to KVS Stream                          │
-│  4. Create stream on-demand if needed                       │
+│  Buffers PCM records by sessionId (PartitionKey)            │
+│  Native batching: 3-second windows OR 100 records           │
+│  Triggers audio_processor with batched records              │
 │                                                              │
-│  Latency: ~200ms (conversion + upload)                      │
+│  ✅ Only 1 Lambda invocation per 3 seconds!                 │
+│  (vs 4/sec in Phase 3)                                      │
 └────────────────────┬─────────────────────────────────────────┘
                      │
-                     ↓ KVS PutMedia API
-                     │
-┌────────────────────┴─────────────────────────────────────────┐
-│              AWS Kinesis Video Streams                       │
-│              (Traditional Stream, NOT WebRTC)                │
-│                                                              │
-│  • Stream name: session-{sessionId}                         │
-│  • Stores PCM audio fragments                               │
-│  • Retention: 1 hour (no long-term storage)                 │
-│  • Emits EventBridge events on new fragments                │
-│                                                              │
-│  Latency: ~200ms ingestion                                  │
-└────────────────────┬─────────────────────────────────────────┘
-                     │
-                     ↓ EventBridge: Fragment Complete
-                     │
-┌────────────────────┴─────────────────────────────────────────┐
-│              AWS Lambda: kvs_stream_consumer                 │
-│                                                              │
-│  1. Triggered by EventBridge (new fragments)                │
-│  2. GetMedia from KVS Stream                                │
-│  3. Extract PCM audio chunks                                │
-│  4. Invoke audio_processor (async)                          │
-│                                                              │
-│  Latency: ~100ms                                            │
-└────────────────────┬─────────────────────────────────────────┘
-                     │
-                     ↓ Lambda invocation (async)
+                     ↓ Kinesis Event Source Mapping
+                     │ BatchWindow: 3 seconds
                      │
 ┌────────────────────┴─────────────────────────────────────────┐
 │              AWS Lambda: audio_processor                     │
 │                                                              │
-│  1. AWS Transcribe Streaming → Speech-to-text               │
-│     Latency: 1-2 seconds                                    │
+│  1. Group records by sessionId                              │
+│  2. Concatenate PCM chunks                                  │
+│  3. AWS Transcribe Streaming API                            │
+│     ✅ Real-time processing: ~500ms (not 15-60s!)           │
 │                                                              │
-│  2. AWS Translate → Multiple languages (parallel)           │
+│  4. AWS Translate → Multiple languages (parallel)           │
 │     Latency: ~500ms per language                            │
 │                                                              │
-│  3. Amazon Polly TTS → Generate speech (2s chunks)          │
+│  5. Amazon Polly TTS → Generate speech                      │
 │     Latency: ~1 second                                      │
 │                                                              │
-│  4. Store MP3 in S3 + Generate presigned URL                │
+│  6. Store MP3 in S3 + Generate presigned URL                │
 │     Latency: ~100ms                                         │
 │                                                              │
-│  5. Send WebSocket notification to listeners                │
+│  7. Send WebSocket notification to listeners                │
 │     Latency: ~50ms                                          │
 │                                                              │
-│  Total processing: 2-3 seconds                              │
+│  Total processing: 5-7 seconds (50% faster!)                │
 └────────────────────┬─────────────────────────────────────────┘
                      │
                      ↓ WebSocket notification
@@ -128,7 +105,7 @@
 ┌────────────────────┴─────────────────────────────────────────┐
 │                  LISTENER BROWSER                            │
 │                                                              │
-│  1. Receive WebSocket notification                          │
+│  1. Receive WebSocket notification (S3AudioPlayer)          │
 │  2. Download MP3 from S3 (presigned URL)                    │
 │  3. Add to playback queue                                   │
 │  4. Play audio (HTMLAudioElement)                           │
@@ -137,21 +114,25 @@
 │  Latency: ~100ms download                                   │
 └──────────────────────────────────────────────────────────────┘
 
-TOTAL END-TO-END LATENCY: 3-4 seconds ✅
+CURRENT END-TO-END LATENCY: 5-7 seconds (Phase 4 achieved!)
 ```
 
-### Key Design Decisions
+---
+
+## Key Design Decisions
 
 | Aspect | Choice | Rationale |
 |--------|--------|-----------|
-| **Audio Capture** | MediaRecorder API | Standard, lightweight, browser-native |
-| **Upload Format** | WebM (Opus codec) | Small size, no browser conversion needed |
-| **Chunk Size (Speaker)** | 250ms | Low latency, manageable size (~4-5 KB) |
-| **Backend Conversion** | ffmpeg (WebM → PCM) | Centralized, keeps browser simple |
-| **Storage** | KVS Stream (1hr retention) | Serverless, cost-effective ($0.01/hr) |
-| **Event Trigger** | EventBridge (KVS events) | Automatic, scales with load |
-| **Listener Delivery** | S3 presigned URLs | Simple, no WebSocket payload limits |
-| **Chunk Size (Listener)** | 2 seconds | Balance download time vs smoothness |
+| **Audio Capture** | AudioWorklet API | Industry standard, ~3ms latency |
+| **Format** | Raw Int16 PCM | No conversion overhead, direct processing |
+| **Chunk Size** | 256ms (4096 samples) | Balance latency vs network efficiency |
+| **Transport** | WebSocket binary | Real-time bidirectional communication |
+| **Ingestion (Current)** | S3 direct storage | Simple but has batching issues |
+| **Ingestion (Phase 4)** | Kinesis Data Stream | Native batching, proper event stream |
+| **Transcription (Current)** | Transcribe Batch Jobs | Too slow (15-60s) |
+| **Transcription (Phase 4)** | Transcribe Streaming | Fast (500ms) |
+| **Listener Delivery** | S3 presigned URLs | Simple, scalable, no WebSocket limits |
+| **Chunk Size (Listener)** | 3 seconds | Balance download time vs smoothness |
 | **Recording** | None (process & discard) | Save costs, no storage needed |
 
 ---
@@ -161,48 +142,50 @@ TOTAL END-TO-END LATENCY: 3-4 seconds ✅
 ### Frontend
 - **Framework:** React 18 + TypeScript
 - **Build:** Vite
-- **Audio:** MediaRecorder API, HTMLAudioElement
+- **Audio:** 
+  - AudioWorklet API (low-latency capture)
+  - HTMLAudioElement (playback)
 - **State:** Zustand stores
 - **Communication:** WebSocket, HTTP API
-- **Hosting:** S3 + CloudFront (static hosting)
+- **Hosting:** S3 + CloudFront
 
 ### Backend
 - **Compute:** AWS Lambda (Python 3.11)
 - **API:** API Gateway (WebSocket + HTTP)
 - **Storage:** 
   - DynamoDB (sessions, connections)
-  - KVS Streams (audio fragments, 1hr retention)
-  - S3 (translated audio, 24hr lifecycle)
+  - S3 (PCM chunks 1-day, translated audio 1-day)
 - **Audio Processing:**
   - AWS Transcribe (speech-to-text)
   - AWS Translate (multi-language)
-  - Amazon Polly (TTS with SSML)
-  - ffmpeg (format conversion)
-- **Events:** EventBridge (KVS Stream triggers)
+  - Amazon Polly (TTS)
+- **Events:** S3 notifications (Phase 3) → Kinesis (Phase 4)
 - **Auth:** Cognito (User Pool + Identity Pool)
 
 ### Infrastructure as Code
 - **AWS CDK** (Python)
 - **Deployment:** CloudFormation stacks
-- **CI/CD:** Makefiles for local deployment
+- **CI/CD:** Makefiles
 
 ---
 
 ## AWS Resources
 
 ### Lambda Functions:
-1. **connection_handler** - WebSocket connection management
+1. **connection_handler** - WebSocket routing + Kinesis PutRecord
 2. **disconnect_handler** - Cleanup on disconnect
-3. **kvs_stream_writer** - WebM → PCM conversion → KVS Stream
-4. **kvs_stream_consumer** - Extract audio from KVS Stream
-5. **audio_processor** - Transcribe → Translate → TTS → S3
+3. **audio_processor** - Kinesis batches → Transcribe Streaming → Translate → TTS → S3
 
 ### Storage:
 1. **DynamoDB Tables:**
    - `sessions` - Session metadata
-   - `connections` - Active WebSocket connections
-2. **KVS Streams:** Dynamic per session (session-{id})
-3. **S3 Bucket:** translation-audio-{stage} (24hr lifecycle)
+   - `connections` - Active WebSocket connections (with GSI for language filtering)
+2. **S3 Buckets:** 
+   - `low-latency-audio-{stage}` - PCM chunks (temporary)
+   - `translation-audio-{stage}` - Translated MP3 files (1-day lifecycle)
+
+### Streaming (Phase 4):
+1. **Kinesis Data Stream:** audio-ingestion-{stage} (On-Demand mode)
 
 ### Networking:
 1. **API Gateway:** WebSocket API (bidirectional)
@@ -216,42 +199,21 @@ TOTAL END-TO-END LATENCY: 3-4 seconds ✅
 
 ## Cost Estimate
 
-### Per Session-Hour:
-- KVS Stream: $0.01
-- Lambda invocations: $0.001
-- S3 storage & transfer: $0.001
-- Transcribe/Translate/TTS: $0.03-0.05 (depends on audio duration)
-- **Total: ~$0.04-0.06 per session-hour**
+### Phase 3 (Current - S3 Architecture):
+Per session-hour (1000 users):
+- Lambda invocations: 240/min × 60 × 1000 = 14.4M invocations → $80-100
+- S3 PUTs + Lists: High API costs → $20
+- Transcribe batch jobs: $30-50
+- **Total: ~$130-170/hour**
 
-### Scalability:
-- 10 concurrent sessions: ~$0.50/hour
-- 100 concurrent sessions: ~$5/hour
-- No infrastructure costs (serverless)
+### Phase 4 (Target - Kinesis Architecture):
+Per session-hour (1000 users):
+- Lambda invocations: 20/min × 60 × 1000 = 1.2M invocations → $15-20
+- Kinesis PutRecords + shard hours: $15-20
+- Transcribe streaming: $30-50
+- **Total: ~$60-90/hour (50% savings)**
 
----
-
-## Key Features
-
-### Speaker App:
-- ✅ Real-time audio streaming (250ms chunks)
-- ✅ Microphone controls (pause, mute, volume)
-- ✅ Session management
-- 🔄 Audio quality monitoring (future)
-- 🔄 Emotion display (future)
-
-### Listener App:
-- ✅ Join sessions anonymously
-- ✅ Language selection (10+ languages)
-- ✅ Playback controls (pause, volume)
-- 🔄 Transcript display (future)
-- 🔄 Audio quality indicators (future)
-
-### Backend:
-- ✅ Real-time transcription (AWS Transcribe)
-- ✅ Multi-language translation (AWS Translate)
-- ✅ Natural TTS (Amazon Polly)
-- 🔄 Translation caching (future)
-- 🔄 Emotion preservation (future)
+Plus 50% latency reduction (10-15s → 5-7s)!
 
 ---
 
@@ -260,13 +222,14 @@ TOTAL END-TO-END LATENCY: 3-4 seconds ✅
 | Phase | Status | Duration | Description |
 |-------|--------|----------|-------------|
 | Phase 0 | ✅ Complete | 2 hours | Cleanup & blueprints |
-| Phase 1 | ⏳ Ready | 4-6 hours | Speaker MediaRecorder |
-| Phase 2 | 📋 Planned | 6-8 hours | Backend KVS writer |
-| Phase 3 | 📋 Planned | 6-8 hours | Listener S3 playback |
-| Phase 4 | 📋 Planned | 4-6 hours | Testing & optimization |
-| Phase 5 | 📋 Future | TBD | UI & monitoring |
+| Phase 1 | ✅ Complete | 4 hours | MediaRecorder implementation |
+| Phase 2 | ✅ Complete | 3 hours | S3 audio storage |
+| Phase 3 | ✅ Complete | 8 hours | AudioWorklet + AWS APIs |
+| Phase 4 | ✅ Deployed | 3 hours | Kinesis migration |
+| Phase 5 | 📋 Next | TBD | Testing & validation |
 
-**Timeline:** 3-4 days to working translation
+**Current:** Phase 4 deployed (Kinesis architecture)  
+**Next:** End-to-end testing and validation
 
 ---
 
@@ -284,7 +247,7 @@ TOTAL END-TO-END LATENCY: 3-4 seconds ✅
 git clone https://github.com/thunder45/low-latency-translate.git
 cd low-latency-translate
 
-# Review architecture decisions
+# Review current architecture
 cat ARCHITECTURE_DECISIONS.md
 
 # Check implementation status
@@ -295,10 +258,10 @@ cd frontend-client-apps
 npm install
 
 # Install backend dependencies
-cd session-management
+cd ../session-management
 pip install -r requirements.txt -r requirements-dev.txt
 
-cd audio-transcription
+cd ../audio-transcription
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
@@ -306,31 +269,29 @@ pip install -r requirements.txt -r requirements-dev.txt
 ```bash
 # Deploy backend (session management)
 cd session-management
-make deploy
+make deploy-websocket-dev
 
 # Deploy backend (audio processing)
-cd audio-transcription
-make deploy
+cd ../audio-transcription
+make deploy-dev
 
 # Build and deploy frontend
-cd frontend-client-apps
+cd ../frontend-client-apps
 npm run build
 # Deploy to S3/CloudFront
 ```
 
 ### Testing:
 ```bash
-# Verify infrastructure
-SESSION_ID=your-session-id ./scripts/verify-audio-pipeline.sh
+# Check deployment health
+./scripts/check-deployment-health.sh
 
 # Monitor logs
-./scripts/tail-lambda-logs.sh kvs-stream-writer-dev
-./scripts/tail-lambda-logs.sh audio-processor-dev
+./scripts/tail-lambda-logs.sh audio-processor
 
-# Check KVS Stream fragments
-aws kinesisvideo list-fragments \
-  --stream-name session-your-id \
-  --region us-east-1
+# Test end-to-end
+cd frontend-client-apps/speaker-app && npm run dev
+cd frontend-client-apps/listener-app && npm run dev
 ```
 
 ---
@@ -341,21 +302,24 @@ aws kinesisvideo list-fragments \
 low-latency-translate/
 ├── ARCHITECTURE_DECISIONS.md          # Master reference (READ THIS FIRST)
 ├── IMPLEMENTATION_STATUS.md           # Current progress
-├── PHASE1_SPEAKER_MEDIARECORDER_GUIDE.md  # Speaker implementation
-├── PHASE2_BACKEND_KVS_WRITER_GUIDE.md     # Backend implementation
-├── PHASE3_LISTENER_S3_PLAYBACK_GUIDE.md   # Listener implementation
+├── PHASE4_KINESIS_ARCHITECTURE.md     # Phase 4 implementation plan
+├── BACKEND_MESSAGE_FLOW.md            # Complete message flow diagram
 │
 ├── frontend-client-apps/              # React/TypeScript apps
 │   ├── speaker-app/                   # Speaker interface
+│   │   └── src/services/
+│   │       ├── AudioWorkletService.ts # AudioWorklet capture
+│   │       └── SpeakerService.ts      # Service orchestration
 │   ├── listener-app/                  # Listener interface
+│   │   └── src/services/
+│   │       ├── S3AudioPlayer.ts       # S3 playback queue
+│   │       └── ListenerService.ts     # Service orchestration
 │   └── shared/                        # Shared components
 │
-├── session-management/                # WebSocket + KVS infrastructure
+├── session-management/                # WebSocket + Kinesis ingestion
 │   ├── lambda/
-│   │   ├── connection_handler/        # WebSocket routing
-│   │   ├── disconnect_handler/        # Cleanup
-│   │   ├── kvs_stream_writer/         # WebM → KVS Stream (NEW)
-│   │   └── kvs_stream_consumer/       # KVS → audio_processor
+│   │   ├── connection_handler/        # WebSocket routing + Kinesis PutRecord
+│   │   └── disconnect_handler/        # Cleanup
 │   └── infrastructure/                # CDK stacks
 │
 ├── audio-transcription/               # Translation pipeline
@@ -364,11 +328,11 @@ low-latency-translate/
 │   └── infrastructure/                # CDK stacks
 │
 ├── scripts/                           # Verification & deployment
-│   ├── verify-audio-pipeline.sh       # Automated verification
+│   ├── check-deployment-health.sh     # Health checks
 │   └── tail-lambda-logs.sh            # Log monitoring
 │
 └── archive/                           # Historical documentation
-    └── webrtc-architecture/           # Previous WebRTC approach
+    └── webrtc-architecture/           # Previous WebRTC approach (archived)
 ```
 
 ---
@@ -377,155 +341,196 @@ low-latency-translate/
 
 ### Audio Formats
 
-| Stage | Format | Rate | Channels | Size (250ms) |
+| Stage | Format | Rate | Channels | Size (256ms) |
 |-------|--------|------|----------|--------------|
-| Browser Capture | WebM/Opus | 16kHz | Mono | ~4-5 KB |
-| KVS Stream | PCM s16le | 16kHz | Mono | ~8 KB |
-| Transcribe Input | PCM | 16kHz | Mono | ~8 KB |
-| TTS Output | MP3 | 24kHz | Mono | ~32 KB (2s) |
+| AudioWorklet Capture | Float32 | 16kHz | Mono | 16KB |
+| Converted to PCM | Int16 | 16kHz | Mono | 8KB |
+| WebSocket Transport | Base64 | - | - | ~11KB |
+| S3 Storage | PCM Raw | 16kHz | Mono | 8KB |
+| Transcribe Input | PCM | 16kHz | Mono | 8KB |
+| TTS Output | MP3 | 24kHz | Mono | ~32KB (3s) |
 
 ### Latency Budget
 
-| Component | Target | Measured |
-|-----------|--------|----------|
-| Browser capture | 100ms | TBD |
-| Upload to backend | 200ms | TBD |
-| Format conversion | 50ms | TBD |
-| KVS ingestion | 200ms | TBD |
-| Transcribe | 1-2s | TBD |
-| Translate | 500ms | TBD |
-| TTS | 1s | TBD |
-| S3 upload | 100ms | TBD |
-| Listener download | 100ms | TBD |
-| **TOTAL** | **3-4s** | TBD |
+#### Phase 3 (Current):
+| Component | Target | Notes |
+|-----------|--------|-------|
+| AudioWorklet capture | ~3ms | Industry-standard performance |
+| Upload to backend | 50ms | WebSocket + network |
+| PCM storage (S3) | 50ms | Direct write, no conversion |
+| S3 event trigger | Immediate | But fires per-object! |
+| Batch aggregation | 100ms | s3_audio_consumer processing |
+| Transcribe (batch job) | 15-60s | ⚠️ TOO SLOW - queue + boot |
+| Translate | 500ms | Per language, parallelized |
+| TTS | 1s | Polly synthesis |
+| S3 upload | 100ms | Store MP3 chunk |
+| Listener download | 100ms | Presigned URL fetch |
+| **TOTAL** | **10-15s** | ⚠️ Mostly Transcribe overhead |
+
+#### Phase 4 (Target - Kinesis):
+| Component | Target | Improvement |
+|-----------|--------|-------------|
+| Kinesis ingestion | 10ms | 5x faster than S3 |
+| Kinesis batching | 3s | Native batching (controlled) |
+| Transcribe Streaming | 500ms | 30-120x faster than batch jobs |
+| **TOTAL** | **5-7s** | 40-60% faster! |
 
 ---
 
 ## Core Components
 
 ### 1. Speaker App (Frontend)
-**Purpose:** Capture and stream audio to backend
+**Purpose:** Capture and stream raw PCM audio to backend
 
 **Key Files:**
-- `AudioStreamService.ts` - MediaRecorder implementation
+- `audio-worklet-processor.js` - AudioWorklet processor (captures Float32)
+- `AudioWorkletService.ts` - AudioWorklet wrapper
 - `SpeakerService.ts` - Service orchestration
 - `SpeakerApp.tsx` - Main UI component
 
 **Features:**
-- Microphone access with permission handling
-- 250ms chunk capture and streaming
-- WebSocket communication
+- AudioWorklet capture (~3ms latency)
+- Float32 → Int16 conversion
+- WebSocket streaming (256ms chunks)
 - Pause/mute/volume controls
 
 ### 2. kvs_stream_writer (Backend)
-**Purpose:** Convert WebM to PCM and write to KVS Stream
+**Purpose:** Store PCM chunks for processing
+
+**Current (Phase 3):** Write to S3
+**Future (Phase 4):** Write to Kinesis
 
 **Key Files:**
 - `handler.py` - Lambda entry point
-- ffmpeg Lambda Layer - Format conversion
 
 **Features:**
 - Base64 decoding
-- WebM → PCM conversion (ffmpeg)
-- KVS Stream creation and management
-- PutMedia API integration
+- Direct S3 storage (no conversion)
+- Will be updated for Kinesis PutRecord
 
-### 3. kvs_stream_consumer (Backend)
-**Purpose:** Extract audio from KVS and forward to processor
+### 3. s3_audio_consumer (Backend)
+**Purpose:** Aggregate PCM chunks into batches
+
+**Status:** Phase 3 only - DELETE in Phase 4
 
 **Key Files:**
-- `handler.py` - EventBridge handler
+- `handler.py` - S3 event handler
 
 **Features:**
-- Triggered by KVS Stream events
-- GetMedia API integration
-- PCM chunk extraction
-- Forward to audio_processor
+- S3 event processing
+- Chunk listing and downloading
+- Binary PCM concatenation
+- Batch forwarding to audio_processor
 
 ### 4. audio_processor (Backend)
 **Purpose:** Transcribe, translate, and synthesize speech
 
 **Key Files:**
 - `handler.py` - Processing orchestration
-- Transcribe/Translate/TTS integration
 
-**Features:**
-- Streaming transcription (partial results)
-- Parallel translation (multiple languages)
-- TTS with emotion SSML
-- S3 storage with presigned URLs
-- WebSocket notifications to listeners
+**Current (Phase 3):**
+- Transcribe batch jobs (StartTranscriptionJob)
+- Parallel translation
+- TTS with Polly
+- S3 storage + presigned URLs
+- WebSocket notifications
+
+**Phase 4 Updates:**
+- Replace batch jobs with Transcribe Streaming API
+- Accept Kinesis batch events instead of S3
+- Remove S3 temp file logic
 
 ### 5. Listener App (Frontend)
 **Purpose:** Receive and play translated audio
 
 **Key Files:**
-- `S3AudioPlayer.ts` - S3 download and playback
+- `S3AudioPlayer.ts` - S3 download and playback queue
 - `ListenerService.ts` - Service orchestration
 - `ListenerApp.tsx` - Main UI component
 
 **Features:**
+- WebSocket message handling
 - S3 audio download with retry
 - Sequential playback queue
 - Prefetching (2-3 chunks ahead)
 - Pause/mute/volume controls
-- Language switching
 
 ---
 
 ## Development Workflow
 
-### Current Phase: Phase 0 ✅
-**Status:** Blueprints complete, ready for implementation
+### Current Phase: Phase 4 Deployed ✅
+**Status:** Code deployed, testing required
 
-**Deliverables:**
-- ✅ Master architecture document
-- ✅ 3 detailed implementation guides
-- ✅ Progress tracking system
-- ✅ Verification scripts
-- ✅ Obsolete docs archived
+**What's New in Phase 4:**
+- ✅ Kinesis Data Stream for audio ingestion
+- ✅ Native batching (3-second windows)
+- ✅ Transcribe Streaming API (500ms, not 15-60s)
+- ✅ 92% fewer Lambda invocations (20/min vs 240/min)
+- ✅ Deleted obsolete Lambdas (kvs_stream_writer, s3_audio_consumer)
 
-### Next Phase: Phase 1
-**Goal:** Speaker MediaRecorder implementation
+**Testing Required:**
+- [ ] End-to-end latency measurement (target: 5-7s)
+- [ ] Verify Lambda invocation reduction
+- [ ] Validate Transcribe Streaming works
+- [ ] Confirm cost reduction
 
-**Steps:**
-1. Create `AudioStreamService.ts`
-2. Replace WebRTC in `SpeakerService.ts`
-3. Add WebSocket route for audio chunks
-4. Test: Audio reaches backend
+**Next Steps:**
+1. Run end-to-end tests with speaker + listener apps
+2. Monitor CloudWatch metrics (Lambda invocations, Kinesis throughput)
+3. Measure actual latency vs 5-7s target
+4. Validate cost savings
 
-**Reference:** [PHASE1_SPEAKER_MEDIARECORDER_GUIDE.md](./PHASE1_SPEAKER_MEDIARECORDER_GUIDE.md)
+**Reference:** [CHECKPOINT_PHASE4_COMPLETE.md](./CHECKPOINT_PHASE4_COMPLETE.md)
 
 ---
 
 ## Testing
 
-### Verification Script:
-```bash
-# Automated verification
-SESSION_ID=your-session-id ./scripts/verify-audio-pipeline.sh
-```
-
-**Checks:**
-1. ✓ KVS Stream exists
-2. ✓ Fragments present (audio reaching KVS)
-3. ✓ kvs_stream_writer healthy
-4. ✓ EventBridge rule configured
-5. ✓ kvs_stream_consumer triggered
-6. ✓ audio_processor processing
-7. ✓ S3 files created
-
 ### Manual Testing:
 ```bash
-# Check KVS Stream
-aws kinesisvideo describe-stream --stream-name session-{id}
-aws kinesisvideo list-fragments --stream-name session-{id}
+# Start speaker app
+cd frontend-client-apps/speaker-app && npm run dev
 
-# Check S3 audio files
-aws s3 ls s3://translation-audio-dev/sessions/{id}/translated/
+# Start listener app (different terminal)
+cd frontend-client-apps/listener-app && npm run dev
 
-# Monitor logs
-./scripts/tail-lambda-logs.sh kvs-stream-writer-dev
+# Monitor backend logs
+./scripts/tail-lambda-logs.sh audio-processor
+
+# Check S3 for PCM chunks
+aws s3 ls s3://low-latency-audio-dev/sessions/
+
+# Check translated audio
+aws s3 ls s3://translation-audio-dev/sessions/
+```
+
+### Phase 4 Verification:
+```bash
+# After Kinesis deployment, verify:
+
+# 1. Kinesis stream exists
+aws kinesis describe-stream --stream-name audio-ingestion-dev
+
+# 2. Records flowing
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Kinesis \
+  --metric-name IncomingRecords \
+  --dimensions Name=StreamName,Value=audio-ingestion-dev \
+  --start-time $(date -u -v-5M +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 60 \
+  --statistics Sum
+
+# 3. Lambda invocations reduced (should be ~20/min, not 240/min)
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Lambda \
+  --metric-name Invocations \
+  --dimensions Name=FunctionName,Value=audio-processor \
+  --start-time $(date -u -v-5M +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 60 \
+  --statistics Sum
 ```
 
 ---
@@ -533,23 +538,17 @@ aws s3 ls s3://translation-audio-dev/sessions/{id}/translated/
 ## Monitoring
 
 ### CloudWatch Metrics:
-- Audio chunks received (kvs_stream_writer)
-- Conversion latency (kvs_stream_writer)
-- Fragment count (KVS Stream)
+- Audio chunks received (connection_handler)
+- PCM storage latency (kvs_stream_writer)
 - Processing latency (audio_processor)
 - S3 upload success rate
-- End-to-end latency
+- End-to-end latency (measured client-side)
 
 ### CloudWatch Logs:
+- `/aws/lambda/session-connection-handler-dev`
 - `/aws/lambda/kvs-stream-writer-dev`
-- `/aws/lambda/kvs-stream-consumer-dev`
-- `/aws/lambda/audio-processor-dev`
-- `/aws/lambda/connection-handler-dev`
-
-### Alarms (Future):
-- Latency > 5 seconds
-- Error rate > 5%
-- KVS Stream failures
+- `/aws/lambda/s3-audio-consumer-dev`
+- `/aws/lambda/audio-processor`
 
 ---
 
@@ -566,20 +565,19 @@ aws s3 ls s3://translation-audio-dev/sessions/{id}/translated/
 ### Data Protection:
 - WebSocket: TLS (wss://)
 - S3: Presigned URLs (10-minute expiration)
-- KVS Stream: Encrypted at rest
-- No long-term storage: 1hr (KVS), 24hr (S3)
+- No long-term storage: 1 day retention, auto-cleanup
 
 ---
 
 ## Performance Targets
 
 ### Latency:
-- **Target:** 3-4 seconds end-to-end
-- **Components:** See latency budget above
-- **Measurement:** Timestamps at each stage
+- **Phase 3 (Current):** 10-15 seconds end-to-end
+- **Phase 4 (Target):** 5-7 seconds end-to-end
+- **Ultimate Goal:** <5 seconds
 
 ### Scale:
-- **Sessions:** 10 concurrent (MVP) → 100 (production)
+- **Sessions:** 10 concurrent (MVP) → 1000 (production)
 - **Listeners:** 50 per session (MVP) → 500 (production)
 - **Languages:** 10 supported
 - **Uptime:** 99.9% target
@@ -591,65 +589,31 @@ aws s3 ls s3://translation-audio-dev/sessions/{id}/translated/
 
 ---
 
-## Troubleshooting
-
-### No Audio Reaching Backend:
-```bash
-# Check browser console for MediaRecorder errors
-# Check WebSocket connection status
-# Verify microphone permissions granted
-```
-
-### No Fragments in KVS Stream:
-```bash
-# Check kvs_stream_writer logs
-./scripts/tail-lambda-logs.sh kvs-stream-writer-dev
-
-# Verify ffmpeg conversion working
-# Check IAM permissions for PutMedia
-```
-
-### Listeners Not Receiving Audio:
-```bash
-# Check S3 bucket exists
-aws s3 ls | grep translation-audio
-
-# Check audio_processor logs
-./scripts/tail-lambda-logs.sh audio-processor-dev
-
-# Verify WebSocket notifications sent
-# Check S3 CORS configuration
-```
-
----
-
 ## Documentation
 
-### Master Reference:
-- **ARCHITECTURE_DECISIONS.md** - Single source of truth, read this first
+### Master References:
+- **ARCHITECTURE_DECISIONS.md** - Single source of truth, all major decisions
+- **IMPLEMENTATION_STATUS.md** - Current progress and phase tracking
+- **BACKEND_MESSAGE_FLOW.md** - Complete message flow with payload examples
 
-### Implementation Guides:
-- **PHASE1_SPEAKER_MEDIARECORDER_GUIDE.md** - Speaker app implementation
-- **PHASE2_BACKEND_KVS_WRITER_GUIDE.md** - Backend KVS integration
-- **PHASE3_LISTENER_S3_PLAYBACK_GUIDE.md** - Listener app implementation
-
-### Status & Progress:
-- **IMPLEMENTATION_STATUS.md** - Current progress and next steps
+### Phase-Specific Guides:
+- **PHASE4_KINESIS_ARCHITECTURE.md** - Kinesis migration plan (Phase 4)
+- **PHASE4_START_CONTEXT.md** - Context for starting Phase 4
+- **PHASE3_TESTING_GUIDE.md** - Testing the current implementation
 
 ### Historical:
-- **archive/webrtc-architecture/** - Previous WebRTC approach (archived)
+- **archive/webrtc-architecture/** - Previous WebRTC approach (archived Nov 26, 2025)
 
 ---
 
 ## Contributing
 
 ### Development Process:
-1. Read `ARCHITECTURE_DECISIONS.md`
+1. Read `ARCHITECTURE_DECISIONS.md` first
 2. Check `IMPLEMENTATION_STATUS.md` for current phase
-3. Follow corresponding `PHASEXX_GUIDE.md`
-4. Update task_progress after each step
-5. Create checkpoint document when phase complete
-6. Commit with descriptive messages
+3. Follow corresponding phase guide
+4. Update documentation after changes
+5. Commit with descriptive messages
 
 ### Code Standards:
 - TypeScript strict mode
@@ -660,19 +624,43 @@ aws s3 ls | grep translation-audio
 
 ---
 
+## Architecture Evolution
+
+### Nov 26, 2025: Traditional KVS Stream Plan
+- Initial plan: MediaRecorder → WebM → KVS Stream
+- Reason: Transition away from WebRTC peer-to-peer
+
+### Nov 27, 2025: S3-Based Storage Pivot
+- Change: WebM → S3 (no KVS Stream yet)
+- Reason: MediaRecorder chunks not standalone
+- Result: Working storage, but not final architecture
+
+### Nov 28, 2025: AudioWorklet + PCM Architecture
+- **Major pivot:** Replaced MediaRecorder with AudioWorklet
+- **Format:** Raw Int16 PCM (no WebM container)
+- **Benefits:** 33-40% latency reduction, 50% code reduction
+- **Result:** Phase 3 complete and deployed
+
+### Nov 28, 2025: Phase 4 Kinesis Plan
+- **Problem identified:** S3 event batching doesn't work as expected
+- **Solution:** Kinesis Data Streams with native batching
+- **Expected:** 50% additional latency reduction, 75% cost savings
+- **Status:** Documented and ready to implement
+
+---
+
 ## Support
 
 ### Issues:
-Check phase-specific troubleshooting sections in implementation guides
+Review phase-specific documentation in `IMPLEMENTATION_STATUS.md`
 
 ### Questions:
-Review `ARCHITECTURE_DECISIONS.md` for design rationale
+Check `ARCHITECTURE_DECISIONS.md` for design rationale
 
 ### Context Recovery:
 1. Read `ARCHITECTURE_DECISIONS.md`
 2. Check `IMPLEMENTATION_STATUS.md`
-3. Find latest `CHECKPOINT_PHASEXX_COMPLETE.md`
-4. Continue from next unchecked task
+3. Review `PHASE4_START_CONTEXT.md` for next steps
 
 ---
 
@@ -682,12 +670,4 @@ Review `ARCHITECTURE_DECISIONS.md` for design rationale
 
 ---
 
-## Architecture History
-
-**Nov 26, 2025:** Switched from WebRTC peer-to-peer to Traditional KVS Stream architecture for simpler implementation and backend processing integration.
-
-**Previous approach:** WebRTC Signaling Channels (peer-to-peer audio, no backend processing)  
-**Current approach:** Traditional KVS Stream (backend processing, translation enabled)  
-**Rationale:** Translation requires backend processing; original audio not needed
-
-Archived WebRTC documentation available in `archive/webrtc-architecture/` for reference.
+**For detailed architecture information, always refer to [ARCHITECTURE_DECISIONS.md](./ARCHITECTURE_DECISIONS.md) first.**

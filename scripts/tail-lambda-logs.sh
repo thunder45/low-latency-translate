@@ -7,7 +7,13 @@ REGION=${AWS_REGION:-us-east-1}
 
 if [ -z "$FUNCTION_NAME" ]; then
     echo "Usage: $0 <function-name>"
-    echo "Example: $0 kvs-stream-consumer-dev"
+    echo ""
+    echo "Phase 4 Lambda functions:"
+    echo "  - session-connection-handler-dev"
+    echo "  - session-disconnect-handler-dev"
+    echo "  - audio-processor"
+    echo ""
+    echo "Example: $0 audio-processor"
     exit 1
 fi
 
