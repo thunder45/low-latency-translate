@@ -516,9 +516,20 @@ class SessionManagementStack(Stack):
         )
 
         # Configure S3 event notification to trigger this function
-        # This is done via S3 bucket notification configuration
+        # Support both PCM (new) and WebM (legacy) formats
         from aws_cdk.aws_s3_notifications import LambdaDestination
         
+        # Notification for PCM files (primary)
+        self.audio_chunks_bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            LambdaDestination(function),
+            s3.NotificationKeyFilter(
+                prefix="sessions/",
+                suffix=".pcm"
+            )
+        )
+        
+        # Notification for WebM files (legacy support)
         self.audio_chunks_bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
             LambdaDestination(function),

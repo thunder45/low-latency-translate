@@ -1,4 +1,4 @@
-import { AudioStreamService } from './AudioStreamService';
+import { AudioWorkletService } from './AudioWorkletService';
 import { useSpeakerStore, QualityWarning } from '../../../shared/store/speakerStore';
 import { ErrorHandler } from '../../../shared/utils/ErrorHandler';
 import { RetryHandler } from '../../../shared/utils/RetryHandler';
@@ -16,15 +16,15 @@ export interface SpeakerServiceConfig {
 }
 
 /**
- * Speaker service orchestrates MediaRecorder audio streaming and WebSocket control
+ * Speaker service orchestrates AudioWorklet PCM streaming and WebSocket control
  * 
  * Architecture:
- * - MediaRecorder: Browser-native audio capture with 250ms chunks
+ * - AudioWorklet: Low-latency raw PCM capture (~3ms latency)
  * - WebSocket: Audio streaming and control messages
  */
 export class SpeakerService {
   private wsClient: WebSocketClient;
-  private audioStreamService: AudioStreamService | null = null;
+  private audioWorkletService: AudioWorkletService | null = null;
   private statusPollInterval: NodeJS.Timeout | null = null;
   private retryHandler: RetryHandler;
 
@@ -99,56 +99,57 @@ export class SpeakerService {
   }
 
   /**
-   * Start audio broadcasting via MediaRecorder
+   * Start audio broadcasting via AudioWorklet
    */
   async startBroadcast(): Promise<void> {
     try {
-      console.log('[SpeakerService] Starting audio streaming...');
+      console.log('[SpeakerService] Starting audio streaming with AudioWorklet...');
       
       // Get session ID from store
       const sessionId = useSpeakerStore.getState().sessionId;
       if (!sessionId) {
         throw new Error('Session ID not set. Cannot start broadcast.');
-      } else {
-        console.log(`[SpeakerService] Session ID: ${sessionId}`);
       }
       
-      // Create AudioStreamService
-      this.audioStreamService = new AudioStreamService({
-        sessionId,
-        websocket: this.wsClient.getWebSocket(),
-        chunkDuration: 250, // 250ms chunks
-        onChunkSent: (_size, index) => {
-          // Update UI with streaming stats
-          if (index % 40 === 0) { // Every 10 seconds
-            console.log(`[SpeakerService] Streaming: ${index} chunks sent`);
-          }
+      console.log(`[SpeakerService] Session ID: ${sessionId}`);
+      
+      // Create AudioWorkletService
+      this.audioWorkletService = new AudioWorkletService({
+        sampleRate: 16000,  // AWS Transcribe optimal
+        bufferSize: 4096,   // ~256ms at 16kHz
+        onAudioData: (pcmData: ArrayBuffer, timestamp: number) => {
+          // Send PCM data via WebSocket
+          this.sendPCMChunk(pcmData, timestamp, sessionId);
         },
-        onError: (error) => {
-          console.error('[SpeakerService] Audio streaming error:', error);
+        onError: (error: Error) => {
+          console.error('[SpeakerService] AudioWorklet error:', error);
           ErrorHandler.handle(error, {
             component: 'SpeakerService',
-            operation: 'audioStream',
+            operation: 'audioWorklet',
           });
         },
-        onStreamStart: () => {
-          useSpeakerStore.getState().setTransmitting(true);
-          console.log('[SpeakerService] Audio streaming started');
-        },
-        onStreamStop: () => {
-          useSpeakerStore.getState().setTransmitting(false);
-          console.log('[SpeakerService] Audio streaming stopped');
+        onStateChange: (state) => {
+          if (state === 'capturing') {
+            useSpeakerStore.getState().setTransmitting(true);
+          } else if (state === 'idle') {
+            useSpeakerStore.getState().setTransmitting(false);
+          }
         },
       });
       
-      // Start capturing and streaming
-      await this.audioStreamService.start();
+      // Initialize AudioWorklet
+      await this.audioWorkletService.initialize();
       
-      // Start session status polling (WebSocket for metadata)
+      // Start capturing
+      await this.audioWorkletService.startCapture();
+      
+      // Start session status polling
       this.startStatusPolling();
       
       useSpeakerStore.getState().setConnected(true);
       useSpeakerStore.getState().setTransmitting(true);
+      
+      console.log('[SpeakerService] Audio streaming started with AudioWorklet');
       
     } catch (error) {
       console.error('[SpeakerService] Failed to start broadcast:', error);
@@ -159,6 +160,32 @@ export class SpeakerService {
       throw new Error(appError.userMessage);
     }
   }
+  
+  /**
+   * Send PCM chunk via WebSocket
+   */
+  private sendPCMChunk(pcmData: ArrayBuffer, timestamp: number, sessionId: string): void {
+    try {
+      // Convert ArrayBuffer to base64 for WebSocket transport
+      const uint8Array = new Uint8Array(pcmData);
+      const base64 = btoa(String.fromCharCode(...uint8Array));
+      
+      // Send via WebSocket
+      this.wsClient.send({
+        action: 'audioChunk',
+        sessionId,
+        audioData: base64,
+        timestamp,
+        format: 'pcm',  // Changed from 'webm-opus'
+        sampleRate: 16000,
+        channels: 1,
+        encoding: 's16le',
+      });
+      
+    } catch (error) {
+      console.error('[SpeakerService] Failed to send PCM chunk:', error);
+    }
+  }
 
   /**
    * Pause broadcast
@@ -167,9 +194,9 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      // Pause audio streaming (stop sending chunks)
-      if (this.audioStreamService) {
-        this.audioStreamService.pause();
+      // Pause audio capture
+      if (this.audioWorkletService) {
+        this.audioWorkletService.pause();
       }
       
       useSpeakerStore.getState().setPaused(true);
@@ -205,9 +232,9 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      // Resume audio streaming
-      if (this.audioStreamService) {
-        this.audioStreamService.resume();
+      // Resume audio capture
+      if (this.audioWorkletService) {
+        this.audioWorkletService.resume();
       }
       
       useSpeakerStore.getState().setPaused(false);
@@ -255,9 +282,9 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      // Pause audio streaming
-      if (this.audioStreamService) {
-        this.audioStreamService.pause();
+      // Pause audio capture
+      if (this.audioWorkletService) {
+        this.audioWorkletService.pause();
       }
       
       useSpeakerStore.getState().setMuted(true);
@@ -293,9 +320,9 @@ export class SpeakerService {
     const startTime = Date.now();
     
     try {
-      // Resume audio streaming
-      if (this.audioStreamService) {
-        this.audioStreamService.resume();
+      // Resume audio capture
+      if (this.audioWorkletService) {
+        this.audioWorkletService.resume();
       }
       
       useSpeakerStore.getState().setMuted(false);
@@ -386,10 +413,10 @@ export class SpeakerService {
         }
       });
 
-      // Cleanup audio streaming
-      if (this.audioStreamService) {
-        this.audioStreamService.cleanup();
-        this.audioStreamService = null;
+      // Cleanup audio capture
+      if (this.audioWorkletService) {
+        this.audioWorkletService.cleanup();
+        this.audioWorkletService = null;
       }
 
       // Stop status polling
@@ -415,9 +442,7 @@ export class SpeakerService {
    * Get current audio input level
    */
   getInputLevel(): number {
-    if (this.audioStreamService) {
-      return this.audioStreamService.getInputLevel();
-    }
+    // TODO: Implement with AudioWorklet if needed
     return 0;
   }
 
@@ -435,9 +460,9 @@ export class SpeakerService {
   cleanup(): void {
     this.stopStatusPolling();
     
-    if (this.audioStreamService) {
-      this.audioStreamService.cleanup();
-      this.audioStreamService = null;
+    if (this.audioWorkletService) {
+      this.audioWorkletService.cleanup();
+      this.audioWorkletService = null;
     }
     
     this.wsClient.disconnect();

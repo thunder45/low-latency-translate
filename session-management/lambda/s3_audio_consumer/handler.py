@@ -1,8 +1,9 @@
 """
 S3 Audio Consumer Lambda Handler
 
-Triggered by S3 events when WebM chunks are uploaded.
-Aggregates chunks, concatenates into complete stream, converts to PCM.
+Triggered by S3 events when PCM chunks are uploaded.
+Aggregates chunks and forwards to audio_processor.
+No conversion needed - PCM is ready to use.
 """
 
 import json
@@ -37,8 +38,7 @@ BATCH_WINDOW_SECONDS = int(os.environ.get('BATCH_WINDOW_SECONDS', '3'))  # Aggre
 MIN_CHUNKS_FOR_PROCESSING = int(os.environ.get('MIN_CHUNKS_FOR_PROCESSING', '8'))  # Minimum 2 seconds (8 * 250ms)
 CHUNK_DURATION_MS = 250  # Each chunk is 250ms
 
-# FFmpeg binary path (from Lambda layer)
-FFMPEG_PATH = '/opt/bin/ffmpeg'
+# Note: FFmpeg no longer needed for PCM chunks
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -151,10 +151,12 @@ def list_session_chunks(bucket: str, prefix: str) -> List[Dict[str, Any]]:
             for obj in page.get('Contents', []):
                 key = obj['Key']
                 
-                # Extract timestamp from filename: {timestamp}.webm
+                # Extract timestamp from filename: {timestamp}.pcm or {timestamp}.webm
                 filename = key.split('/')[-1]
-                if filename.endswith('.webm'):
-                    timestamp_str = filename[:-5]  # Remove .webm
+                if filename.endswith('.pcm'):
+                    timestamp_str = filename[:-4]  # Remove .pcm
+                elif filename.endswith('.webm'):
+                    timestamp_str = filename[:-5]  # Remove .webm (legacy)
                     try:
                         timestamp = int(timestamp_str)
                         chunks.append({
@@ -226,7 +228,10 @@ def process_chunk_batch(
     batch_index: int
 ) -> None:
     """
-    Process a batch of chunks: concatenate and convert to PCM.
+    Process a batch of PCM chunks: concatenate and forward.
+    
+    For PCM: Simple binary concatenation (no conversion needed)
+    For WebM: Would need FFmpeg (but deprecated with AudioWorklet)
     
     Args:
         session_id: Session identifier
@@ -234,34 +239,23 @@ def process_chunk_batch(
         bucket: S3 bucket name
         batch_index: Index of this batch
     """
-    temp_dir = None
-    
     try:
-        # Create temporary directory
-        temp_dir = tempfile.mkdtemp()
-        logger.info(f"Created temp directory: {temp_dir}")
+        logger.info(f"Processing batch {batch_index} with {len(batch)} chunks")
         
-        # Download all chunks in batch
-        chunk_files = []
+        # Download and concatenate PCM chunks directly
+        pcm_data = b''
+        
         for i, chunk in enumerate(batch):
-            chunk_path = os.path.join(temp_dir, f"chunk_{i:04d}.webm")
-            s3_client.download_file(bucket, chunk['key'], chunk_path)
-            chunk_files.append(chunk_path)
-            logger.info(f"Downloaded chunk {i + 1}/{len(batch)}: {chunk['key']}")
+            # Download chunk from S3
+            response = s3_client.get_object(Bucket=bucket, Key=chunk['key'])
+            chunk_data = response['Body'].read()
+            
+            # Concatenate (PCM is just raw samples, simple binary append)
+            pcm_data += chunk_data
+            
+            logger.debug(f"Downloaded chunk {i + 1}/{len(batch)}: {chunk['key']}, size: {len(chunk_data)}")
         
-        # Concatenate WebM chunks
-        concatenated_path = os.path.join(temp_dir, 'concatenated.webm')
-        concatenate_webm_chunks(chunk_files, concatenated_path)
-        
-        # Convert to PCM
-        pcm_path = os.path.join(temp_dir, 'audio.pcm')
-        convert_to_pcm(concatenated_path, pcm_path)
-        
-        # Read PCM data
-        with open(pcm_path, 'rb') as f:
-            pcm_data = f.read()
-        
-        logger.info(f"Converted batch to PCM: {len(pcm_data)} bytes")
+        logger.info(f"Concatenated PCM batch: {len(pcm_data)} bytes")
         
         # Calculate batch metadata
         batch_start_ts = batch[0]['timestamp']
@@ -283,89 +277,6 @@ def process_chunk_batch(
             f"Error processing batch {batch_index} for session {session_id}: {str(e)}",
             exc_info=True
         )
-    
-    finally:
-        # Cleanup temporary files
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                import shutil
-                shutil.rmtree(temp_dir)
-                logger.info(f"Cleaned up temp directory: {temp_dir}")
-            except Exception as e:
-                logger.warning(f"Failed to cleanup temp directory: {str(e)}")
-
-
-def concatenate_webm_chunks(chunk_files: List[str], output_path: str) -> None:
-    """
-    Concatenate WebM chunk files into a single file.
-    
-    Uses simple binary concatenation as WebM fragments can be joined this way.
-    
-    Args:
-        chunk_files: List of chunk file paths
-        output_path: Output file path
-    """
-    try:
-        with open(output_path, 'wb') as outfile:
-            for chunk_file in chunk_files:
-                with open(chunk_file, 'rb') as infile:
-                    outfile.write(infile.read())
-        
-        logger.info(f"Concatenated {len(chunk_files)} chunks to {output_path}")
-        
-    except Exception as e:
-        logger.error(f"Error concatenating chunks: {str(e)}")
-        raise
-
-
-def convert_to_pcm(input_path: str, output_path: str) -> None:
-    """
-    Convert WebM audio to PCM format using ffmpeg.
-    
-    Output format:
-    - Sample rate: 16000 Hz
-    - Channels: 1 (mono)
-    - Format: s16le (signed 16-bit little-endian)
-    
-    Args:
-        input_path: Input WebM file path
-        output_path: Output PCM file path
-    """
-    try:
-        # FFmpeg command for WebM → PCM conversion
-        cmd = [
-            FFMPEG_PATH,
-            '-i', input_path,           # Input file
-            '-f', 's16le',              # Output format: signed 16-bit little-endian
-            '-acodec', 'pcm_s16le',     # Audio codec
-            '-ar', '16000',             # Sample rate: 16kHz
-            '-ac', '1',                 # Channels: mono
-            '-y',                       # Overwrite output file
-            output_path
-        ]
-        
-        logger.info(f"Running ffmpeg: {' '.join(cmd)}")
-        
-        # Execute ffmpeg
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode != 0:
-            logger.error(f"FFmpeg error: {result.stderr}")
-            raise RuntimeError(f"FFmpeg conversion failed: {result.stderr}")
-        
-        logger.info(f"Converted to PCM: {output_path}")
-        
-    except subprocess.TimeoutExpired:
-        logger.error("FFmpeg conversion timed out")
-        raise
-    except Exception as e:
-        logger.error(f"Error converting to PCM: {str(e)}")
-        raise
 
 
 def invoke_audio_processor(
@@ -446,6 +357,7 @@ def health_check() -> Dict[str, Any]:
             'status': 'healthy',
             'function': 's3_audio_consumer',
             'stage': STAGE,
-            'ffmpeg': os.path.exists(FFMPEG_PATH)
+            'mode': 'pcm-direct',
+            'ffmpeg_needed': False
         })
     }
