@@ -65,15 +65,22 @@ class AudioTranscriptionStack(Stack):
         # Create Lambda execution role
         lambda_role = self._create_lambda_role(feature_flag_parameter)
 
+        # Import shared code Lambda Layer (minimal - without emotion/quality for now)
+        shared_layer = lambda_.LayerVersion.from_layer_version_arn(
+            self,
+            'SharedLayer',
+            layer_version_arn='arn:aws:lambda:us-east-1:193020606184:layer:audio-transcription-shared:3'
+        )
+        
         # Create Audio Processor Lambda function
-        self.audio_processor_function = self._create_audio_processor_lambda(lambda_role)
+        self.audio_processor_function = self._create_audio_processor_lambda(lambda_role, shared_layer)
         
         # Grant S3 permissions to audio processor (Phase 3)
         self.translated_audio_bucket.grant_read_write(self.audio_processor_function)
 
         # Phase 4: Connect audio_processor to Kinesis Data Stream
-        if session_management_stack and hasattr(session_management_stack, 'audio_stream'):
-            self._configure_kinesis_event_source(session_management_stack.audio_stream)
+        # Import stream from SessionManagementStack via CloudFormation export
+        self._configure_kinesis_event_source_from_export()
 
         # Create CloudWatch alarms
         self._create_cloudwatch_alarms(self.audio_processor_function, alarm_topic)
@@ -275,32 +282,47 @@ class AudioTranscriptionStack(Stack):
 
         return role
 
-    def _create_audio_processor_lambda(self, role: iam.Role) -> lambda_.Function:
+    def _create_audio_processor_lambda(self, role: iam.Role, shared_layer: lambda_.LayerVersion) -> lambda_.Function:
         """
         Create Audio Processor Lambda function with partial results configuration.
         
         Args:
             role: IAM role for Lambda execution
+            shared_layer: Lambda Layer with shared code
             
         Returns:
             Lambda function configured for partial results processing
         """
         # Get the path to lambda directory (relative to infrastructure/stacks directory)
         import os
+        from aws_cdk import BundlingOptions
+        
         lambda_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             'lambda',
             'audio_processor'
         )
         
+        # Phase 4: Use Docker bundling for numpy, Layer for shared code
         function = lambda_.Function(
             self,
             'AudioProcessorFunction',
             function_name='audio-processor',
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler='handler.lambda_handler',
-            code=lambda_.Code.from_asset(lambda_path),
+            code=lambda_.Code.from_asset(
+                lambda_path,
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        'bash', '-c',
+                        'pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all: && '
+                        'cp *.py /asset-output/'
+                    ],
+                )
+            ),
             role=role,
+            layers=[shared_layer],  # Add shared code layer
             memory_size=512,  # Increased from 256 MB for buffers and cache
             timeout=Duration.seconds(60),  # Increased from 30s for orphan cleanup
             environment={
@@ -339,7 +361,7 @@ class AudioTranscriptionStack(Stack):
                 
                 # AWS service configuration
                 # Note: AWS_REGION is automatically set by Lambda runtime
-                'SESSIONS_TABLE_NAME': 'Sessions',
+                'SESSIONS_TABLE_NAME': f'Sessions-{self.env_name}',
                 'CONNECTIONS_TABLE': f'Connections-{self.env_name}',
                 'TRANSLATION_PIPELINE_FUNCTION_NAME': 'TranslationProcessor',
                 'S3_BUCKET_NAME': f'translation-audio-{self.env_name}',
@@ -782,24 +804,31 @@ class AudioTranscriptionStack(Stack):
         dashboard.add_widgets(latency_widget, events_widget)
         dashboard.add_widgets(lambda_widget)
 
-    def _configure_kinesis_event_source(self, kinesis_stream) -> None:
+    def _configure_kinesis_event_source_from_export(self) -> None:
         """
-        Configure Kinesis Data Stream as event source for audio_processor (Phase 4).
+        Configure Kinesis Data Stream as event source using CloudFormation import (Phase 4).
         
-        This replaces S3-based event triggering with native Kinesis batching:
-        - BatchWindow: 3 seconds (wait for 3s of records)
-        - BatchSize: 100 records max per invocation
-        - ParallelizationFactor: 10 (process 10 shards in parallel)
+        This imports the Kinesis stream created by SessionManagementStack via
+        CloudFormation exports, since the stacks are deployed separately.
         
         Benefits:
-        - Native batching (no race conditions)
+        - Cross-stack reference for independent deployments
+        - Native Kinesis batching (3-second windows)
         - 92% fewer Lambda invocations
         - Predictable processing windows
-        
-        Args:
-            kinesis_stream: Kinesis Data Stream from session_management_stack
         """
-        from aws_cdk import aws_lambda_event_sources as event_sources
+        from aws_cdk import aws_lambda_event_sources as event_sources, Fn
+        import aws_cdk.aws_kinesis as kinesis
+        
+        # Import Kinesis stream ARN from SessionManagementStack export
+        stream_arn = Fn.import_value(f"AudioIngestionStreamArn-{self.env_name}")
+        
+        # Create stream reference from ARN
+        kinesis_stream = kinesis.Stream.from_stream_arn(
+            self,
+            "ImportedAudioIngestionStream",
+            stream_arn=stream_arn
+        )
         
         # Add Kinesis stream as event source
         self.audio_processor_function.add_event_source(
@@ -815,7 +844,7 @@ class AudioTranscriptionStack(Stack):
             )
         )
         
-        # Grant Kinesis read permissions (automatically done by add_event_source, but explicit)
+        # Grant Kinesis read permissions
         kinesis_stream.grant_read(self.audio_processor_function)
 
     def _create_translated_audio_bucket(self) -> s3.Bucket:

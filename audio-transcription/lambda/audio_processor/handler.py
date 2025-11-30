@@ -48,21 +48,34 @@ from shared.services.transcribe_client import (
 # Translation Pipeline imports
 from shared.services.lambda_translation_pipeline import LambdaTranslationPipeline
 
-# Emotion dynamics imports
-from emotion_dynamics.orchestrator import AudioDynamicsOrchestrator
+# Emotion dynamics imports - TEMPORARILY DISABLED FOR PHASE 4
+# Large dependencies (scipy, librosa) exceed Lambda 250MB limit
+# See OPTIONAL_FEATURES_REINTEGRATION_PLAN.md for adding back
+# from emotion_dynamics.orchestrator import AudioDynamicsOrchestrator
 
-# Audio quality imports
-from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
-from audio_quality.models.quality_config import QualityConfig
-from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
-from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
-from audio_quality.utils.graceful_degradation import analyze_with_fallback
-from audio_quality.exceptions import (
-    AudioQualityError,
-    AudioFormatError,
-    QualityAnalysisError,
-    ConfigurationError
-)
+# Audio quality imports - TEMPORARILY DISABLED FOR PHASE 4
+# from audio_quality.analyzers.quality_analyzer import AudioQualityAnalyzer
+# from audio_quality.models.quality_config import QualityConfig
+# from audio_quality.notifiers.metrics_emitter import QualityMetricsEmitter
+# from audio_quality.notifiers.speaker_notifier import SpeakerNotifier
+# from audio_quality.utils.graceful_degradation import analyze_with_fallback
+# from audio_quality.exceptions import (
+#     AudioQualityError,
+#     AudioFormatError,
+#     QualityAnalysisError,
+#     ConfigurationError
+# )
+
+# Placeholder classes for disabled features
+class AudioQualityError(Exception): pass
+class AudioFormatError(Exception): pass
+class QualityAnalysisError(Exception): pass
+class ConfigurationError(Exception): pass
+class AudioQualityAnalyzer: pass
+class QualityMetricsEmitter: pass
+class SpeakerNotifier: pass
+class AudioDynamicsOrchestrator: pass
+class QualityConfig: pass
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -72,10 +85,10 @@ logger.setLevel(logging.INFO)
 # Initialized on cold start and reused across invocations
 partial_processor: Optional[PartialResultProcessor] = None
 
-# Audio quality components (singleton per Lambda container)
-quality_analyzer: Optional[AudioQualityAnalyzer] = None
-metrics_emitter: Optional[QualityMetricsEmitter] = None
-speaker_notifier: Optional[SpeakerNotifier] = None
+# Audio quality components (singleton per Lambda container) - DISABLED
+quality_analyzer = None
+metrics_emitter = None
+speaker_notifier = None
 
 # WebSocket audio processing components (singleton per Lambda container)
 websocket_parser: Optional[WebSocketMessageParser] = None
@@ -90,8 +103,8 @@ active_streams: Dict[str, tuple] = {}
 # Translation Pipeline client (singleton per Lambda container)
 translation_pipeline: Optional[LambdaTranslationPipeline] = None
 
-# Emotion detection orchestrator (singleton per Lambda container)
-emotion_orchestrator: Optional[AudioDynamicsOrchestrator] = None
+# Emotion detection orchestrator (singleton per Lambda container) - DISABLED
+emotion_orchestrator = None
 
 # Emotion cache for correlating with transcripts
 # session_id -> {'volume': float, 'rate': float, 'energy': float, 'timestamp': int}
@@ -687,8 +700,13 @@ async def transcribe_streaming(
             media_encoding='pcm'
         )
         
-        # Send PCM data
-        await stream.input_stream.send_audio_event(audio_chunk=pcm_bytes)
+        # Send PCM data in chunks (Transcribe has frame size limit)
+        # Max frame size is ~32KB, send in 16KB chunks to be safe
+        chunk_size = 16384  # 16KB per chunk
+        for i in range(0, len(pcm_bytes), chunk_size):
+            chunk = pcm_bytes[i:i + chunk_size]
+            await stream.input_stream.send_audio_event(audio_chunk=chunk)
+        
         await stream.input_stream.end_stream()
         
         # Collect transcript
@@ -783,6 +801,13 @@ async def process_translation_and_delivery(
             
             # Store in S3
             s3_key = f"sessions/{session_id}/translated/{target_lang}/{timestamp}.mp3"
+            
+            # Encode transcript to ASCII for S3 metadata (only ASCII allowed)
+            try:
+                transcript_ascii = translated_text[:1000].encode('ascii', errors='ignore').decode('ascii')
+            except:
+                transcript_ascii = "[Transcript contains non-ASCII characters]"
+            
             s3_client.put_object(
                 Bucket=s3_bucket,
                 Key=s3_key,
@@ -791,7 +816,7 @@ async def process_translation_and_delivery(
                 Metadata={
                     'sessionId': session_id,
                     'targetLanguage': target_lang,
-                    'transcript': translated_text[:1000],
+                    'transcript': transcript_ascii,  # ASCII-only
                     'timestamp': str(timestamp),
                     'duration': str(duration),
                 }

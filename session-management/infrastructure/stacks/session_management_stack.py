@@ -1102,17 +1102,19 @@ class SessionManagementStack(Stack):
             description="SNS topic ARN for CloudWatch alarms"
         )
         
-        # Phase 4 outputs
+        # Phase 4 outputs - WITH EXPORT for cross-stack reference
         CfnOutput(
             self,
             "AudioIngestionStreamName",
             value=self.audio_stream.stream_name,
-            description="Kinesis Data Stream name for audio ingestion"
+            description="Kinesis Data Stream name for audio ingestion",
+            export_name=f"AudioIngestionStreamName-{self.env_name}"
         )
         
         CfnOutput(
             self,
             "AudioIngestionStreamArn",
             value=self.audio_stream.stream_arn,
-            description="Kinesis Data Stream ARN for audio ingestion"
+            description="Kinesis Data Stream ARN for audio ingestion",
+            export_name=f"AudioIngestionStreamArn-{self.env_name}"
         )

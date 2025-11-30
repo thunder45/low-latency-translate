@@ -45,30 +45,33 @@ env = Environment(
 # Was only needed for WebRTC peer-to-peer (Phases 0-3, abandoned)
 # To delete existing stack: aws cloudformation delete-stack --stack-name KVSWebRTC-dev
 
-# Create AudioTranscriptionStack (if available)
-audio_transcription_stack = None
-if audio_transcription_available:
-    audio_transcription_stack = AudioTranscriptionStack(
-        app,
-        f"AudioTranscription-{env_name}",
-        env=env
-    )
-
-# Create SessionManagementStack with reference to AudioTranscriptionStack and KVS
+# Phase 4: Create SessionManagementStack FIRST (creates Kinesis stream)
 session_management_stack = SessionManagementStack(
     app,
     f"SessionManagement-{env_name}",
     env=env,
     config=config,
     env_name=env_name,
-    audio_transcription_stack=audio_transcription_stack
+    audio_transcription_stack=None  # Will be set after AudioTranscriptionStack is created
 )
 
-# KVSWebRTC dependency removed - not needed in Phase 4
-
-# Add dependency to ensure AudioTranscriptionStack is created first
-if audio_transcription_stack:
-    session_management_stack.add_dependency(audio_transcription_stack)
+# Phase 4: Then create AudioTranscriptionStack (connects to Kinesis stream)
+audio_transcription_stack = None
+if audio_transcription_available:
+    audio_transcription_stack = AudioTranscriptionStack(
+        app,
+        f"AudioTranscription-{env_name}",
+        env=env,
+        env_name=env_name,
+        config=config,
+        session_management_stack=session_management_stack  # Pass for Kinesis event source
+    )
+    
+    # Add dependency to ensure SessionManagementStack (with Kinesis) is created first
+    audio_transcription_stack.add_dependency(session_management_stack)
+    
+    # Update SessionManagementStack reference for WebSocket routes
+    session_management_stack.audio_transcription_stack = audio_transcription_stack
 
 # Create HttpApiStack for session management HTTP API
 http_api_stack = HttpApiStack(
