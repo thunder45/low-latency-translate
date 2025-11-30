@@ -267,6 +267,28 @@ class SessionManagementStack(Stack):
                 resources=['*']
             )
         )
+        
+        # Grant AWS Translate permissions for language validation
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    'translate:ListLanguages',
+                    'translate:TranslateText'
+                ],
+                resources=['*']
+            )
+        )
+        
+        # Grant AWS Polly permissions for language validation
+        function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    'polly:DescribeVoices',
+                    'polly:SynthesizeSpeech'
+                ],
+                resources=['*']
+            )
+        )
 
         return function
 

@@ -1,6 +1,8 @@
 """
 WebSocket Connection Handler for $connect events and control messages.
 Handles speaker session creation, listener joining, and broadcast control messages.
+
+Version: 1.1.0 - Fixed listener connection with language validation fallback
 """
 import json
 import logging
@@ -180,16 +182,85 @@ def lambda_handler(event, context):
                     message='Session is not active'
                 )
             
-            # Extract user context from authorizer (speaker only)
+            # Extract user context from authorizer
             authorizer_context = event['requestContext'].get('authorizer', {})
             user_id = authorizer_context.get('userId')
             
-            # Determine role based on authentication
-            # Speaker: authenticated user who owns the session
-            # Listener: anonymous or authenticated user who doesn't own the session
-            speaker_user_id = session.get('speakerId', '')
-            is_speaker = user_id and user_id == speaker_user_id
-            role = 'speaker' if is_speaker else 'listener'
+            # Determine role based on targetLanguage presence (more reliable than userId match)
+            # If targetLanguage is in query params, this is ALWAYS a listener connection
+            # (even if the user happens to own the session - allows testing both roles)
+            has_target_language = 'targetLanguage' in query_params
+            
+            if has_target_language:
+                role = 'listener'
+            else:
+                # No targetLanguage = speaker connection
+                # Verify this user owns the session
+                speaker_user_id = session.get('speakerId', '')
+                is_speaker = user_id and user_id == speaker_user_id
+                role = 'speaker' if is_speaker else 'listener'
+            
+            # Extract and validate targetLanguage for listeners
+            target_language = None
+            if role == 'listener':
+                target_language = query_params.get('targetLanguage', '').strip()
+                
+                # targetLanguage is required for listeners
+                if not target_language:
+                    logger.warning(
+                        message="Listener connection rejected: missing targetLanguage parameter",
+                        correlation_id=f"{session_id}-{connection_id}",
+                        operation='lambda_handler',
+                        error_code='MISSING_TARGET_LANGUAGE',
+                        sessionId=session_id
+                    )
+                    metrics_publisher.emit_connection_error('MISSING_TARGET_LANGUAGE')
+                    return error_response(
+                        status_code=400,
+                        error_code='MISSING_TARGET_LANGUAGE',
+                        message='targetLanguage query parameter is required for listeners'
+                    )
+                
+                # Validate targetLanguage format
+                try:
+                    validate_language_code(target_language, 'targetLanguage')
+                except ValidationError as e:
+                    logger.warning(
+                        message=f"Listener connection rejected: invalid targetLanguage: {target_language}",
+                        correlation_id=f"{session_id}-{connection_id}",
+                        operation='lambda_handler',
+                        error_code='INVALID_TARGET_LANGUAGE',
+                        sessionId=session_id,
+                        targetLanguage=target_language
+                    )
+                    metrics_publisher.emit_connection_error('INVALID_TARGET_LANGUAGE')
+                    return error_response(
+                        status_code=400,
+                        error_code='INVALID_TARGET_LANGUAGE',
+                        message='Invalid targetLanguage format'
+                    )
+                
+                # Validate language pair compatibility
+                source_language = session.get('sourceLanguage', '')
+                try:
+                    language_validator.validate_target_language(source_language, target_language)
+                except UnsupportedLanguageError as e:
+                    logger.warning(
+                        message=f"Listener connection rejected: unsupported language pair: {source_language} -> {target_language}",
+                        correlation_id=f"{session_id}-{connection_id}",
+                        operation='lambda_handler',
+                        error_code='UNSUPPORTED_LANGUAGE',
+                        sessionId=session_id,
+                        sourceLanguage=source_language,
+                        targetLanguage=target_language
+                    )
+                    metrics_publisher.emit_connection_error('UNSUPPORTED_LANGUAGE')
+                    return error_response(
+                        status_code=400,
+                        error_code='UNSUPPORTED_LANGUAGE',
+                        message=e.message,
+                        details={'languageCode': e.language_code}
+                    )
             
             # Create connection record in DynamoDB
             # CRITICAL: Must create this during $connect so disconnect handler can find it
@@ -198,7 +269,7 @@ def lambda_handler(event, context):
                     connection_id=connection_id,
                     session_id=session_id,
                     role=role,
-                    target_language=session.get('sourceLanguage') if role == 'listener' else None,
+                    target_language=target_language,
                     ip_address=ip_address,
                     session_max_duration_hours=SESSION_MAX_DURATION_HOURS
                 )
@@ -637,6 +708,34 @@ def handle_join_session_message(event, connection_id, body, ip_address):
             'timestamp': int(time.time() * 1000)
         }
         send_to_connection(connection_id, error_msg)
+        
+        return success_response(status_code=200, body={})
+    
+    # Check if connection already exists (idempotent handling)
+    existing_connection = connections_repo.get_connection(connection_id)
+    
+    if existing_connection:
+        # Connection already established via $connect, just send confirmation
+        logger.info(
+            message=f"Connection already exists for {connection_id}, returning success",
+            correlation_id=f"{session_id}-{connection_id}",
+            operation='handle_join_session_message',
+            sessionId=session_id
+        )
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        # Send confirmation message
+        success_msg = {
+            'type': 'sessionJoined',
+            'sessionId': session_id,
+            'targetLanguage': target_language,
+            'sourceLanguage': source_language,
+            'connectionId': connection_id,
+            'timestamp': int(time.time() * 1000)
+        }
+        
+        send_to_connection(connection_id, success_msg)
         
         return success_response(status_code=200, body={})
     

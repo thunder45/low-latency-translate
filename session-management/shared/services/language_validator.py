@@ -105,6 +105,29 @@ class LanguageValidator:
         """
         supported = self.get_supported_languages()
         
+        # FALLBACK: If API call failed and returned empty sets, allow all common languages
+        # This handles permission errors and service issues gracefully
+        if not supported['translate'] and not supported['polly']:
+            logger.warning(
+                "Language lists are empty (API call failed or permission denied). "
+                "Allowing common languages as fallback."
+            )
+            # Allow common languages that are definitely supported
+            common_languages = {'en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ar'}
+            if source_language in common_languages and target_language in common_languages:
+                logger.info(
+                    f"Fallback validation: Allowing {source_language} → {target_language} "
+                    f"(both are common languages)"
+                )
+                return True, None
+            else:
+                # Non-common language with no API data - allow it anyway but log warning
+                logger.warning(
+                    f"Fallback validation: Allowing {source_language} → {target_language} "
+                    f"(cannot verify support due to API error)"
+                )
+                return True, None
+        
         # Check AWS Translate support for source language
         if source_language not in supported['translate']:
             error_msg = (

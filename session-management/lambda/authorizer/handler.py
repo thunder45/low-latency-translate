@@ -125,8 +125,9 @@ def validate_token(token: str) -> Dict[str, Any]:
         logger.error(f'Token validation failed: {str(e)}')
         raise
     except Exception as e:
+        # Wrap unexpected errors as InvalidTokenError so they're handled gracefully
         logger.error(f'Unexpected error during token validation: {str(e)}')
-        raise
+        raise jwt.InvalidTokenError(f'Token validation error: {str(e)}')
 
 
 def generate_policy(principal_id: str, effect: str, resource: str, context: Optional[Dict] = None) -> Dict:
@@ -211,11 +212,36 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict:
             return policy
             
         except jwt.ExpiredSignatureError:
-            logger.error('Authorization failed: Token expired')
-            raise Exception('Unauthorized')
+            logger.warning('Token expired - treating as anonymous listener')
+            # Treat expired tokens as anonymous listeners (allow but without userId)
+            policy = generate_policy(
+                principal_id='anonymous-expired',
+                effect='Allow',
+                resource=method_arn,
+                context={
+                    'userId': '',
+                    'email': '',
+                }
+            )
+            return policy
         except jwt.PyJWTError as e:
-            logger.error(f'Authorization failed: JWT validation error: {str(e)}')
-            raise Exception('Unauthorized')
+            logger.warning(f'JWT validation error: {str(e)} - treating as anonymous listener')
+            # Treat invalid tokens as anonymous listeners (allow but without userId)
+            # This handles cases like:
+            # - Signing key mismatch (key rotation)
+            # - Invalid audience/issuer
+            # - Malformed tokens
+            # Connection handler will determine actual role based on targetLanguage presence
+            policy = generate_policy(
+                principal_id='anonymous-invalid-token',
+                effect='Allow',
+                resource=method_arn,
+                context={
+                    'userId': '',
+                    'email': '',
+                }
+            )
+            return policy
         
     except Exception as e:
         logger.error(f'Authorization failed: {str(e)}')

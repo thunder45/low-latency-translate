@@ -368,8 +368,9 @@ class AudioTranscriptionStack(Stack):
                 'AUDIO_BUCKET_NAME': f'low-latency-audio-{self.env_name}',  # For Transcribe temp storage
                 'PRESIGNED_URL_EXPIRATION': '600',  # 10 minutes
                 'STAGE': self.env_name,
-                # API_GATEWAY_ENDPOINT will be set by session-management stack after deployment
-                'API_GATEWAY_ENDPOINT': 'wss://2y19uvhyq5.execute-api.us-east-1.amazonaws.com/prod',
+                # API_GATEWAY_ENDPOINT for Management API (post_to_connection)
+                # Note: Use https:// for Management API, not wss://
+                'API_GATEWAY_ENDPOINT': 'https://2y19uvhyq5.execute-api.us-east-1.amazonaws.com/prod',
                 
                 # Logging configuration
                 'LOG_LEVEL': 'INFO',  # Set to DEBUG for verbose logging
